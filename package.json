@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--max-http-header-size=65536' next dev",
     "build": "node scripts/build.mjs",
-    "start": "NODE_OPTIONS='--max-http-header-size=65536' next start",
+    "start": "NODE_OPTIONS='--max-http-header-size=65536' next start -H 0.0.0.0 -p ${PORT:-3000}",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
