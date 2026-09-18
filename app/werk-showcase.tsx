@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Interaktive Referenz-Oberfläche für Design System Werk (02).
+ * Enthält ausschließlich Demo-Daten und UI-Zustände zur Komponenten-Demonstration — keine Business-Logik.
+ */
+
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Bell, BriefcaseBusiness, CalendarDays,
@@ -35,7 +40,7 @@ function formatTime(seconds: number) {
   return `${h}:${m}:${s}`;
 }
 
-export function Showcase() {
+export function WerkShowcase() {
   const [section, setSection] = useState<SectionId>('overview');
   const [timerState, setTimerState] = useState<TimerState>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -63,7 +68,7 @@ export function Showcase() {
   }
 
   return (
-    <main className="product-app">
+    <main className="design-system-app">
         <div className="app-frame">
           <aside className="app-sidebar">
             <div className="brand-lockup"><span className="brand-symbol"><BrandIcon size={24} /></span><span><strong>{brand.name}</strong><small>{brand.line}</small></span></div>

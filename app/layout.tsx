@@ -1,17 +1,28 @@
-import type { Metadata, Viewport } from 'next';
-import { Barlow, Inter } from 'next/font/google';
+import type { Metadata } from 'next';
+import { Barlow, Inter, Geist } from 'next/font/google';
 import './globals.css';
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
 const barlow = Barlow({ variable: '--font-barlow', subsets: ['latin'], weight: ['500', '600', '700', '800', '900'] });
 
 export const metadata: Metadata = {
-  title: 'Musterbetrieb Nord · Einsatzplanung',
-  description: 'Die digitale Arbeitsoberfläche für Aufträge, Zeiten, Dokumentation und Teams im Handwerk.',
+  title: 'Værkflow · Baustellenmanagement',
+  description: 'Multi-Tenant Web App für Mitarbeiter- und Baustellenmanagement.',
 };
 
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#101921' };
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover' as const,
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="de" className={`${inter.variable} ${barlow.variable}`}><body>{children}</body></html>;
+  return (
+    <html lang="de" className={cn(inter.variable, barlow.variable, "font-sans", geist.variable)} suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
+    </html>
+  );
 }

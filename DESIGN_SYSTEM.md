@@ -1,6 +1,43 @@
-# Designsystem Werk
+# Designsystem Værkflow
 
-Werk ist die verbindliche visuelle Grundlage der Anwendung. Das System verbindet robuste, kontrastreiche Arbeitsoberflächen mit großen, klaren Aktionen für Büro und Baustelle.
+Værkflow ist die verbindliche visuelle Grundlage der Anwendung. Das System verbindet robuste, kontrastreiche Arbeitsoberflächen mit großen, klaren Aktionen für Büro und Baustelle.
+
+## Repo-Zweck
+
+Dieses Repository enthält das **Design System Værkflow (02)** und die **Multi-Tenant SaaS-App** für Baustellenmanagement. Die Showcase unter `/showcase` demonstriert Tokens und Komponenten. Die Produkt-App läuft unter `/app` (Tenant) bzw. `/` (Marketing).
+
+### Routen
+
+| Route | Zweck |
+| --- | --- |
+| `/` | Öffentliche Marketing-Landingpage |
+| `/login` | Anmeldung |
+| `/app` | Infoboard (Tenant-App) |
+| `/app/zeiten` | Arbeitszeiterfassung |
+| `/app/urlaub` | Urlaub & Fehlzeiten |
+| `/app/baustellen` | Baustellenakte |
+| `/app/dokumentation` | Tagesdokumentation |
+| `/app/rapporte` | PDF-Rapporte |
+| `/superadmin` | Plattform-Owner (Mandantenverwaltung) |
+| `/showcase` | Design-System-Demo |
+
+### Entwicklung starten
+
+```bash
+npm run dev
+```
+
+Die Startseite zeigt direkt die Værkflow-Showcase — ohne Konzept-Auswahl oder Markenwechsel.
+
+### Showcase-Bereiche
+
+| Bereich | Komponenten-Zweck |
+| --- | --- |
+| Übersicht | Kennzahlenkarten, Einsatzliste, Projektfortschritt, Seitenleiste |
+| Aufträge | Auftragsdetail, Aufgabenliste, Meta-Infos, Schnellzugriff |
+| Zeiten | Mobile Zeiterfassung, Timer-Zustände, Quick-Capture |
+| Dokumente | Dokumentenkarten, Upload-Aktion |
+| Team | Teamliste, Status-Indikatoren, Stundenübersicht |
 
 ## Gestaltungsprinzipien
 
@@ -32,7 +69,32 @@ Die zentrale Quelle ist `app/globals.css`. Rohfarben sind als `--color-*` benann
 
 - Barlow ist die Display-Schrift für Seitenüberschriften, Kennzahlen und Abschnittstitel.
 - Inter ist die UI-Schrift für Navigation, Fließtext, Tabellen und Bedienelemente.
-- Große Überschriften sind fett und in Versalien; Hilfstexte bleiben kompakt und ruhig.
+- Große Überschriften sind fett und in Versalien.
+
+### Größen-Skala (CSS-Tokens in `app/globals.css`)
+
+| Token | Größe | Verwendung |
+| --- | --- | --- |
+| `--text-ui` | 14px | **Minimum** für Fließtext, Buttons, Listen, Tabellen-Zellen, Form-Labels, Suche |
+| `--text-body-soft` | 14px | Gedämpfte Beschreibungen (Farbe `--text-soft`) |
+| `--text-caption` | 12px | Einzige Ausnahme: Uppercase-Eyebrows, Tabellen-Header, Mobile-Nav-Labels, Kbd-Hints |
+| Display (H1–H3, Kennzahlen) | 17px+ | Unverändert, Barlow, teils Versalien |
+
+App-Formulare (`input-form`) nutzen kompakte 14px-Eingaben; Auth-Seiten behalten größere Submit-Buttons (44px) für Touch-Bedienbarkeit.
+
+## Input-Form (Standard-Eingabebox)
+
+Alle Eingabeboxen in der App, Auth und im Superadmin folgen dem gleichen Layout wie „Neuer Zeiteintrag“:
+
+- **Wrapper:** `panel form-panel` — kompaktes Padding, Überschrift in Versalien (`--text-caption`)
+- **Formular:** `input-form` — vertikaler Stack
+- **Kernfelder:** `input-form-core` — 4-Spalten-Grid (Desktop), 2 Spalten ab 720px, 1 Spalte in schmalen Auth-Karten
+- **Optionale Felder:** `input-form-extra` — `<details>` mit Plus/Minus-Prefix (z. B. Notiz, Pausen)
+- **Aktion:** `input-form-actions` — Submit rechtsbündig; in der App `primary-button--compact`, in Auth `primary-button`
+- **Volle Breite:** `input-form-span-full` für Textareas; `input-form-span-2` für halbe Breite
+- **Mehrere Abschnitte:** `input-form-section` + `input-form-section-title` (z. B. Tagesdokumentation)
+- **Dynamische Zeilen:** `input-form-row-list-*` — mehrzeilige Eingabe mit +/Papierkorb pro Zeile (Baustellen-Detail, Tagesdokumentation); Papierkorb immer sichtbar, bei einer Zeile deaktiviert
+- **Baustellen-Detail:** `site-meta-form`, `site-entity-row`, `site-detail-section` — Stammdaten inline, gespeicherte Einträge mit Löschen, Touch-Ziele ≥44px
 
 ## Form und Tiefe
 

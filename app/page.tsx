@@ -1,5 +1,5 @@
-import { Showcase } from './showcase';
+import { MarketingLanding } from '@/components/marketing/landing-page';
 
-export default function Home() {
-  return <Showcase />;
+export default function HomePage() {
+  return <MarketingLanding />;
 }

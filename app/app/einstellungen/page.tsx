@@ -1,0 +1,147 @@
+import { createClient } from '@/lib/supabase/server';
+import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { TenantBrandingForm } from '@/components/settings/tenant-branding-form';
+import {
+  saveCompanyHoliday,
+  deleteCompanyHoliday,
+  saveBridgeDay,
+  deleteBridgeDay,
+} from '@/lib/actions/admin';
+import { PayrollRuleMatrix } from '@/components/payroll/payroll-rule-matrix';
+import { SettingsTabs } from '@/components/settings/settings-tabs';
+import { loadTenantPayrollConfig, serializeTenantConfig } from '@/lib/payroll/tenant-rules';
+import { isSettingsTab, visibleSettingsTabs, type SettingsTabId } from '@/lib/settings/tabs';
+import type { PayrollBookingCode } from '@/lib/types/database';
+
+type PageProps = {
+  searchParams: Promise<{ tab?: string }>;
+};
+
+export default async function EinstellungenPage({ searchParams }: PageProps) {
+  const { tab: tabParam } = await searchParams;
+
+  const ctx = await requireTenantMember();
+  if (!canAccess(ctx, 'nav.einstellungen')) {
+    return <p className="muted">Keine Berechtigung.</p>;
+  }
+
+  const tabs = visibleSettingsTabs(ctx.permissions, ctx.isSuperadminBypass);
+  const activeTab: SettingsTabId = isSettingsTab(tabParam) && tabs.some((t) => t.id === tabParam)
+    ? tabParam
+    : tabs[0].id;
+
+  const supabase = await createClient();
+  const tenantId = ctx.tenant!.id;
+
+  const [
+    { data: tenant },
+    { data: holidays },
+    { data: bridgeDays },
+  ] = await Promise.all([
+    supabase.from('tenants').select('*').eq('id', tenantId).single(),
+    supabase.from('company_holidays').select('*').order('start_date', { ascending: false }),
+    supabase.from('bridge_days').select('*').order('date', { ascending: false }),
+  ]);
+
+  let codes: PayrollBookingCode[] = [];
+  let tenantConfig = null;
+
+  if (activeTab === 'lohnregeln' && canAccess(ctx, 'settings.payroll_rules')) {
+    const [codesResult, loadedConfig] = await Promise.all([
+      supabase
+        .from('payroll_booking_codes')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('sort_order'),
+      loadTenantPayrollConfig(supabase, tenantId),
+    ]);
+    codes = (codesResult.data ?? []) as PayrollBookingCode[];
+    tenantConfig = loadedConfig;
+  }
+
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Verwaltung</span>
+          <h1>Mandanten-Einstellungen</h1>
+          <p>
+            {activeTab === 'lohnregeln'
+              ? 'Lohnregeln und Buchungsnummern für die automatische Verbuchung.'
+              : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
+          </p>
+        </div>
+      </div>
+
+      <SettingsTabs tabs={tabs} activeTab={activeTab} />
+
+      {activeTab === 'lohnregeln' && tenantConfig ? (
+        <PayrollRuleMatrix
+          codes={codes}
+          tenantConfig={serializeTenantConfig(tenantConfig)}
+        />
+      ) : null}
+
+      {activeTab === 'allgemein' ? (
+        <>
+          {canAccess(ctx, 'settings.branding') && tenant ? (
+            <TenantBrandingForm tenant={tenant} />
+          ) : null}
+
+          <section className="panel form-panel" style={{ marginTop: 16 }}>
+            <h2>Betriebsurlaub</h2>
+            <p className="muted">Betriebsferien und geschlossene Zeiträume, die für alle Mitarbeiter gelten.</p>
+            <ul className="simple-list">
+              {(holidays ?? []).map((h) => (
+                <li key={h.id}>
+                  {h.title}: {h.start_date} – {h.end_date}
+                  <form action={deleteCompanyHoliday} style={{ display: 'inline', marginLeft: 8 }}>
+                    <input type="hidden" name="id" value={h.id} />
+                    <button type="submit" className="text-button">Löschen</button>
+                  </form>
+                </li>
+              ))}
+              {!holidays?.length && <li className="muted">Keine Einträge</li>}
+            </ul>
+            <form action={saveCompanyHoliday} className="input-form" style={{ marginTop: 8 }}>
+              <div className="input-form-core">
+                <label>Bezeichnung<input name="title" placeholder="z.B. Betriebsferien Sommer" required /></label>
+                <label>Von<input type="date" name="start_date" required /></label>
+                <label>Bis<input type="date" name="end_date" required /></label>
+              </div>
+              <div className="input-form-actions">
+                <button type="submit" className="primary-button primary-button--compact">Betriebsurlaub anlegen</button>
+              </div>
+            </form>
+          </section>
+
+          <section className="panel form-panel" style={{ marginTop: 16 }}>
+            <h2>Brückentage</h2>
+            <p className="muted">Einzelne freie Tage, die für alle Mitarbeiter gelten.</p>
+            <ul className="simple-list">
+              {(bridgeDays ?? []).map((b) => (
+                <li key={b.id}>
+                  {b.title}: {b.date}
+                  <form action={deleteBridgeDay} style={{ display: 'inline', marginLeft: 8 }}>
+                    <input type="hidden" name="id" value={b.id} />
+                    <button type="submit" className="text-button">Löschen</button>
+                  </form>
+                </li>
+              ))}
+              {!bridgeDays?.length && <li className="muted">Keine Einträge</li>}
+            </ul>
+            <form action={saveBridgeDay} className="input-form" style={{ marginTop: 8 }}>
+              <div className="input-form-core">
+                <label>Bezeichnung<input name="title" placeholder="z.B. Brückentag nach Feiertag" required /></label>
+                <label>Datum<input type="date" name="date" required /></label>
+              </div>
+              <div className="input-form-actions">
+                <button type="submit" className="primary-button primary-button--compact">Brückentag anlegen</button>
+              </div>
+            </form>
+          </section>
+        </>
+      ) : null}
+    </>
+  );
+}
