@@ -23,6 +23,24 @@ export type RegisterResult =
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const VALID_PLANS: RegisterPlan[] = ['solo', 'team', 'max'];
 
+function adminConfigError(error: unknown): RegisterResult | null {
+  if (error instanceof Error && error.message.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+    return { ok: false, error: 'Server-Konfiguration unvollständig (Admin-Zugriff).' };
+  }
+  return null;
+}
+
+async function rollbackRegistration(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  userId?: string,
+) {
+  if (userId) {
+    await admin.auth.admin.deleteUser(userId);
+  }
+  await admin.from('tenants').delete().eq('id', tenantId);
+}
+
 export async function registerTenant(input: RegisterInput): Promise<RegisterResult> {
   const slug = input.slug.toLowerCase().trim();
   const name = input.companyName.trim();
@@ -46,70 +64,84 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
     };
   }
 
-  const admin = createAdminClient();
-
-  const { data: existing } = await admin.from('tenants').select('id').eq('slug', slug).maybeSingle();
-  if (existing) {
-    return { ok: false, error: 'Diese Subdomain ist bereits vergeben.' };
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (error) {
+    return adminConfigError(error) ?? { ok: false, error: 'Registrierung derzeit nicht verfügbar.' };
   }
 
-  const { data: tenant, error: tenantError } = await admin
-    .from('tenants')
-    .insert({
-      slug,
-      name,
-      status: 'trial',
-      plan,
-    })
-    .select('id')
-    .single();
-
-  if (tenantError || !tenant) {
-    return { ok: false, error: tenantError?.message ?? 'Firma konnte nicht angelegt werden.' };
-  }
-
-  const { data: authUser, error: authError } = await admin.auth.admin.createUser({
-    email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { first_name: firstName, last_name: lastName },
-  });
-
-  if (authError || !authUser.user) {
-    await admin.from('tenants').delete().eq('id', tenant.id);
-    if (authError?.message?.toLowerCase().includes('already')) {
-      return { ok: false, error: 'Diese E-Mail-Adresse ist bereits registriert.' };
+  try {
+    const { data: existing } = await admin.from('tenants').select('id').eq('slug', slug).maybeSingle();
+    if (existing) {
+      return { ok: false, error: 'Diese Subdomain ist bereits vergeben.' };
     }
-    return { ok: false, error: authError?.message ?? 'Benutzer konnte nicht angelegt werden.' };
-  }
 
-  await seedPayrollDefaults(admin, tenant.id);
+    const { data: tenant, error: tenantError } = await admin
+      .from('tenants')
+      .insert({
+        slug,
+        name,
+        status: 'trial',
+        plan,
+      })
+      .select('id')
+      .single();
 
-  const roleIds = await seedTenantRoles(admin, tenant.id);
-  const adminRoleId = roleIds.get('administrator');
-  if (!adminRoleId) {
-    await admin.auth.admin.deleteUser(authUser.user.id);
-    await admin.from('tenants').delete().eq('id', tenant.id);
-    return { ok: false, error: 'Administrator-Rolle konnte nicht angelegt werden.' };
-  }
+    if (tenantError || !tenant) {
+      return { ok: false, error: tenantError?.message ?? 'Firma konnte nicht angelegt werden.' };
+    }
 
-  const { error: profileError } = await admin
-    .from('profiles')
-    .update({
-      tenant_id: tenant.id,
-      tenant_role_id: adminRoleId,
-      role: 'administrator',
-      first_name: firstName,
-      last_name: lastName,
+    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
       email,
-    })
-    .eq('id', authUser.user.id);
+      password: input.password,
+      email_confirm: true,
+      user_metadata: { first_name: firstName, last_name: lastName },
+    });
 
-  if (profileError) {
-    await admin.auth.admin.deleteUser(authUser.user.id);
-    await admin.from('tenants').delete().eq('id', tenant.id);
-    return { ok: false, error: profileError.message };
+    if (authError || !authUser.user) {
+      await admin.from('tenants').delete().eq('id', tenant.id);
+      if (authError?.message?.toLowerCase().includes('already')) {
+        return { ok: false, error: 'Diese E-Mail-Adresse ist bereits registriert.' };
+      }
+      return { ok: false, error: authError?.message ?? 'Benutzer konnte nicht angelegt werden.' };
+    }
+
+    try {
+      await seedPayrollDefaults(admin, tenant.id);
+      const roleIds = await seedTenantRoles(admin, tenant.id);
+      const adminRoleId = roleIds.get('administrator');
+      if (!adminRoleId) {
+        await rollbackRegistration(admin, tenant.id, authUser.user.id);
+        return { ok: false, error: 'Administrator-Rolle konnte nicht angelegt werden.' };
+      }
+
+      const { error: profileError } = await admin
+        .from('profiles')
+        .update({
+          tenant_id: tenant.id,
+          tenant_role_id: adminRoleId,
+          role: 'administrator',
+          first_name: firstName,
+          last_name: lastName,
+          email,
+        })
+        .eq('id', authUser.user.id);
+
+      if (profileError) {
+        await rollbackRegistration(admin, tenant.id, authUser.user.id);
+        return { ok: false, error: profileError.message };
+      }
+    } catch (error) {
+      await rollbackRegistration(admin, tenant.id, authUser.user.id);
+      if (error instanceof Error) {
+        return { ok: false, error: error.message };
+      }
+      return { ok: false, error: 'Mandant konnte nicht vollständig eingerichtet werden.' };
+    }
+
+    return { ok: true, slug, email };
+  } catch (error) {
+    return adminConfigError(error) ?? { ok: false, error: 'Registrierung fehlgeschlagen. Bitte später erneut versuchen.' };
   }
-
-  return { ok: true, slug, email };
 }

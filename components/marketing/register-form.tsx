@@ -38,36 +38,42 @@ export function RegisterForm() {
 
     const form = new FormData(e.currentTarget);
     const password = String(form.get('password') ?? '');
-    const result = await registerTenant({
-      companyName: String(form.get('company_name') ?? ''),
-      slug: String(form.get('slug') ?? ''),
-      firstName: String(form.get('first_name') ?? ''),
-      lastName: String(form.get('last_name') ?? ''),
-      email: String(form.get('email') ?? ''),
-      password,
-      plan,
-    });
 
-    if (!result.ok) {
-      setError(result.error);
+    try {
+      const result = await registerTenant({
+        companyName: String(form.get('company_name') ?? ''),
+        slug: String(form.get('slug') ?? ''),
+        firstName: String(form.get('first_name') ?? ''),
+        lastName: String(form.get('last_name') ?? ''),
+        email: String(form.get('email') ?? ''),
+        password,
+        plan,
+      });
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      clearSupabaseAuthCookies();
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: result.email,
+        password,
+      });
+
+      if (signInError) {
+        window.location.href = '/login?registered=1';
+        return;
+      }
+
+      document.cookie = `tenant_slug=${result.slug}; path=/; max-age=31536000`;
+      window.location.href = '/app';
+    } catch {
+      setError('Registrierung fehlgeschlagen. Bitte später erneut versuchen.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    clearSupabaseAuthCookies();
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: result.email,
-      password,
-    });
-
-    if (signInError) {
-      window.location.href = '/login?registered=1';
-      return;
-    }
-
-    document.cookie = `tenant_slug=${result.slug}; path=/; max-age=31536000`;
-    window.location.href = '/app';
   }
 
   return (

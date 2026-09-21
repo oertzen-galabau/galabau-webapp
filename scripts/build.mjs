@@ -14,6 +14,12 @@ if (env.SUPABASE_ANON_KEY && !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   env.NEXT_PUBLIC_SUPABASE_ANON_KEY = env.SUPABASE_ANON_KEY;
 }
 
+if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    '[build] WARNUNG: SUPABASE_SERVICE_ROLE_KEY fehlt — Registrierung und Admin-Aktionen funktionieren in Produktion nicht. Auf Hostinger manuell setzen.',
+  );
+}
+
 const result = spawnSync('next', ['build'], {
   stdio: 'inherit',
   env,
