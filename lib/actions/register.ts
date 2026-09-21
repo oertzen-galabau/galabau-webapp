@@ -84,6 +84,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
         name,
         status: 'trial',
         plan,
+        default_start_password: input.password,
       })
       .select('id')
       .single();

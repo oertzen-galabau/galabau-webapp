@@ -10,7 +10,8 @@ import {
   BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
   LogOut, Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { createClient } from '@/lib/supabase/client';
 import { RoleSwitcher } from '@/components/dev/role-switcher';
 import { HeaderTimeClock } from '@/components/time-tracking/header-time-clock';
@@ -60,6 +61,11 @@ function bottomNavItems(items: NavItem[]) {
     .slice(0, 4);
 }
 
+function NavUnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className="nav-badge">{count > 99 ? '99+' : count}</span>;
+}
+
 export function TenantShell({
   theme,
   profile,
@@ -72,6 +78,7 @@ export function TenantShell({
   showDevSwitcher = false,
   todayEntry = null,
   canRecordTime = false,
+  initialUnreadCount = 0,
   children,
 }: {
   theme: TenantTheme;
@@ -85,11 +92,59 @@ export function TenantShell({
   showDevSwitcher?: boolean;
   todayEntry?: TimeEntry | null;
   canRecordTime?: boolean;
+  initialUnreadCount?: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  const [prevInitialUnreadCount, setPrevInitialUnreadCount] = useState(initialUnreadCount);
   const permSet = useMemo(() => new Set(permissions), [permissions]);
+  const canViewMessages = isSuperadminBypass || permSet.has('nav.nachrichten');
+
+  if (initialUnreadCount !== prevInitialUnreadCount) {
+    setPrevInitialUnreadCount(initialUnreadCount);
+    setUnreadCount(initialUnreadCount);
+  }
+
+  useEffect(() => {
+    if (!canViewMessages) return;
+
+    const supabase = createClient();
+    const refreshUnreadCount = () => {
+      void getUnreadMessageCount()
+        .then(setUnreadCount)
+        .catch(() => undefined);
+    };
+
+    const channel = supabase
+      .channel(`inbox-badge:${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq.${profile.id}`,
+        },
+        refreshUnreadCount,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq.${profile.id}`,
+        },
+        refreshUnreadCount,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [canViewMessages, profile.id]);
 
   const visibleNav = navItems.filter(
     (item) => isSuperadminBypass || permSet.has(item.permission),
@@ -139,6 +194,7 @@ export function TenantShell({
                 <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
                   <Icon size={19} />
                   <span>{item.label}</span>
+                  {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
                 </Link>
               );
             })}
@@ -211,7 +267,9 @@ export function TenantShell({
                 const active = pathname === item.href;
                 return (
                   <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
-                    <Icon size={20} />{item.label}
+                    <Icon size={20} />
+                    {item.label}
+                    {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
                   </Link>
                 );
               })}
@@ -235,7 +293,9 @@ export function TenantShell({
             const active = pathname === item.href;
             return (
               <Link key={item.href} href={item.href} className={active ? 'active' : ''}>
-                <Icon size={20} /><span>{item.label}</span>
+                <Icon size={20} />
+                <span>{item.label}</span>
+                {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
               </Link>
             );
           })}

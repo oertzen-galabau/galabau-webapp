@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { buildReportPdf, type ReportPhotoInput } from '@/lib/reports/pdf';
+import { buildReportPdf, type ReportPhotoInput, type ReportSignatureInput } from '@/lib/reports/pdf';
 import { buildStoragePath } from '@/lib/supabase/storage';
 
 export async function POST(request: Request) {
@@ -22,24 +22,45 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
 
-  const { data: log } = await supabase.from('daily_logs').select('*, sites(name)').eq('id', dailyLogId).single();
+  const { data: log } = await supabase
+    .from('daily_logs')
+    .select('*, sites(name, client_name, address)')
+    .eq('id', dailyLogId)
+    .single();
   if (!log) return NextResponse.json({ error: 'Tageseintrag nicht gefunden' }, { status: 404 });
 
   const { data: tenant } = await supabase.from('tenants').select('name').eq('id', log.tenant_id).single();
 
   const [
+    { data: workers },
     { data: workItems },
-    { data: equipment },
+    { data: resources },
     { data: subcontractors },
     { data: photos },
     { data: deliveries },
+    { data: signatures },
   ] = await Promise.all([
+    supabase.from('daily_log_worker_hours').select('*').eq('daily_log_id', dailyLogId),
     supabase.from('daily_log_work').select('*').eq('daily_log_id', dailyLogId),
     supabase.from('equipment_hours').select('*').eq('daily_log_id', dailyLogId),
     supabase.from('subcontractor_entries').select('*').eq('daily_log_id', dailyLogId).is('deleted_at', null),
     supabase.from('daily_log_photos').select('*').eq('daily_log_id', dailyLogId).is('deleted_at', null),
     supabase.from('delivery_notes').select('*').eq('daily_log_id', dailyLogId).is('deleted_at', null),
+    supabase.from('daily_log_signatures').select('*').eq('daily_log_id', dailyLogId),
   ]);
+
+  const deliveryIds = (deliveries ?? []).map((entry) => entry.id);
+  const { data: deliveryItems } = deliveryIds.length
+    ? await supabase.from('delivery_note_items').select('*').in('delivery_note_id', deliveryIds).order('position')
+    : { data: [] };
+
+  type DeliveryItemRow = NonNullable<typeof deliveryItems>[number];
+  const itemsByDelivery = new Map<string, DeliveryItemRow[]>();
+  for (const item of deliveryItems ?? []) {
+    const list = itemsByDelivery.get(item.delivery_note_id) ?? [];
+    list.push(item);
+    itemsByDelivery.set(item.delivery_note_id, list);
+  }
 
   const admin = createAdminClient();
 
@@ -52,19 +73,61 @@ export async function POST(request: Request) {
     photoInputs.push({ bytes, contentType: file.type, caption: photo.caption ?? null });
   }
 
-  const siteName = (log.sites as { name: string }[] | null)?.[0]?.name ?? 'Baustelle';
+  const signatureInputs: ReportSignatureInput[] = [];
+  for (const signature of signatures ?? []) {
+    if (!signature.file_url) continue;
+    const { data: file } = await admin.storage.from('daily-photos').download(signature.file_url);
+    if (!file) continue;
+    signatureInputs.push({
+      role: signature.role as 'contractor' | 'client',
+      signerName: signature.signer_name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      contentType: file.type,
+      signedAt: signature.signed_at,
+      signedLocationLabel: signature.signed_location_label,
+      signedLatitude: signature.signed_latitude,
+      signedLongitude: signature.signed_longitude,
+    });
+  }
+
+  const site = log.sites as { name: string; client_name: string | null; address: string | null } | null;
 
   const pdfBytes = await buildReportPdf({
     tenantName: tenant?.name ?? 'Unternehmen',
-    siteName,
+    clientName: site?.client_name ?? null,
+    siteName: site?.name ?? 'Baustelle',
+    siteAddress: site?.address ?? null,
     reportDate: log.log_date,
     weather: log.weather,
     notes: log.notes,
-    workItems: workItems ?? [],
-    equipment: equipment ?? [],
+    workers: (workers ?? []).map((row) => ({
+      worker_name: row.worker_name,
+      job_title: row.job_title,
+      hours: Number(row.hours),
+    })),
+    workItems: (workItems ?? []).map((row) => ({
+      description: row.description,
+      quantity: row.quantity != null ? Number(row.quantity) : null,
+      unit: row.unit,
+    })),
+    resources: (resources ?? []).map((row) => ({
+      equipment_name: row.equipment_name,
+      quantity: row.quantity != null ? Number(row.quantity) : null,
+      unit: row.unit,
+      hours: Number(row.hours),
+    })),
     subcontractors: subcontractors ?? [],
-    deliveries: deliveries ?? [],
+    deliveries: (deliveries ?? []).map((entry) => ({
+      supplier_name: entry.supplier_name,
+      description: entry.description,
+      items: (itemsByDelivery.get(entry.id) ?? []).map((item) => ({
+        description: item.description,
+        quantity: item.quantity != null ? Number(item.quantity) : null,
+        unit: item.unit,
+      })),
+    })),
     photos: photoInputs,
+    signatures: signatureInputs,
   });
 
   const path = buildStoragePath(log.tenant_id, log.site_id, `${log.log_date}.pdf`);

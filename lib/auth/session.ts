@@ -99,6 +99,18 @@ async function enrichContext(
   };
 }
 
+function assertActiveProfile(profile: Profile) {
+  if (profile.is_active === false) {
+    redirect('/login?inactive=1');
+  }
+}
+
+function assertPasswordReady(profile: Profile) {
+  if (profile.must_change_password) {
+    redirect('/passwort-setzen');
+  }
+}
+
 export async function requireAuth(): Promise<SessionContext> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -106,6 +118,8 @@ export async function requireAuth(): Promise<SessionContext> {
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) redirect('/login');
+
+  assertActiveProfile(profile as Profile);
 
   let tenant: Tenant | null = null;
   if (profile.tenant_id) {
@@ -128,6 +142,7 @@ export async function requireTenantMember(tenantSlug?: string) {
   if (isSuperadmin(ctx.profile.role)) return ctx;
   if (!ctx.tenant) redirect('/login');
   if (tenantSlug && ctx.tenant.slug !== tenantSlug) redirect('/login');
+  assertPasswordReady(ctx.profile);
   return ctx;
 }
 
@@ -150,6 +165,13 @@ export async function getActionContext(): Promise<ActionContext> {
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) throw new Error('Kein Profil');
+
+  if (profile.is_active === false) {
+    throw new Error('Dieses Konto ist deaktiviert.');
+  }
+  if (profile.must_change_password) {
+    throw new Error('Bitte legen Sie zuerst Ihr persönliches Passwort fest.');
+  }
 
   const devRoleOverrideId = await readDevRoleOverrideId();
   const tenantId = await resolveTenantId(profile as Profile);

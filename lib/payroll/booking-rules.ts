@@ -1,4 +1,5 @@
 import type { BookingPreviewLine, PayrollFlags, PayrollSeasonConfig, TimeEntry } from '@/lib/types/database';
+import { segmentsToPayrollTravel, type TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { calculateWorkMinutes } from '@/lib/utils/time';
 import {
   DEFAULT_BOOKING_LABELS,
@@ -7,6 +8,7 @@ import {
   isoWeekday,
 } from '@/lib/payroll/constants';
 import {
+  getBadWeatherSeasonFromConfig,
   isRuleConfigured,
   leaveRuleKeyForType,
   type BadWeatherConfig,
@@ -19,10 +21,7 @@ import {
   type TenantPayrollConfig,
 } from '@/lib/payroll/tenant-rules';
 
-export type SegmentInput = {
-  site_id: string;
-  travel_minutes: number;
-};
+export type SegmentInput = TimelineBlockInput;
 
 export type BookingRuleContext = {
   entry: Pick<
@@ -59,9 +58,14 @@ function isRuleEnabled(ctx: BookingRuleContext, key: PayrollRuleKey) {
   return rule?.enabled === true && isRuleConfigured(key, rule.config);
 }
 
-function seasonMaxHours(workDate: string, seasonConfig?: PayrollSeasonConfig[]): number | null {
+function seasonMaxHours(
+  workDate: string,
+  seasonConfig?: PayrollSeasonConfig[],
+  badWeatherCfg?: BadWeatherConfig,
+): number | null {
   const month = new Date(workDate).getMonth() + 1;
-  if (!isBadWeatherSeason(workDate)) return null;
+  const { season_start, season_end } = getBadWeatherSeasonFromConfig(badWeatherCfg);
+  if (!isBadWeatherSeason(workDate, season_start, season_end)) return null;
   const weekday = isoWeekday(workDate);
   if (weekday > 5) return null;
   const row = seasonConfig?.find((c) => c.month === month && c.weekday === weekday);
@@ -128,7 +132,8 @@ export function computeBookingPreview(ctx: BookingRuleContext): {
       ? (driverCfg?.threshold_minutes ?? 30)
       : (passengerCfg?.travel_threshold_minutes ?? 30);
 
-    for (const segment of ctx.segments) {
+    const travelSegments = segmentsToPayrollTravel(ctx.segments);
+    for (const segment of travelSegments) {
       if (segment.travel_minutes < travelThreshold) continue;
 
       if (isDriver && isRuleEnabled(ctx, 'driver_travel_time')) {
@@ -155,15 +160,18 @@ export function computeBookingPreview(ctx: BookingRuleContext): {
     }
   }
 
+  const badWeatherCfg = ctx.tenantConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
+  const { season_start, season_end } = getBadWeatherSeasonFromConfig(badWeatherCfg);
+
   if (
     isRuleEnabled(ctx, 'bad_weather') &&
     ctx.isBadWeatherDay &&
-    isBadWeatherSeason(ctx.entry.work_date)
+    isBadWeatherSeason(ctx.entry.work_date, season_start, season_end)
   ) {
-    const cfg = ctx.tenantConfig.rules.get('bad_weather')!.config as BadWeatherConfig;
+    const cfg = badWeatherCfg!;
     const minWork = cfg.min_work_minutes ?? 60;
     if (netMinutes >= minWork) {
-      const maxDay = seasonMaxHours(ctx.entry.work_date, ctx.seasonConfig);
+      const maxDay = seasonMaxHours(ctx.entry.work_date, ctx.seasonConfig, cfg);
       const hours = roundHours(netMinutes);
       let quantity = hours;
       if (maxDay != null) {

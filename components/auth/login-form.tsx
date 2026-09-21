@@ -28,7 +28,26 @@ export function LoginForm() {
       return;
     }
 
-    const { data: profile } = await supabase.from('profiles').select('role, tenant_id, tenants(slug)').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single();
+    const userId = (await supabase.auth.getUser()).data.user?.id ?? '';
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, tenant_id, is_active, must_change_password, tenants(slug)')
+      .eq('id', userId)
+      .single();
+
+    if (profile && profile.is_active === false) {
+      await supabase.auth.signOut();
+      setError('Dieses Konto ist deaktiviert. Bitte wenden Sie sich an die Verwaltung.');
+      setLoading(false);
+      return;
+    }
+
+    if (profile?.must_change_password) {
+      await supabase.auth.signOut();
+      setError('Bitte nutzen Sie den Einladungslink aus Ihrer Willkommensnachricht. Alternativ kann die Verwaltung neue Zugangsdaten erzeugen.');
+      setLoading(false);
+      return;
+    }
 
     if (profile?.role === 'superadmin') {
       window.location.href = '/superadmin';

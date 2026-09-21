@@ -80,7 +80,7 @@ Die zentrale Quelle ist `app/globals.css`. Rohfarben sind als `--color-*` benann
 | `--text-caption` | 12px | Einzige Ausnahme: Uppercase-Eyebrows, Tabellen-Header, Mobile-Nav-Labels, Kbd-Hints |
 | Display (H1–H3, Kennzahlen) | 17px+ | Unverändert, Barlow, teils Versalien |
 
-App-Formulare (`input-form`) nutzen kompakte 14px-Eingaben; Auth-Seiten behalten größere Submit-Buttons (44px) für Touch-Bedienbarkeit.
+App-Formulare (`input-form`) nutzen 14px-Eingaben mit einheitlicher Mindesthöhe (`--input-min-height`: 44px, Auth/Dialoge: 48px); Submit-Buttons auf Auth-Seiten bleiben groß (48px) für Touch-Bedienbarkeit.
 
 ## Input-Form (Standard-Eingabebox)
 
@@ -88,7 +88,9 @@ Alle Eingabeboxen in der App, Auth und im Superadmin folgen dem gleichen Layout 
 
 - **Wrapper:** `panel form-panel` — kompaktes Padding, Überschrift in Versalien (`--text-caption`)
 - **Formular:** `input-form` — vertikaler Stack
-- **Kernfelder:** `input-form-core` — 4-Spalten-Grid (Desktop), 2 Spalten ab 720px, 1 Spalte in schmalen Auth-Karten
+- **Kernfelder:** `input-form-core` — responsives Auto-Fill-Grid (`repeat(auto-fill, minmax(...))`), nutzt die verfügbare Panel-Breite; 2 Spalten ≤720px, 1 Spalte in schmalen Auth-Karten
+- **Feldbreite:** `--form-field-min-width` steuert die Mindestbreite pro Spalte (200px → 220px ab 900px → 240px ab 1200px); **Dokumentation** (`daily-report-form`, `delivery-note-scan-form`) behält eigene Mehrspalten-Zeilenlayouts
+- **Schmale Felder:** `input-form-field--narrow` für Stunden/Mengen (max. 7rem auf Desktop)
 - **Optionale Felder:** `input-form-extra` — `<details>` mit Plus/Minus-Prefix (z. B. Notiz, Pausen)
 - **Aktion:** `input-form-actions` — Submit rechtsbündig; in der App `primary-button--compact`, in Auth `primary-button`
 - **Volle Breite:** `input-form-span-full` für Textareas; `input-form-span-2` für halbe Breite

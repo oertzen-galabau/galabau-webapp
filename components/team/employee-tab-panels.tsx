@@ -14,12 +14,14 @@ import { formatLeaveType } from '@/lib/leave/labels';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
 import type {
   ClothingOrder,
+  EmployeeInvitation,
   EmployeeNote,
   LeaveRequest,
   Profile,
   TenantRole,
   TimeEntry,
 } from '@/lib/types/database';
+import { EmployeeInvitationPanel } from '@/components/team/employee-invitation-panel';
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
@@ -63,6 +65,7 @@ type Props = {
   monthMinutes: number;
   pendingLeaveCount: number;
   todayAssignment: AssignmentRow | null;
+  invitation: EmployeeInvitation | null;
 };
 
 function can(ctx: PermCtx, key: PermissionKey) {
@@ -217,7 +220,7 @@ function StammdatenTab({ member, ctx }: Props) {
           <label>Nachname<input name="last_name" defaultValue={member.last_name} required disabled={!editable} /></label>
           <label>E-Mail<input name="email" type="email" defaultValue={member.email} required disabled={!editable} /></label>
           <label>Telefon<input name="phone" type="tel" defaultValue={member.phone ?? ''} disabled={!editable} /></label>
-          <label>Stellenbezeichnung<input name="job_title" defaultValue={member.job_title ?? ''} disabled={!editable} /></label>
+          <label>Berufbezeichnung<input name="job_title" defaultValue={member.job_title ?? ''} disabled={!editable} placeholder="z.B. Vorarbeiter, Gärtner" /></label>
           <label>Straße<input name="address" defaultValue={member.address ?? ''} disabled={!editable} /></label>
           <label>PLZ<input name="zip_code" defaultValue={member.zip_code ?? ''} disabled={!editable} /></label>
           <label>Ort<input name="city" defaultValue={member.city ?? ''} disabled={!editable} /></label>
@@ -244,7 +247,7 @@ function StammdatenTab({ member, ctx }: Props) {
   );
 }
 
-function RolleTab({ member, roleName, tenantRoles, ctx }: Props) {
+function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
   const isSelf = member.id === ctx.userId;
   const canAssign = can(ctx, 'team.assign_role');
   const canDeactivate = can(ctx, 'team.deactivate');
@@ -309,6 +312,14 @@ function RolleTab({ member, roleName, tenantRoles, ctx }: Props) {
           </form>
         )}
       </div>
+
+      <EmployeeInvitationPanel
+        memberId={member.id}
+        memberName={`${member.first_name} ${member.last_name}`}
+        mustChangePassword={member.must_change_password ?? false}
+        invitation={invitation}
+        canManageInvites={can(ctx, 'team.manage_invites')}
+      />
     </section>
   );
 }

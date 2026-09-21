@@ -13,37 +13,45 @@ import {
   type ClockOutPayload,
 } from '@/lib/actions/employee';
 import { getClockOutContext } from '@/lib/actions/payroll';
-import type { TimeEntry } from '@/lib/types/database';
+import type { TimeEntry, TenantTimeTrackingRules } from '@/lib/types/database';
 import {
   breakfastAvailable,
   computeLiveWorkSeconds,
   deriveWorkDayState,
-  hasRecordedBreak,
   lunchAvailable,
   workDayStateLabel,
 } from '@/lib/time-tracking/work-day';
-import { TimeEntrySegmentsFields, type SegmentRow } from '@/components/time-tracking/time-entry-segments-fields';
+import {
+  TimeEntryTimelineFields,
+  type SiteOption,
+} from '@/components/time-tracking/time-entry-timeline-fields';
 import { formatDurationHMS } from '@/lib/utils/time';
+import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
+import { evaluateBreakCompliance } from '@/lib/time-tracking/break-rules';
+import { parseTime } from '@/lib/utils/time';
 
 type Props = {
   todayEntry: TimeEntry | null;
   canRecord: boolean;
 };
 
-type DialogStep = 'noBreakConfirm' | 'noBreakReason' | 'clockOut';
-
 export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState<string | null>(null);
-  const [dialogStep, setDialogStep] = useState<DialogStep | null>(null);
-  const [noBreakReason, setNoBreakReason] = useState('');
+  const [clockOutOpen, setClockOutOpen] = useState(false);
   const [isDriver, setIsDriver] = useState(false);
   const [badWeatherClaimed, setBadWeatherClaimed] = useState(false);
   const [isBadWeatherSeason, setIsBadWeatherSeason] = useState(false);
-  const [segments, setSegments] = useState<SegmentRow[]>([{ siteId: '', travelMinutes: 0 }]);
-  const [sites, setSites] = useState<{ id: string; name: string; default_travel_minutes?: number }[]>([]);
+  const [badWeatherSeasonLabel, setBadWeatherSeasonLabel] = useState('');
+  const [timelineBlocks, setTimelineBlocks] = useState<TimelineBlockInput[]>([]);
+  const [sites, setSites] = useState<SiteOption[]>([]);
+  const [dayStart, setDayStart] = useState('');
+  const [dayEnd, setDayEnd] = useState('');
+  const [timeRules, setTimeRules] = useState<TenantTimeTrackingRules | null>(null);
+  const [missingBreakfastReason, setMissingBreakfastReason] = useState('');
+  const [missingLunchReason, setMissingLunchReason] = useState('');
   const [loadingContext, setLoadingContext] = useState(false);
 
   const state = deriveWorkDayState(todayEntry);
@@ -64,7 +72,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     startTransition(async () => {
       try {
         await action();
-        closeDialog();
+        setClockOutOpen(false);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Fehler');
@@ -82,12 +90,6 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     }
   }
 
-  function closeDialog() {
-    setDialogStep(null);
-    setNoBreakReason('');
-    setError(null);
-  }
-
   async function openClockOutDialog() {
     setLoadingContext(true);
     setError(null);
@@ -95,13 +97,15 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
       const ctx = await getClockOutContext();
       setSites(ctx.sites);
       setIsBadWeatherSeason(ctx.isBadWeatherSeason);
+      setBadWeatherSeasonLabel(ctx.badWeatherSeasonLabel);
       setBadWeatherClaimed(false);
-      setSegments(
-        ctx.defaultSegments.length > 0
-          ? ctx.defaultSegments.map((s) => ({ siteId: s.site_id, travelMinutes: s.travel_minutes }))
-          : [{ siteId: '', travelMinutes: 0 }],
-      );
-      setDialogStep('clockOut');
+      setDayStart(ctx.startTime ?? todayEntry?.start_time?.slice(0, 5) ?? '');
+      setDayEnd(ctx.endTime);
+      setTimelineBlocks(ctx.defaultTimeline);
+      setTimeRules(ctx.timeRules);
+      setMissingBreakfastReason('');
+      setMissingLunchReason('');
+      setClockOutOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler');
     } finally {
@@ -109,39 +113,43 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     }
   }
 
-  function handleFeierabendClick() {
-    setError(null);
-    if (hasRecordedBreak(todayEntry)) {
-      void openClockOutDialog();
-      return;
-    }
-    setDialogStep('noBreakConfirm');
-  }
-
-  function submitClockOut(reason?: string) {
+  function submitClockOut() {
     const payload: ClockOutPayload = {
       isDriver,
-      badWeatherClaimed,
-      segments: segments
-        .filter((s) => s.siteId)
-        .map((s) => ({ site_id: s.siteId, travel_minutes: s.travelMinutes })),
+      badWeatherClaimed: isBadWeatherSeason ? badWeatherClaimed : false,
+      segments: timelineBlocks,
+      missingBreakfastReason: missingBreakfastReason.trim() || null,
+      missingLunchReason: missingLunchReason.trim() || null,
     };
-    run(() => clockOutWork(reason, payload));
-  }
-
-  function submitNoBreakReason() {
-    const reason = noBreakReason.trim();
-    if (!reason) {
-      setError('Bitte einen Grund angeben.');
-      return;
-    }
-    void openClockOutDialog();
-    setNoBreakReason(reason);
+    run(() => clockOutWork(undefined, payload));
   }
 
   const canBreak = breakfastAvailable(todayEntry) || lunchAvailable(todayEntry);
   const breakLabel = breakfastAvailable(todayEntry) ? 'Frühstück' : 'Mittag';
   const timeLabel = formatDurationHMS(displaySeconds);
+
+  const grossMinutes =
+    parseTime(dayStart) != null && parseTime(dayEnd) != null
+      ? (parseTime(dayEnd)! - parseTime(dayStart)!)
+      : 0;
+
+  const breakCompliance = timeRules
+    ? evaluateBreakCompliance({
+        rules: timeRules,
+        grossWorkMinutes: grossMinutes,
+        blocks: timelineBlocks,
+        trackedBreakfast: {
+          start: todayEntry?.breakfast_start ?? null,
+          end: todayEntry?.breakfast_end ?? null,
+        },
+        trackedLunch: {
+          start: todayEntry?.lunch_start ?? null,
+          end: todayEntry?.lunch_end ?? null,
+        },
+        missingBreakfastReason,
+        missingLunchReason,
+      })
+    : null;
 
   if (state === 'idle') {
     return (
@@ -195,7 +203,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
                 type="button"
                 className="header-clock-action header-clock-action--stop"
                 disabled={pending || loadingContext}
-                onClick={handleFeierabendClick}
+                onClick={() => void openClockOutDialog()}
                 aria-label="Feierabend"
               >
                 <Square size={15} fill="currentColor" />
@@ -231,104 +239,91 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
         </div>
       </div>
 
-      {dialogStep && (
-        <div className="dialog-backdrop" role="presentation" onClick={closeDialog}>
+      {clockOutOpen && (
+        <div className="dialog-backdrop" role="presentation" onClick={() => setClockOutOpen(false)}>
           <div
-            className="dialog-panel"
+            className="dialog-panel dialog-panel--wide"
             role="dialog"
             aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
-            {dialogStep === 'noBreakConfirm' && (
-              <>
-                <h2>Keine Pause erfasst</h2>
-                <p className="muted">
-                  Du hast heute weder Frühstücks- noch Mittagspause erfasst. Ist das korrekt?
-                </p>
-                <div className="dialog-actions">
-                  <button type="button" className="text-button" onClick={closeDialog}>Abbrechen</button>
-                  <button type="button" className="primary-button" onClick={() => setDialogStep('noBreakReason')}>
-                    Ja, korrekt
-                  </button>
-                </div>
-              </>
-            )}
+            <h2>Feierabend</h2>
+            <p className="muted">
+              Teile deinen Arbeitstag lückenlos in Baustellen, Wegezeiten, Pausen oder sonstige Arbeit ein.
+            </p>
 
-            {dialogStep === 'noBreakReason' && (
-              <>
-                <h2>Grund angeben</h2>
-                <label className="dialog-field">
-                  Grund (Pflicht)
-                  <textarea
-                    rows={3}
-                    value={noBreakReason}
-                    onChange={(e) => setNoBreakReason(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </label>
-                {error && <p className="dialog-error">{error}</p>}
-                <div className="dialog-actions">
-                  <button type="button" className="text-button" onClick={() => setDialogStep('noBreakConfirm')}>
-                    Zurück
-                  </button>
-                  <button type="button" className="primary-button" onClick={submitNoBreakReason}>
-                    Weiter
-                  </button>
-                </div>
-              </>
-            )}
+            <label className="dialog-field input-form-checkbox">
+              <input
+                type="checkbox"
+                checked={isDriver}
+                onChange={(event) => setIsDriver(event.target.checked)}
+              />
+              Heute Fahrer? (Fahrer-Zuschlag ca. 6 € nach Freigabe)
+            </label>
 
-            {dialogStep === 'clockOut' && (
+            {isBadWeatherSeason && (
               <>
-                <h2>Feierabend</h2>
-                <label className="dialog-field input-form-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={isDriver}
-                    onChange={(e) => setIsDriver(e.target.checked)}
-                  />
-                  Heute Fahrer? (Fahrer-Zuschlag ca. 6 € nach Freigabe)
-                </label>
                 <label className="dialog-field input-form-checkbox">
                   <input
                     type="checkbox"
                     checked={badWeatherClaimed}
-                    onChange={(e) => setBadWeatherClaimed(e.target.checked)}
+                    onChange={(event) => setBadWeatherClaimed(event.target.checked)}
                   />
                   Schlechtwetter (KUG) — heute am Standort
                 </label>
-                {isBadWeatherSeason ? (
-                  <p className="muted">
-                    Buchung 8110 (Dez.–März) wird nach Freigabe durch das Büro bestätigt.
-                  </p>
-                ) : (
-                  <p className="muted">
-                    KUG-Buchung gilt in der Saison Dez.–März. Meldung wird bei der Freigabe bestätigt.
-                  </p>
-                )}
                 <p className="muted">
-                  Buchungszeilen werden automatisch erstellt, sobald das Büro deine Zeiten freigibt.
+                  Saison {badWeatherSeasonLabel}. Buchung 8110 wird nach Freigabe durch das Büro bestätigt.
                 </p>
-                <TimeEntrySegmentsFields
-                  sites={sites}
-                  initialSegments={segments}
-                  onChange={setSegments}
-                />
-                {error && <p className="dialog-error">{error}</p>}
-                <div className="dialog-actions">
-                  <button type="button" className="text-button" onClick={closeDialog}>Abbrechen</button>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    disabled={pending}
-                    onClick={() => submitClockOut(noBreakReason.trim() || undefined)}
-                  >
-                    Feierabend speichern
-                  </button>
-                </div>
               </>
             )}
+
+            <TimeEntryTimelineFields
+              sites={sites}
+              dayStart={dayStart}
+              dayEnd={dayEnd}
+              initialBlocks={timelineBlocks}
+              onChange={setTimelineBlocks}
+            />
+
+            {breakCompliance?.missingBreakfastReasonRequired && (
+              <label className="dialog-field">
+                Grund fehlendes Frühstück (Pflicht)
+                <textarea
+                  rows={2}
+                  value={missingBreakfastReason}
+                  onChange={(event) => setMissingBreakfastReason(event.target.value)}
+                  required
+                />
+              </label>
+            )}
+
+            {breakCompliance?.missingLunchReasonRequired && (
+              <label className="dialog-field">
+                Grund fehlende Mittagspause (Pflicht)
+                <textarea
+                  rows={2}
+                  value={missingLunchReason}
+                  onChange={(event) => setMissingLunchReason(event.target.value)}
+                  required
+                />
+              </label>
+            )}
+
+            {error && <p className="dialog-error">{error}</p>}
+
+            <div className="dialog-actions">
+              <button type="button" className="text-button" onClick={() => setClockOutOpen(false)}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={pending}
+                onClick={submitClockOut}
+              >
+                Feierabend speichern
+              </button>
+            </div>
           </div>
         </div>
       )}

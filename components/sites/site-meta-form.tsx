@@ -12,8 +12,16 @@ export function SiteMetaForm({ site, canEdit }: Props) {
       <input type="hidden" name="site_id" value={site.id} />
       <div className="site-meta-form-grid">
         <label className="input-form-span-full">
-          Adresse
-          <input name="address" defaultValue={site.address ?? ''} readOnly={!canEdit} disabled={!canEdit} />
+          Straße mit Nr.
+          <input name="street" defaultValue={site.street ?? ''} readOnly={!canEdit} disabled={!canEdit} />
+        </label>
+        <label>
+          PLZ
+          <input name="zip_code" defaultValue={site.zip_code ?? ''} readOnly={!canEdit} disabled={!canEdit} />
+        </label>
+        <label>
+          Ort
+          <input name="city" defaultValue={site.city ?? ''} readOnly={!canEdit} disabled={!canEdit} />
         </label>
         <label className="input-form-span-full">
           Anfahrt

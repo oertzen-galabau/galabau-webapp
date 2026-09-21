@@ -1,4 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  DEFAULT_BAD_WEATHER_SEASON_END,
+  DEFAULT_BAD_WEATHER_SEASON_START,
+} from '@/lib/payroll/constants';
 
 export const PAYROLL_RULE_KEYS = [
   'normal_hours',
@@ -30,7 +34,7 @@ export const PAYROLL_RULE_CATALOG: PayrollRuleDef[] = [
   { key: 'leave_vacation', label: 'Urlaub', description: 'Stunden pro Urlaubstag bei Genehmigung', leaveType: 'urlaub' },
   { key: 'leave_sick', label: 'Krank', description: 'Stunden pro Krankheitstag bei Genehmigung', leaveType: 'krankheit' },
   { key: 'leave_school', label: 'Schule', description: 'Stunden pro Schultag bei Genehmigung', leaveType: 'schule' },
-  { key: 'bad_weather', label: 'Schlechtwetter (KUG)', description: 'Saison Dez.–März, wenn Tag markiert und Mindest-Arbeitszeit' },
+  { key: 'bad_weather', label: 'Schlechtwetter (KUG)', description: 'Konfigurierbare Saison; wenn Tag markiert und Mindest-Arbeitszeit' },
 ];
 
 export type NormalHoursConfig = { code?: string };
@@ -50,7 +54,22 @@ export type PassengerTravelAllowanceConfig = {
   travel_threshold_minutes?: number;
 };
 export type LeaveRuleConfig = { code?: string; hours_per_day?: number };
-export type BadWeatherConfig = { code?: string; min_work_minutes?: number };
+export type BadWeatherConfig = {
+  code?: string;
+  min_work_minutes?: number;
+  season_start?: string;
+  season_end?: string;
+};
+
+export function getBadWeatherSeasonFromConfig(config?: BadWeatherConfig): {
+  season_start: string;
+  season_end: string;
+} {
+  return {
+    season_start: config?.season_start ?? DEFAULT_BAD_WEATHER_SEASON_START,
+    season_end: config?.season_end ?? DEFAULT_BAD_WEATHER_SEASON_END,
+  };
+}
 
 export type PayrollTenantRule = {
   id: string;
@@ -117,7 +136,12 @@ export const DEFAULT_RULE_CONFIGS: Record<PayrollRuleKey, Record<string, unknown
   leave_vacation: { code: '8057' },
   leave_sick: { code: '1650' },
   leave_school: { code: '1002' },
-  bad_weather: { code: '8110', min_work_minutes: 60 },
+  bad_weather: {
+    code: '8110',
+    min_work_minutes: 60,
+    season_start: DEFAULT_BAD_WEATHER_SEASON_START,
+    season_end: DEFAULT_BAD_WEATHER_SEASON_END,
+  },
 };
 
 export const DEFAULT_BOOKING_CODE_SEED = [

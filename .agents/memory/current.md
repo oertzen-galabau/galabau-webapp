@@ -1,20 +1,23 @@
 # Aktueller Stand
 
 ## Letzte Änderungen
-- **Mandanten-Branding** (`/app/einstellungen`, Tab Allgemein): Logo-Upload über Bucket `tenant-logos`, 5 Farben (Primär, Akzent, Seitenleiste, Seitenleisten-Text, Arbeitsfläche), HEX-Eingabe neben Color-Picker.
-- Migration `galabau_026_tenant_theme`: `sidebar_color`, `sidebar_text_color`, `surface_color` auf `tenants`.
-- Theme via `tenantThemeStyle()` → CSS-Tokens `--brand`, `--accent`, `--sidebar`, `--sidebar-text`, `--surface`.
-- Sidebar: hochgeladenes Logo ohne Box; ohne Logo Standard-Icon in `brand-symbol`-Box.
-- UI: `TenantBrandingForm`, Actions `updateTenantBranding` / `removeTenantLogo` (Permission `settings.branding`).
+- **Tagesrapport Fotos**: Button „Foto hinzufügen" im selben UI wie Lieferschein (`input-form-file-cta`, Dropdown Hochladen/Foto machen); Vorschau-Thumbnails bleiben in der Grid darüber (`report-photo-manager.tsx`).
+- **Registrierung Live-Fix**: try/catch/finally im Register-Formular; `registerTenant` fängt fehlenden `SUPABASE_SERVICE_ROLE_KEY` ab; Build warnt bei fehlendem Key (Commit `5cdf21a`).
+- **Berufbezeichnung**: Feld beim Mitarbeiter anlegen (`/app/team`); Speicherung in `profiles.job_title`; automatische Übernahme in Tagesrapport und PDF.
+- **Startpasswort**: Aus Team-Formular entfernt; eigener Tab unter `/app/einstellungen?tab=startpasswort`; mandantenweit in `tenants.default_start_password`; Permission `settings.start_password` (Migration `galabau_032`).
+- **Fix**: `encType` aus `TenantBrandingForm` entfernt (React-Warnung bei Server Actions).
 
 ## Fokus
-Branding in der App testen (Logo hochladen/ersetzen/entfernen, Farben speichern, Sidebar + Arbeitsfläche prüfen).
+Live-Registrierung (`/register`) und Tagesrapport-Foto-Upload testen; parallel Startpasswort- und Team-Flow verifizieren.
 
 ## Nächste Schritte
-- Logo-Upload und Farbanpassung mit echtem Mandanten durchspielen.
-- Optional: Mandanten-Branding auf Login-Seite oder in PDF-Rapporten.
+- Hostinger: `SUPABASE_SERVICE_ROLE_KEY` + `NEXT_PUBLIC_ROOT_DOMAIN=vaerkflow.de` setzen und Redeploy — danach Registrierung live testen.
+- Tagesrapport: Fotos per Hochladen/Kamera hinzufügen, min./max.-Validierung prüfen.
+- Startpasswort-Flow und Berufbezeichnung im Rapport/PDF durchspielen.
 
 ## Offene Punkte
+- Live-Registrierung hängt ohne `SUPABASE_SERVICE_ROLE_KEY` auf Hostinger (Code zeigt jetzt Fehlermeldung statt endlos „Wird eingerichtet…").
 - SMTP/Impressum/Datenschutz weiterhin offen.
-- Chat: kein Paginieren, keine Gruppen, keine Anhänge (v1).
-- Branding-Vorschau bewusst entfernt.
+- Sechs Payroll-Tabellen ohne RLS (separates Sicherheits-Thema).
+- Branding optional auf Login/PDF.
+- Startpasswort liegt als Klartext in der DB (Admin-only, bewusst für Betriebs-Workflow).

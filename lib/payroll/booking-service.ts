@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PayrollBookingSource } from '@/lib/types/database';
+import type { PayrollBookingSource, TimeBlockType } from '@/lib/types/database';
 import {
   computeBookingPreview,
   computeLeaveBookingLines,
@@ -8,6 +8,7 @@ import {
   type SegmentInput,
 } from '@/lib/payroll/booking-rules';
 import { isBadWeatherForBooking, isBadWeatherForPreview } from '@/lib/payroll/bad-weather-entry';
+import { blockDurationMinutes, isTimelineMode } from '@/lib/time-tracking/timeline';
 import { loadTenantPayrollConfig } from '@/lib/payroll/tenant-rules';
 import { countLeaveDays } from '@/lib/utils/time';
 
@@ -61,13 +62,29 @@ export async function isBadWeatherDay(supabase: Db, tenantId: string, workDate: 
 export async function loadEntrySegments(supabase: Db, timeEntryId: string): Promise<SegmentInput[]> {
   const { data } = await supabase
     .from('time_entry_segments')
-    .select('site_id, travel_minutes')
+    .select('site_id, travel_minutes, start_time, end_time, block_type')
     .eq('time_entry_id', timeEntryId)
     .order('sort_order');
-  return (data ?? []).map((s) => ({
-    site_id: s.site_id,
-    travel_minutes: s.travel_minutes ?? 0,
-  }));
+
+  return (data ?? []).map((segment) => {
+    if (segment.start_time && segment.end_time) {
+      return {
+        block_type: (segment.block_type ?? 'site_work') as TimeBlockType,
+        start_time: segment.start_time.slice(0, 5),
+        end_time: segment.end_time.slice(0, 5),
+        site_id: segment.site_id,
+        travel_minutes: segment.travel_minutes ?? 0,
+      };
+    }
+
+    return {
+      block_type: 'site_work' as TimeBlockType,
+      start_time: '',
+      end_time: '',
+      site_id: segment.site_id,
+      travel_minutes: segment.travel_minutes ?? 0,
+    };
+  });
 }
 
 export async function saveEntrySegments(
@@ -79,13 +96,22 @@ export async function saveEntrySegments(
   await supabase.from('time_entry_segments').delete().eq('time_entry_id', timeEntryId);
   if (segments.length === 0) return;
 
-  const rows = segments.map((s, i) => ({
+  const timelineMode = isTimelineMode(segments);
+  const rows = segments.map((segment, index) => ({
     tenant_id: tenantId,
     time_entry_id: timeEntryId,
-    site_id: s.site_id,
-    travel_minutes: s.travel_minutes,
-    sort_order: i,
+    block_type: segment.block_type ?? 'site_work',
+    site_id: segment.block_type === 'site_work' ? segment.site_id ?? null : null,
+    travel_minutes: timelineMode
+      ? segment.block_type === 'travel'
+        ? blockDurationMinutes(segment)
+        : 0
+      : segment.travel_minutes ?? 0,
+    start_time: segment.start_time || null,
+    end_time: segment.end_time || null,
+    sort_order: index,
   }));
+
   const { error } = await supabase.from('time_entry_segments').insert(rows);
   if (error) throw new Error(error.message);
 }

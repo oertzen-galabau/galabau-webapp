@@ -106,7 +106,7 @@ export function TenantBrandingForm({ tenant }: Props) {
   return (
     <section className="panel form-panel">
       <h2>Branding</h2>
-      <form action={updateTenantBranding} className="input-form tenant-branding-form" encType="multipart/form-data">
+      <form action={updateTenantBranding} className="input-form tenant-branding-form">
         <div className="input-form-core">
           <label className="input-form-span-full">
             Firmenname

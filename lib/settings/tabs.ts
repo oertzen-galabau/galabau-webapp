@@ -3,9 +3,19 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 export const SETTINGS_TABS = [
   { id: 'allgemein', label: 'Allgemein' },
   {
+    id: 'startpasswort',
+    label: 'Startpasswort',
+    permission: 'settings.start_password' as PermissionKey,
+  },
+  {
     id: 'lohnregeln',
     label: 'Lohnregeln & Buchungsnummern',
     permission: 'settings.payroll_rules' as PermissionKey,
+  },
+  {
+    id: 'zeiterfassung',
+    label: 'Zeiterfassung & Pausen',
+    permission: 'settings.time_tracking' as PermissionKey,
   },
 ] as const;
 

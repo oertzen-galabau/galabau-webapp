@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -8,6 +9,7 @@ import {
   softDeleteSubcontractorEntry,
 } from '@/lib/actions/admin';
 import { ConfirmDialog } from '@/components/ui/app-dialogs';
+import { formatSignatureAuditLine } from '@/lib/documentation/signature-location';
 
 type DeleterProfile = {
   first_name: string;
@@ -49,15 +51,49 @@ type SubcontractorEntryItem = {
   deleter: DeleterProfile;
 };
 
+type WorkerSummary = {
+  worker_name: string;
+  job_title: string | null;
+  hours: number;
+};
+
+type WorkItemSummary = {
+  description: string;
+  quantity: number | null;
+  unit: string | null;
+};
+
+type ResourceSummary = {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  hours: number;
+};
+
+type SignatureSummary = {
+  role: 'contractor' | 'client';
+  signer_name: string | null;
+  file_url: string;
+  signed_at: string | null;
+  signed_latitude: number | null;
+  signed_longitude: number | null;
+  signed_location_label: string | null;
+};
+
 type LogEntry = {
   id: string;
   log_date: string;
   weather: string | null;
   notes: string | null;
   site_name: string;
+  client_name: string | null;
+  workers: WorkerSummary[];
+  workItems: WorkItemSummary[];
+  resources: ResourceSummary[];
   photos: PhotoEntry[];
   deliveries: DeliveryEntry[];
   subcontractors: SubcontractorEntryItem[];
+  signatures: SignatureSummary[];
 };
 
 type DeleteTarget = {
@@ -70,7 +106,13 @@ type Props = {
   logs: LogEntry[];
   signedUrls: Record<string, string>;
   canDelete: boolean;
+  canEdit?: boolean;
 };
+
+function formatQuantity(quantity: number | null, unit: string | null) {
+  if (quantity == null && !unit) return '';
+  return `${quantity ?? '—'}${unit ? ` ${unit}` : ''}`;
+}
 
 function formatDeleterName(deleter: DeleterProfile): string {
   if (!deleter) return 'Unbekannt';
@@ -110,7 +152,7 @@ function DeleteButton({ onClick, disabled }: { onClick: () => void; disabled?: b
   );
 }
 
-export function DailyLogEntriesList({ logs, signedUrls, canDelete }: Props) {
+export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = false }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
@@ -150,8 +192,97 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete }: Props) {
       <div className="form-stack">
         {logs.map((log) => (
           <div key={log.id} className="panel" style={{ padding: 16 }}>
-            <strong>{log.log_date} · {log.site_name}</strong>
-            <p className="muted">Wetter: {log.weather ?? '—'} · Notiz: {log.notes ?? '—'}</p>
+            <div className="documentation-entry-row">
+              <div>
+                <strong>{log.log_date} · {log.site_name}</strong>
+                <p className="muted">
+                  Auftraggeber: {log.client_name ?? '—'} · Wetter: {log.weather ?? '—'}
+                  {log.notes ? ` · Notiz: ${log.notes}` : ''}
+                </p>
+              </div>
+              {canEdit && (
+                <Link href={`/app/dokumentation?edit=${log.id}`} className="table-action-link">
+                  Bearbeiten
+                </Link>
+              )}
+            </div>
+
+            {log.workers.length > 0 && (
+              <div className="documentation-entry-group">
+                <p className="documentation-entry-group-title">Mitarbeiter</p>
+                <ul className="documentation-entry-list">
+                  {log.workers.map((worker, index) => (
+                    <li key={`${log.id}-worker-${index}`}>
+                      {worker.worker_name}
+                      {worker.job_title ? ` (${worker.job_title})` : ''} — {worker.hours} Std.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {log.workItems.length > 0 && (
+              <div className="documentation-entry-group">
+                <p className="documentation-entry-group-title">Leistungen</p>
+                <ul className="documentation-entry-list">
+                  {log.workItems.map((item, index) => (
+                    <li key={`${log.id}-work-${index}`}>
+                      {item.description}
+                      {formatQuantity(item.quantity, item.unit) && ` · ${formatQuantity(item.quantity, item.unit)}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {log.resources.length > 0 && (
+              <div className="documentation-entry-group">
+                <p className="documentation-entry-group-title">Maschine / Material</p>
+                <ul className="documentation-entry-list">
+                  {log.resources.map((item, index) => (
+                    <li key={`${log.id}-resource-${index}`}>
+                      {item.name}
+                      {formatQuantity(item.quantity, item.unit) && ` · ${formatQuantity(item.quantity, item.unit)}`}
+                      {item.hours > 0 ? ` · ${item.hours} Std.` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {log.signatures.length > 0 && (
+              <div className="documentation-entry-group">
+                <p className="documentation-entry-group-title">Unterschriften</p>
+                <div className="documentation-photo-grid">
+                  {log.signatures.map((signature) => {
+                    const url = signedUrls[signature.file_url];
+                    const label = signature.role === 'contractor' ? 'Auftragnehmer' : 'Auftraggeber';
+                    return (
+                      <div key={`${log.id}-${signature.role}`} className="documentation-entry">
+                        <p className="muted">{label}: {signature.signer_name ?? '—'}</p>
+                        {signature.signed_at &&
+                          signature.signed_latitude != null &&
+                          signature.signed_longitude != null && (
+                            <p className="report-signature-meta muted">
+                              {formatSignatureAuditLine(
+                                signature.signed_at,
+                                signature.signed_location_label,
+                                signature.signed_latitude,
+                                signature.signed_longitude,
+                              )}
+                            </p>
+                          )}
+                        {url ? (
+                          <img src={url} alt={`Unterschrift ${label}`} className="documentation-photo-thumb" />
+                        ) : (
+                          <div className="documentation-photo-thumb documentation-photo-thumb--placeholder" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {log.photos.length > 0 && (
               <div className="documentation-entry-group">

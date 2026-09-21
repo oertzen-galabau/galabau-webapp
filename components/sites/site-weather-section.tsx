@@ -1,9 +1,10 @@
+import { hasSiteAddress, type SiteAddressParts } from '@/lib/sites/format-address';
 import type { Site } from '@/lib/types/database';
 import { fetchSiteWeather } from '@/lib/weather/fetch-weather';
 import { WeatherIcon } from '@/components/sites/weather-icon';
 
 type Props = {
-  site: Pick<Site, 'address' | 'latitude' | 'longitude'>;
+  site: Pick<Site, 'latitude' | 'longitude'> & SiteAddressParts;
 };
 
 function formatDayLabel(date: string) {
@@ -21,7 +22,7 @@ function formatTemperature(value: number) {
 export async function SiteWeatherSection({ site }: Props) {
   const hasCoordinates = site.latitude != null && site.longitude != null;
 
-  if (!site.address?.trim()) {
+  if (!hasSiteAddress(site)) {
     return (
       <section className="site-detail-section">
         <h2>Wetter</h2>

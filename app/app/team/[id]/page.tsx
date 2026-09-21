@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { fetchLatestInvitation } from '@/lib/team/employee-invite-service';
 import { EmployeeDetailHeader } from '@/components/team/employee-detail-header';
 import { EmployeeDetailTabs } from '@/components/team/employee-detail-tabs';
 import { EmployeeTabPanel } from '@/components/team/employee-tab-panels';
@@ -96,6 +98,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     author: n.created_by ? authorById.get(n.created_by) ?? null : null,
   }));
 
+  const invitation = canAccess(ctx, 'team.view')
+    ? await fetchLatestInvitation(createAdminClient(), id)
+    : null;
+
   return (
     <>
       <EmployeeDetailHeader member={member} roleName={roleName} />
@@ -126,6 +132,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         monthMinutes={monthMinutes}
         pendingLeaveCount={pendingLeaveCount}
         todayAssignment={todayAssignment ? normalizeAssignment(todayAssignment) : null}
+        invitation={invitation}
       />
     </>
   );

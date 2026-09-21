@@ -108,6 +108,9 @@ function formatRuleSummary(ruleKey: PayrollRuleKey, config: Record<string, strin
     if (config.min_work_minutes != null && config.min_work_minutes !== '') {
       parts.push(`min. ${config.min_work_minutes} Min Arbeit`);
     }
+    if (config.season_start && config.season_end) {
+      parts.push(`Saison ${config.season_start}–${config.season_end}`);
+    }
   } else if (config.code) {
     parts.push(String(config.code));
   }
@@ -213,15 +216,37 @@ function RuleDetailFields({
         </label>
       )}
       {minWork && (
-        <label className="dialog-field">
-          Min. Arbeit Min.
-          <input
-            type="number"
-            name="cfg_min_work_minutes"
-            min={0}
-            defaultValue={config.min_work_minutes ?? ''}
-          />
-        </label>
+        <>
+          <label className="dialog-field">
+            Min. Arbeit Min.
+            <input
+              type="number"
+              name="cfg_min_work_minutes"
+              min={0}
+              defaultValue={config.min_work_minutes ?? ''}
+            />
+          </label>
+          <label className="dialog-field">
+            Saison von (MM-TT)
+            <input
+              type="text"
+              name="cfg_season_start"
+              placeholder="12-01"
+              pattern="\d{2}-\d{2}"
+              defaultValue={String(config.season_start ?? '')}
+            />
+          </label>
+          <label className="dialog-field">
+            Saison bis (MM-TT)
+            <input
+              type="text"
+              name="cfg_season_end"
+              placeholder="03-31"
+              pattern="\d{2}-\d{2}"
+              defaultValue={String(config.season_end ?? '')}
+            />
+          </label>
+        </>
       )}
     </div>
   );

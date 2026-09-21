@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 type AppDialogProps = {
   open: boolean;
@@ -28,9 +29,9 @@ export function AppDialog({ open, onClose, title, children, titleId }: AppDialog
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div className="dialog-backdrop" role="presentation" onClick={onClose}>
       <div
         ref={panelRef}
@@ -44,7 +45,8 @@ export function AppDialog({ open, onClose, title, children, titleId }: AppDialog
         <h2 id={headingId}>{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { inviteEmployee } from '@/lib/actions/admin';
-import { AppSelect } from '@/components/ui/app-select';
+import { InviteEmployeeForm } from '@/components/team/invite-employee-form';
 
 export default async function TeamPage() {
   const ctx = await requireTenantMember();
@@ -29,28 +28,9 @@ export default async function TeamPage() {
       </div>
 
       {canInvite && (
-        <section className="panel form-panel">
-          <h2>Mitarbeiter anlegen</h2>
-          <form action={inviteEmployee} className="input-form">
-            <div className="input-form-core">
-              <label>Vorname<input name="first_name" required /></label>
-              <label>Nachname<input name="last_name" required /></label>
-              <label>E-Mail<input name="email" type="email" required /></label>
-              <label>Rolle
-                <AppSelect
-                  name="tenant_role_id"
-                  required
-                  allowEmpty={false}
-                  options={(tenantRoles ?? []).map((role) => ({ value: role.id, label: role.name }))}
-                />
-              </label>
-              <label>Startpasswort<input name="password" type="password" required minLength={8} /></label>
-            </div>
-            <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Anlegen</button>
-            </div>
-          </form>
-        </section>
+        <InviteEmployeeForm
+          roles={(tenantRoles ?? []).map((role) => ({ value: role.id, label: role.name }))}
+        />
       )}
 
       <section className="panel team-list team-list--links" style={{ marginTop: 16 }}>

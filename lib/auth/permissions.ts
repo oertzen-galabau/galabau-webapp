@@ -12,6 +12,7 @@ export const PERMISSION_KEYS = [
   'nav.rollen',
   'infoboard.assignments',
   'infoboard.posts',
+  'infoboard.customize',
   'zeiten.record',
   'zeiten.approve',
   'zeiten.view_all',
@@ -23,6 +24,7 @@ export const PERMISSION_KEYS = [
   'sites.view',
   'sites.manage',
   'documentation.manage',
+  'documentation.dictate',
   'reports.generate',
   'reports.send',
   'messages.send',
@@ -35,9 +37,12 @@ export const PERMISSION_KEYS = [
   'team.deactivate',
   'team.notes',
   'team.password_reset',
+  'team.manage_invites',
   'settings.branding',
   'settings.holidays',
   'settings.payroll_rules',
+  'settings.time_tracking',
+  'settings.start_password',
   'roles.manage',
   'profile.edit_self',
   'profile.change_email',
@@ -67,6 +72,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'nav.rollen', label: 'Rollen & Berechtigungen', group: 'Navigation' },
   { key: 'infoboard.assignments', label: 'Einteilungen planen', group: 'Infoboard' },
   { key: 'infoboard.posts', label: 'Beiträge veröffentlichen', group: 'Infoboard' },
+  { key: 'infoboard.customize', label: 'Infoboard anpassen', group: 'Infoboard', implies: ['nav.infoboard'] },
   { key: 'zeiten.record', label: 'Zeiten erfassen', group: 'Zeiten' },
   { key: 'zeiten.approve', label: 'Zeiten freigeben', group: 'Zeiten', implies: ['zeiten.view_all'] },
   { key: 'zeiten.view_all', label: 'Alle Zeiteinträge einsehen', group: 'Zeiten' },
@@ -78,6 +84,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'sites.view', label: 'Baustellen einsehen', group: 'Baustellen' },
   { key: 'sites.manage', label: 'Baustellen bearbeiten', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'documentation.manage', label: 'Tagesdokumentation', group: 'Dokumentation', implies: ['sites.view'] },
+  { key: 'documentation.dictate', label: 'Diktierfunktion', group: 'Dokumentation', implies: ['documentation.manage'] },
   { key: 'reports.generate', label: 'Rapporte erstellen', group: 'Rapporte', implies: ['sites.view'] },
   { key: 'reports.send', label: 'Rapporte versenden', group: 'Rapporte', implies: ['reports.generate'] },
   { key: 'messages.send', label: 'Nachrichten senden', group: 'Nachrichten' },
@@ -90,9 +97,12 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'team.deactivate', label: 'Mitarbeiter aktivieren/deaktivieren', group: 'Team', implies: ['team.view'] },
   { key: 'team.notes', label: 'Personalnotizen pflegen', group: 'Team', implies: ['team.view'] },
   { key: 'team.password_reset', label: 'Passwort-Reset senden', group: 'Team', implies: ['team.view'] },
+  { key: 'team.manage_invites', label: 'Einladungen verwalten', group: 'Team', implies: ['team.view'] },
   { key: 'settings.branding', label: 'Branding anpassen', group: 'Einstellungen', implies: ['nav.einstellungen'] },
   { key: 'settings.holidays', label: 'Feiertage & Betriebsurlaub', group: 'Einstellungen', implies: ['nav.einstellungen'] },
   { key: 'settings.payroll_rules', label: 'Lohnregeln & Buchungsnummern', group: 'Einstellungen', implies: ['nav.einstellungen'] },
+  { key: 'settings.time_tracking', label: 'Zeiterfassung & Pausen', group: 'Einstellungen', implies: ['nav.einstellungen'] },
+  { key: 'settings.start_password', label: 'Startpasswort verwalten', group: 'Einstellungen', implies: ['nav.einstellungen'] },
   { key: 'roles.manage', label: 'Rollen & Matrix verwalten', group: 'Rollen', implies: ['nav.rollen'] },
   { key: 'profile.edit_self', label: 'Eigenes Profil bearbeiten', group: 'Profil' },
   { key: 'profile.change_email', label: 'Eigene E-Mail ändern', group: 'Profil' },
@@ -111,13 +121,14 @@ export const SYSTEM_ROLE_LABELS: Record<SystemRoleSlug, string> = {
 
 const BASE_EMPLOYEE: PermissionKey[] = [
   'nav.infoboard', 'nav.zeiten', 'nav.urlaub', 'nav.nachrichten', 'nav.bestellungen',
+  'infoboard.customize',
   'zeiten.record', 'urlaub.request', 'messages.send', 'orders.create',
   'profile.edit_self', 'profile.change_email', 'profile.change_password',
 ];
 
 const FOREMAN_EXTRA: PermissionKey[] = [
   'nav.baustellen', 'nav.dokumentation', 'nav.rapporte',
-  'infoboard.assignments', 'sites.view', 'sites.manage', 'documentation.manage',
+  'infoboard.assignments', 'sites.view', 'sites.manage', 'documentation.manage', 'documentation.dictate',
   'reports.generate', 'reports.send',
   'zeiten.view_all', 'zeiten.approve', 'zeiten.bookings.edit', 'zeiten.bad_weather.mark',
 ];
@@ -126,8 +137,8 @@ const ADMIN_EXTRA: PermissionKey[] = [
   'nav.team', 'nav.einstellungen', 'nav.rollen',
   'infoboard.posts', 'urlaub.approve', 'urlaub.view_all',
   'team.view', 'team.invite', 'team.assign_role', 'team.leave_entitlement',
-  'team.edit_profile', 'team.deactivate', 'team.notes', 'team.password_reset',
-  'settings.branding', 'settings.holidays', 'settings.payroll_rules', 'roles.manage',
+  'team.edit_profile', 'team.deactivate', 'team.notes', 'team.password_reset', 'team.manage_invites',
+  'settings.branding', 'settings.holidays', 'settings.payroll_rules', 'settings.time_tracking', 'settings.start_password', 'roles.manage',
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleSlug, PermissionKey[]> = {

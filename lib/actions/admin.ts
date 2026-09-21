@@ -6,6 +6,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
 import { enumRoleFromTenantRoleId } from '@/lib/tenant/roles';
+import { readSiteAddressFromForm } from '@/lib/sites/format-address';
 import { syncSiteGeocoding } from '@/lib/weather/sync-site-geocoding';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
@@ -19,14 +20,17 @@ export async function saveSite(formData: FormData) {
 
   const supabase = await createClient();
 
-  const address = (formData.get('address') as string) || null;
+  const siteAddress = readSiteAddressFromForm(formData);
 
   const { data: site, error } = await supabase
     .from('sites')
     .insert({
       tenant_id: tenantId,
       name: formData.get('name') as string,
-      address,
+      street: siteAddress.street,
+      zip_code: siteAddress.zip_code,
+      city: siteAddress.city,
+      address: siteAddress.address,
       client_name: (formData.get('client_name') as string) || null,
       directions: (formData.get('directions') as string) || null,
       notes: (formData.get('notes') as string) || null,
@@ -36,7 +40,7 @@ export async function saveSite(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
-  await syncSiteGeocoding(supabase, site.id, tenantId, address);
+  await syncSiteGeocoding(supabase, site.id, tenantId, siteAddress.address);
   revalidatePath('/app/baustellen');
 }
 
@@ -302,11 +306,11 @@ export async function updateSite(formData: FormData) {
 
   const supabase = await createClient();
   const siteId = formData.get('site_id') as string;
-  const newAddress = (formData.get('address') as string) || null;
+  const siteAddress = readSiteAddressFromForm(formData);
 
   const { data: existing } = await supabase
     .from('sites')
-    .select('address')
+    .select('street, zip_code, city, address')
     .eq('id', siteId)
     .eq('tenant_id', tenantId)
     .single();
@@ -314,7 +318,10 @@ export async function updateSite(formData: FormData) {
   const { error } = await supabase
     .from('sites')
     .update({
-      address: newAddress,
+      street: siteAddress.street,
+      zip_code: siteAddress.zip_code,
+      city: siteAddress.city,
+      address: siteAddress.address,
       directions: (formData.get('directions') as string) || null,
       default_travel_minutes: Number(formData.get('default_travel_minutes') ?? 0),
       client_name: (formData.get('client_name') as string) || null,
@@ -328,12 +335,133 @@ export async function updateSite(formData: FormData) {
   if (error) throw new Error(error.message);
 
   const previousAddress = existing?.address ?? null;
-  if (newAddress !== previousAddress) {
-    await syncSiteGeocoding(supabase, siteId, tenantId, newAddress);
+  if (siteAddress.address !== previousAddress) {
+    await syncSiteGeocoding(supabase, siteId, tenantId, siteAddress.address);
   }
 
   revalidatePath(`/app/baustellen/${siteId}`);
   revalidatePath('/app/baustellen');
+}
+
+async function countSiteRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: string,
+  siteId: string,
+  tenantId: string,
+) {
+  const { count, error } = await supabase
+    .from(table)
+    .select('*', { count: 'exact', head: true })
+    .eq('site_id', siteId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+async function siteHasDocumentation(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  siteId: string,
+  tenantId: string,
+) {
+  for (const table of ['site_documents', 'daily_logs', 'reports'] as const) {
+    if ((await countSiteRows(supabase, table, siteId, tenantId)) > 0) return true;
+  }
+  return false;
+}
+
+async function siteHasOperationalData(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  siteId: string,
+  tenantId: string,
+) {
+  for (const table of ['time_entries', 'time_entry_segments', 'daily_assignments', 'bad_weather_days'] as const) {
+    if ((await countSiteRows(supabase, table, siteId, tenantId)) > 0) return true;
+  }
+  return false;
+}
+
+async function deleteSiteDocumentFiles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  siteId: string,
+  tenantId: string,
+) {
+  const { data: docs, error } = await supabase
+    .from('site_documents')
+    .select('file_url')
+    .eq('site_id', siteId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+
+  for (const doc of docs ?? []) {
+    if (doc.file_url) await deletePrivateFile('site-documents', doc.file_url);
+  }
+}
+
+export async function removeSite(formData: FormData): Promise<{ action: 'archived' | 'deleted' }> {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'sites.manage');
+  const { tenantId } = ctx;
+
+  const siteId = formData.get('site_id') as string;
+  if (!siteId) throw new Error('Keine Baustelle ausgewählt');
+
+  const supabase = await createClient();
+
+  const { data: site, error: siteError } = await supabase
+    .from('sites')
+    .select('id')
+    .eq('id', siteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (siteError) throw new Error(siteError.message);
+  if (!site) throw new Error('Baustelle nicht gefunden');
+
+  const hasDocumentation = await siteHasDocumentation(supabase, siteId, tenantId);
+  const hasOperationalData = await siteHasOperationalData(supabase, siteId, tenantId);
+
+  if (hasDocumentation || hasOperationalData) {
+    const { error } = await supabase
+      .from('sites')
+      .update({ is_active: false })
+      .eq('id', siteId)
+      .eq('tenant_id', tenantId);
+    if (error) throw new Error(error.message);
+
+    revalidatePath('/app/baustellen');
+    revalidatePath(`/app/baustellen/${siteId}`);
+    revalidatePath('/app/dokumentation');
+    revalidatePath('/app/zeiten');
+    return { action: 'archived' };
+  }
+
+  await deleteSiteDocumentFiles(supabase, siteId, tenantId);
+
+  const { error: deleteError } = await supabase
+    .from('sites')
+    .delete()
+    .eq('id', siteId)
+    .eq('tenant_id', tenantId);
+
+  if (deleteError) {
+    const { error: archiveError } = await supabase
+      .from('sites')
+      .update({ is_active: false })
+      .eq('id', siteId)
+      .eq('tenant_id', tenantId);
+    if (archiveError) throw new Error(archiveError.message);
+
+    revalidatePath('/app/baustellen');
+    revalidatePath(`/app/baustellen/${siteId}`);
+    revalidatePath('/app/dokumentation');
+    revalidatePath('/app/zeiten');
+    return { action: 'archived' };
+  }
+
+  revalidatePath('/app/baustellen');
+  revalidatePath('/app/dokumentation');
+  revalidatePath('/app/zeiten');
+  return { action: 'deleted' };
 }
 
 export async function saveSiteContacts(formData: FormData) {
@@ -608,52 +736,236 @@ export async function updateLeaveEntitlement(formData: FormData) {
   revalidateEmployeePaths(targetUserId);
 }
 
-export async function inviteEmployee(formData: FormData) {
+export async function updateTenantStartPassword(formData: FormData) {
   const ctx = await getActionContext();
-  requirePerm(ctx, 'team.invite');
+  requirePerm(ctx, 'settings.start_password');
   const { tenantId } = ctx;
 
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
-  const firstName = formData.get('first_name') as string;
-  const lastName = formData.get('last_name') as string;
-  const tenantRoleId = formData.get('tenant_role_id') as string;
+  const password = (formData.get('password') as string) ?? '';
+  const confirmPassword = (formData.get('confirm_password') as string) ?? '';
 
-  if (!tenantRoleId) throw new Error('Ungültige Rolle');
+  if (password.length < 8) {
+    throw new Error('Das Startpasswort muss mindestens 8 Zeichen haben.');
+  }
+  if (password !== confirmPassword) {
+    throw new Error('Passwort und Bestätigung stimmen nicht überein.');
+  }
 
   const { createAdminClient } = await import('@/lib/supabase/admin');
   const admin = createAdminClient();
 
-  const { data: tenantRole } = await admin
-    .from('tenant_roles')
-    .select('id')
-    .eq('id', tenantRoleId)
-    .eq('tenant_id', tenantId)
-    .single();
+  const { error: tenantError } = await admin
+    .from('tenants')
+    .update({ default_start_password: password })
+    .eq('id', tenantId);
 
-  if (!tenantRole) throw new Error('Ungültige Rolle');
+  if (tenantError) throw new Error(tenantError.message);
 
-  const enumRole = await enumRoleFromTenantRoleId(admin, tenantRoleId);
+  revalidatePath('/app/einstellungen');
+}
 
-  const { data: authUser, error: authError } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { first_name: firstName, last_name: lastName },
+export type EmployeeInviteResult =
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      firstName: string;
+      inviteUrl: string;
+      tempPassword: string;
+      expiresAt: string;
+      emailSent: boolean;
+      emailMessage?: string;
+    }
+  | { ok: false; error: string };
+
+async function provisionEmployeeInvitation(
+  admin: Awaited<ReturnType<typeof import('@/lib/supabase/admin')['createAdminClient']>>,
+  input: {
+    tenantId: string;
+    userId: string;
+    actorUserId: string;
+    email: string;
+    firstName: string;
+    tempPassword: string;
+  },
+): Promise<EmployeeInviteResult> {
+  const { generateTempPassword } = await import('@/lib/auth/employee-invitations');
+  const { createEmployeeInvitation } = await import('@/lib/team/employee-invite-service');
+  const { sendEmployeeInvitationEmail } = await import('@/lib/email/employee-invitation');
+  const { getPlatformName } = await import('@/lib/tenant/config');
+
+  const tempPassword = input.tempPassword || generateTempPassword();
+
+  const { error: profileError } = await admin
+    .from('profiles')
+    .update({ must_change_password: true })
+    .eq('id', input.userId);
+
+  if (profileError) throw new Error(profileError.message);
+
+  const invite = await createEmployeeInvitation(admin, {
+    tenantId: input.tenantId,
+    userId: input.userId,
+    createdBy: input.actorUserId,
+    tempPassword,
   });
-  if (authError || !authUser.user) throw new Error(authError?.message ?? 'Benutzer konnte nicht angelegt werden');
 
-  const { error } = await admin.from('profiles').update({
-    tenant_id: tenantId,
-    tenant_role_id: tenantRoleId,
-    role: enumRole,
-    first_name: firstName,
-    last_name: lastName,
-    email,
-  }).eq('id', authUser.user.id);
+  const mailResult = await sendEmployeeInvitationEmail({
+    to: input.email,
+    firstName: input.firstName,
+    platformName: getPlatformName(),
+    inviteUrl: invite.inviteUrl,
+    tempPassword,
+    expiresAt: invite.expiresAt,
+  });
 
-  if (error) throw new Error(error.message);
-  revalidatePath('/app/team');
+  return {
+    ok: true,
+    userId: input.userId,
+    email: input.email,
+    firstName: input.firstName,
+    inviteUrl: invite.inviteUrl,
+    tempPassword,
+    expiresAt: invite.expiresAt.toISOString(),
+    emailSent: mailResult.ok,
+    emailMessage: mailResult.ok ? undefined : mailResult.message,
+  };
+}
+
+export async function inviteEmployee(
+  _prev: EmployeeInviteResult | null,
+  formData: FormData,
+): Promise<EmployeeInviteResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'team.invite');
+    const { tenantId, userId: actorUserId } = ctx;
+
+    const email = ((formData.get('email') as string) ?? '').trim().toLowerCase();
+    const firstName = ((formData.get('first_name') as string) ?? '').trim();
+    const lastName = ((formData.get('last_name') as string) ?? '').trim();
+    const jobTitle = ((formData.get('job_title') as string) || '').trim() || null;
+    const tenantRoleId = formData.get('tenant_role_id') as string;
+
+    if (!email || !firstName || !lastName) {
+      return { ok: false, error: 'Bitte füllen Sie alle Pflichtfelder aus.' };
+    }
+    if (!tenantRoleId) return { ok: false, error: 'Ungültige Rolle' };
+
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const { generateTempPassword } = await import('@/lib/auth/employee-invitations');
+    const admin = createAdminClient();
+
+    const { data: tenantRole } = await admin
+      .from('tenant_roles')
+      .select('id')
+      .eq('id', tenantRoleId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!tenantRole) return { ok: false, error: 'Ungültige Rolle' };
+
+    const enumRole = await enumRoleFromTenantRoleId(admin, tenantRoleId);
+    const tempPassword = generateTempPassword();
+    const inaccessibleBootstrapPassword = generateTempPassword(32);
+
+    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
+      email,
+      password: inaccessibleBootstrapPassword,
+      email_confirm: true,
+      user_metadata: { first_name: firstName, last_name: lastName },
+    });
+
+    if (authError || !authUser.user) {
+      return { ok: false, error: authError?.message ?? 'Benutzer konnte nicht angelegt werden' };
+    }
+
+    const userId = authUser.user.id;
+
+    const { error: profileError } = await admin.from('profiles').update({
+      tenant_id: tenantId,
+      tenant_role_id: tenantRoleId,
+      role: enumRole,
+      first_name: firstName,
+      last_name: lastName,
+      job_title: jobTitle,
+      email,
+      must_change_password: true,
+    }).eq('id', userId);
+
+    if (profileError) {
+      await admin.auth.admin.deleteUser(userId);
+      return { ok: false, error: profileError.message };
+    }
+
+    try {
+      const result = await provisionEmployeeInvitation(admin, {
+        tenantId,
+        userId,
+        actorUserId,
+        email,
+        firstName,
+        tempPassword,
+      });
+      revalidatePath('/app/team');
+      return result;
+    } catch (inviteError) {
+      await admin.auth.admin.deleteUser(userId);
+      throw inviteError;
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Mitarbeiter konnte nicht angelegt werden.',
+    };
+  }
+}
+
+export async function regenerateEmployeeInvite(
+  _prev: EmployeeInviteResult | null,
+  formData: FormData,
+): Promise<EmployeeInviteResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'team.manage_invites');
+    const { tenantId, userId: actorUserId } = ctx;
+
+    const targetUserId = formData.get('user_id') as string;
+    if (!targetUserId) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const admin = createAdminClient();
+
+    const { data: profile, error: profileError } = await admin
+      .from('profiles')
+      .select('id, email, first_name, last_name, tenant_id, must_change_password')
+      .eq('id', targetUserId)
+      .single();
+
+    if (profileError || !profile) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+    if (profile.tenant_id !== tenantId) return { ok: false, error: 'Keine Berechtigung.' };
+    if (!profile.email) return { ok: false, error: 'E-Mail-Adresse fehlt.' };
+    if (!profile.must_change_password) {
+      return { ok: false, error: 'Dieses Konto ist bereits aktiviert. Einladungen können nur vor dem Erstlogin erneuert werden.' };
+    }
+
+    const result = await provisionEmployeeInvitation(admin, {
+      tenantId,
+      userId: targetUserId,
+      actorUserId,
+      email: profile.email,
+      firstName: profile.first_name,
+      tempPassword: '',
+    });
+
+    revalidateEmployeePaths(targetUserId);
+    return result;
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Einladung konnte nicht erneuert werden.',
+    };
+  }
 }
 
 export async function updateMemberRole(formData: FormData) {

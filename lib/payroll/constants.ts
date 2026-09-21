@@ -38,9 +38,28 @@ export const DEFAULT_BOOKING_LABELS: Record<string, string> = {
   '8110': 'Saison KUG Schlechtwetter',
 };
 
-export function isBadWeatherSeason(dateStr: string): boolean {
-  const month = new Date(dateStr).getMonth() + 1;
-  return month === 12 || month === 1 || month === 2 || month === 3;
+export const DEFAULT_BAD_WEATHER_SEASON_START = '12-01';
+export const DEFAULT_BAD_WEATHER_SEASON_END = '03-31';
+
+/** Prüft ob ein Datum (YYYY-MM-DD) in der KUG-Saison liegt (MM-TT, ggf. über Jahreswechsel). */
+export function isBadWeatherSeason(
+  dateStr: string,
+  seasonStart: string = DEFAULT_BAD_WEATHER_SEASON_START,
+  seasonEnd: string = DEFAULT_BAD_WEATHER_SEASON_END,
+): boolean {
+  const md = dateStr.slice(5);
+  if (seasonStart <= seasonEnd) {
+    return md >= seasonStart && md <= seasonEnd;
+  }
+  return md >= seasonStart || md <= seasonEnd;
+}
+
+export function formatBadWeatherSeasonLabel(seasonStart: string, seasonEnd: string): string {
+  const formatPart = (mmdd: string) => {
+    const [month, day] = mmdd.split('-');
+    return `${day}.${month}.`;
+  };
+  return `${formatPart(seasonStart)}–${formatPart(seasonEnd)}`;
 }
 
 /** ISO weekday: Mo=1 … So=7 */

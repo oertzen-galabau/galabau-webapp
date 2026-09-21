@@ -18,6 +18,7 @@ export type Tenant = {
   sidebar_color: string;
   sidebar_text_color: string;
   surface_color: string;
+  default_start_password: string | null;
   status: TenantStatus;
   plan: string;
   created_at: string;
@@ -44,8 +45,22 @@ export type Profile = {
   exit_date: string | null;
   job_title: string | null;
   is_active: boolean;
+  must_change_password: boolean;
+  dashboard_layout: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+};
+
+export type EmployeeInvitation = {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  created_by: string | null;
+  revoked_at: string | null;
+  used_at: string | null;
+  created_at: string;
 };
 
 export type EmployeeNote = {
@@ -77,6 +92,9 @@ export type Site = {
   id: string;
   tenant_id: string;
   name: string;
+  street: string | null;
+  zip_code: string | null;
+  city: string | null;
   address: string | null;
   directions: string | null;
   default_travel_minutes: number;
@@ -115,6 +133,25 @@ export type TimeEntry = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   submitted_at: string | null;
+  missing_breakfast_reason: string | null;
+  missing_lunch_reason: string | null;
+};
+
+export type TimeBlockType = 'site_work' | 'travel' | 'breakfast' | 'lunch' | 'other_work';
+
+export type TenantTimeTrackingRules = {
+  tenant_id: string;
+  breakfast_enabled: boolean;
+  breakfast_min_work_minutes: number;
+  breakfast_expected_minutes: number;
+  breakfast_window_start: string;
+  breakfast_window_end: string;
+  lunch_enabled: boolean;
+  lunch_min_work_minutes: number;
+  lunch_expected_minutes: number;
+  lunch_window_start: string;
+  lunch_window_end: string;
+  updated_at: string;
 };
 
 export type LeaveRequest = {
@@ -171,7 +208,8 @@ export type TimeEntrySegment = {
   id: string;
   tenant_id: string;
   time_entry_id: string;
-  site_id: string;
+  site_id: string | null;
+  block_type: TimeBlockType;
   travel_minutes: number;
   start_time: string | null;
   end_time: string | null;
@@ -215,7 +253,61 @@ export type DailyLog = {
   weather: string | null;
   notes: string | null;
   created_by: string | null;
+  dictation_transcript: string | null;
+  dictation_extraction: Record<string, unknown> | null;
 };
+
+export type DailyLogWork = {
+  id: string;
+  tenant_id: string;
+  daily_log_id: string;
+  description: string;
+  worker_hours: number;
+  quantity: number | null;
+  unit: string | null;
+  created_at: string;
+};
+
+export type EquipmentHours = {
+  id: string;
+  tenant_id: string;
+  daily_log_id: string;
+  equipment_name: string;
+  hours: number;
+  quantity: number | null;
+  unit: string | null;
+  created_at: string;
+};
+
+export type DailyLogWorkerHours = {
+  id: string;
+  tenant_id: string;
+  daily_log_id: string;
+  user_id: string | null;
+  worker_name: string;
+  job_title: string | null;
+  hours: number;
+  created_at: string;
+};
+
+export type DailyLogSignatureRole = 'contractor' | 'client';
+
+export type DailyLogSignature = {
+  id: string;
+  tenant_id: string;
+  daily_log_id: string;
+  role: DailyLogSignatureRole;
+  signer_name: string | null;
+  file_url: string;
+  signed_at: string;
+  created_at: string;
+};
+
+export const REPORT_UNIT_OPTIONS = ['Std.', 'm', 'm²', 'm³', 'kg', 't'] as const;
+export type ReportUnit = (typeof REPORT_UNIT_OPTIONS)[number];
+
+export const MIN_REPORT_PHOTOS = 3;
+export const MAX_REPORT_PHOTOS = 10;
 
 export type DeliveryNoteExtractionStatus = 'pending' | 'success' | 'failed' | 'manual';
 

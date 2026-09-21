@@ -4,14 +4,18 @@ import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { saveTimeEntry, resubmitTimeEntry } from '@/lib/actions/employee';
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
-import { BadWeatherSection } from '@/components/payroll/bad-weather-section';
+import { BadWeatherFreigabeControl } from '@/components/payroll/bad-weather-freigabe-control';
 import { TimeApprovalRow } from '@/components/payroll/time-approval-row';
-import { minEditableWorkDate } from '@/lib/time-tracking/entry-editable';
 import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { formatMinutes } from '@/lib/utils/time';
 import { isBadWeatherForPreview } from '@/lib/payroll/bad-weather-entry';
-import { loadTenantPayrollConfig, serializeTenantConfig } from '@/lib/payroll/tenant-rules';
+import {
+  getBadWeatherSeasonFromConfig,
+  loadTenantPayrollConfig,
+  serializeTenantConfig,
+  type BadWeatherConfig,
+} from '@/lib/payroll/tenant-rules';
 import type { PayrollBooking, TimeEntry } from '@/lib/types/database';
 
 export default async function ZeitenPage() {
@@ -24,9 +28,11 @@ export default async function ZeitenPage() {
   const canEditBookings = canAccess(ctx, 'zeiten.bookings.edit');
   const canMarkBadWeather = canAccess(ctx, 'zeiten.bad_weather.mark');
 
-  const tenantConfigSerialized = serializeTenantConfig(
-    await loadTenantPayrollConfig(supabase, ctx.tenant!.id),
-  );
+  const tenantPayrollConfig = await loadTenantPayrollConfig(supabase, ctx.tenant!.id);
+  const tenantConfigSerialized = serializeTenantConfig(tenantPayrollConfig);
+  const badWeatherCfg = tenantPayrollConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
+  const { season_start: badWeatherSeasonStart, season_end: badWeatherSeasonEnd } =
+    getBadWeatherSeasonFromConfig(badWeatherCfg);
 
   const [
     { data: entries },
@@ -70,7 +76,6 @@ export default async function ZeitenPage() {
           .from('bad_weather_days')
           .select('work_date')
           .eq('tenant_id', ctx.tenant!.id)
-          .gte('work_date', `${month}-01`)
       : Promise.resolve({ data: [] as { work_date: string }[] }),
   ]);
 
@@ -82,7 +87,7 @@ export default async function ZeitenPage() {
     ? await Promise.all([
         supabase
           .from('time_entry_segments')
-          .select('time_entry_id, site_id, travel_minutes')
+          .select('time_entry_id, site_id, travel_minutes, start_time, end_time, block_type')
           .in('time_entry_id', allEntryIds),
         supabase
           .from('payroll_bookings')
@@ -91,10 +96,25 @@ export default async function ZeitenPage() {
       ])
     : [{ data: [] }, { data: [] }];
 
-  const segmentsByEntry = new Map<string, { site_id: string; travel_minutes: number }[]>();
+  const segmentsByEntry = new Map<
+    string,
+    {
+      site_id: string | null;
+      travel_minutes: number;
+      start_time: string | null;
+      end_time: string | null;
+      block_type: string;
+    }[]
+  >();
   for (const seg of allSegments ?? []) {
     const list = segmentsByEntry.get(seg.time_entry_id) ?? [];
-    list.push({ site_id: seg.site_id, travel_minutes: seg.travel_minutes });
+    list.push({
+      site_id: seg.site_id,
+      travel_minutes: seg.travel_minutes,
+      start_time: seg.start_time,
+      end_time: seg.end_time,
+      block_type: seg.block_type ?? 'site_work',
+    });
     segmentsByEntry.set(seg.time_entry_id, list);
   }
 
@@ -114,7 +134,8 @@ export default async function ZeitenPage() {
     .reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const today = todayWorkDate();
   const emptyApprovalQuip = approvalEmptyQuip(today);
-  const editableFrom = minEditableWorkDate(today);
+
+  const pendingDates = [...new Set((pendingEntries ?? []).map((e) => e.work_date))].sort();
 
   const pendingWithMeta = await Promise.all(
     (pendingEntries ?? []).map(async (entry) => {
@@ -125,7 +146,15 @@ export default async function ZeitenPage() {
         .single();
       return {
         ...entry,
-        segments: segmentsByEntry.get(entry.id) ?? [],
+        segments: (segmentsByEntry.get(entry.id) ?? [])
+          .filter((segment) => segment.start_time && segment.end_time)
+          .map((segment) => ({
+            block_type: segment.block_type as import('@/lib/types/database').TimeBlockType,
+            start_time: segment.start_time!.slice(0, 5),
+            end_time: segment.end_time!.slice(0, 5),
+            site_id: segment.site_id,
+            travel_minutes: segment.travel_minutes,
+          })),
         payrollFlags: (profile?.payroll_flags ?? {}) as { lkw_hours?: boolean },
         isBadWeatherDay: isBadWeatherForPreview(
           entry,
@@ -151,8 +180,6 @@ export default async function ZeitenPage() {
         </Link>
       </div>
 
-      <BadWeatherSection markedDates={badWeatherDates} canMark={canMarkBadWeather} />
-
       {(rejectedEntries ?? []).length > 0 && (
         <section className="panel form-panel" id="korrektur" style={{ marginBottom: 16 }}>
           <h2>Zu korrigieren</h2>
@@ -170,12 +197,19 @@ export default async function ZeitenPage() {
                 <TimeEntryFormFields
                   sites={sites ?? []}
                   entry={entry}
-                  initialSegments={(segmentsByEntry.get(entry.id) ?? []).map((s) => ({
-                    siteId: s.site_id,
-                    travelMinutes: s.travel_minutes,
-                  }))}
+                  initialBlocks={(segmentsByEntry.get(entry.id) ?? [])
+                    .filter((segment) => segment.start_time && segment.end_time)
+                    .map((segment) => ({
+                      block_type: segment.block_type as import('@/lib/types/database').TimeBlockType,
+                      start_time: segment.start_time!.slice(0, 5),
+                      end_time: segment.end_time!.slice(0, 5),
+                      site_id: segment.site_id,
+                      travel_minutes: segment.travel_minutes,
+                    }))}
                   submitLabel="Erneut einreichen"
                   compact
+                  badWeatherSeasonStart={badWeatherSeasonStart}
+                  badWeatherSeasonEnd={badWeatherSeasonEnd}
                 />
               </form>
             </article>
@@ -186,6 +220,12 @@ export default async function ZeitenPage() {
       {canApprove && (
         <section className="panel" id="freigabe" style={{ marginBottom: 16 }}>
           <h2>Zeiten zur Freigabe</h2>
+          {canMarkBadWeather && (
+            <BadWeatherFreigabeControl
+              markedDates={badWeatherDates}
+              suggestedDates={pendingDates}
+            />
+          )}
           {(pendingEntries ?? []).length > 0 ? (
             <div className="data-table-wrap">
               <table className="data-table">
@@ -228,15 +268,20 @@ export default async function ZeitenPage() {
       <section className="panel form-panel">
         <h2>Neuer Zeiteintrag</h2>
         <form action={saveTimeEntry} className="input-form">
-          <TimeEntryFormFields sites={sites ?? []} submitLabel="Speichern" compact />
+          <TimeEntryFormFields
+            sites={sites ?? []}
+            submitLabel="Speichern"
+            compact
+            badWeatherSeasonStart={badWeatherSeasonStart}
+            badWeatherSeasonEnd={badWeatherSeasonEnd}
+          />
         </form>
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
         <h2>Tages- und Monatsübersicht</h2>
         <p className="muted">
-          Eigene Einträge bearbeiten oder löschen: nur wenn noch nicht freigegeben und vom{' '}
-          {editableFrom} bis heute.
+          Eigene Einträge bearbeiten: bis zur Freigabe. Löschen weiterhin nur innerhalb der letzten drei Tage.
         </p>
         <div className="data-table-wrap">
           <table className="data-table">

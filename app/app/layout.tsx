@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
+import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { getTenantBySlug, tenantThemeStyle } from '@/lib/tenant/resolve';
 import { getTenantRoles } from '@/lib/tenant/roles';
@@ -47,6 +48,9 @@ export default async function TenantAppLayout({ children }: { children: React.Re
     tenantRoles = await getTenantRoles(supabase, tenant.id);
   }
 
+  const canViewMessages = canAccess(ctx, 'nav.nachrichten');
+  const initialUnreadCount = canViewMessages ? await getUnreadMessageCount() : 0;
+
   return (
     <div style={tenantThemeStyle(tenant)}>
       <TenantShell
@@ -61,6 +65,7 @@ export default async function TenantAppLayout({ children }: { children: React.Re
         showDevSwitcher={process.env.NODE_ENV === 'development'}
         todayEntry={todayEntry}
         canRecordTime={canRecordTime}
+        initialUnreadCount={initialUnreadCount}
       >
         {children}
       </TenantShell>

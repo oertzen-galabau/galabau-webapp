@@ -6,12 +6,20 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import {
   loadCodeLabels,
+  loadEntrySegments,
   saveEntrySegments,
   syncAutoBookingsForTimeEntry,
-  type SegmentInput,
 } from '@/lib/payroll/booking-service';
-import { DEFAULT_RULE_CONFIGS, type PayrollRuleKey } from '@/lib/payroll/tenant-rules';
-import { isBadWeatherSeason } from '@/lib/payroll/constants';
+import {
+  DEFAULT_RULE_CONFIGS,
+  getBadWeatherSeasonFromConfig,
+  loadTenantPayrollConfig,
+  type BadWeatherConfig,
+  type PayrollRuleKey,
+} from '@/lib/payroll/tenant-rules';
+import { formatBadWeatherSeasonLabel, isBadWeatherSeason } from '@/lib/payroll/constants';
+import { buildDefaultTimeline, type TimelineBlockInput } from '@/lib/time-tracking/timeline';
+import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -29,7 +37,8 @@ export async function getClockOutContext() {
   const supabase = await createClient();
   const workDate = new Date().toISOString().slice(0, 10);
 
-  const [{ data: sites }, { data: assignment }] = await Promise.all([
+  const [{ data: sites }, { data: assignment }, { data: todayEntry }, tenantConfig, timeRules] =
+    await Promise.all([
     supabase
       .from('sites')
       .select('id, name, default_travel_minutes')
@@ -42,7 +51,20 @@ export async function getClockOutContext() {
       .eq('user_id', ctx.userId)
       .eq('assignment_date', workDate)
       .maybeSingle(),
+    supabase
+      .from('time_entries')
+      .select('start_time, breakfast_start, breakfast_end, lunch_start, lunch_end')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('user_id', ctx.userId)
+      .eq('work_date', workDate)
+      .is('end_time', null)
+      .maybeSingle(),
+    loadTenantPayrollConfig(supabase, ctx.tenantId),
+    loadTenantTimeTrackingRules(supabase, ctx.tenantId),
   ]);
+
+  const badWeatherCfg = tenantConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
+  const { season_start, season_end } = getBadWeatherSeasonFromConfig(badWeatherCfg);
 
   const assignedSiteRaw = assignment?.sites;
   const assignedSite = (Array.isArray(assignedSiteRaw) ? assignedSiteRaw[0] : assignedSiteRaw) as
@@ -50,15 +72,28 @@ export async function getClockOutContext() {
     | null
     | undefined;
 
-  const defaultSegments: SegmentInput[] = assignedSite
-    ? [{ site_id: assignedSite.id, travel_minutes: assignedSite.default_travel_minutes ?? 0 }]
+  const endTime = new Date().toTimeString().slice(0, 5);
+  const defaultTimeline: TimelineBlockInput[] = todayEntry?.start_time
+    ? buildDefaultTimeline({
+        startTime: todayEntry.start_time.slice(0, 5),
+        endTime,
+        breakfastStart: todayEntry.breakfast_start,
+        breakfastEnd: todayEntry.breakfast_end,
+        lunchStart: todayEntry.lunch_start,
+        lunchEnd: todayEntry.lunch_end,
+        defaultSiteId: assignedSite?.id ?? null,
+      })
     : [];
 
   return {
     sites: sites ?? [],
-    defaultSegments,
+    defaultTimeline,
     assignedSiteId: assignedSite?.id ?? null,
-    isBadWeatherSeason: isBadWeatherSeason(workDate),
+    startTime: todayEntry?.start_time?.slice(0, 5) ?? null,
+    endTime,
+    timeRules,
+    isBadWeatherSeason: isBadWeatherSeason(workDate, season_start, season_end),
+    badWeatherSeasonLabel: formatBadWeatherSeasonLabel(season_start, season_end),
   };
 }
 
@@ -186,11 +221,7 @@ export async function regenerateBookingsForEntry(formData: FormData) {
     .single();
   if (error || !entry) throw new Error(error?.message ?? 'Eintrag nicht gefunden.');
 
-  const { data: segments } = await supabase
-    .from('time_entry_segments')
-    .select('site_id, travel_minutes')
-    .eq('time_entry_id', entryId)
-    .order('sort_order');
+  const segments = await loadEntrySegments(supabase, entryId);
 
   await syncAutoBookingsForTimeEntry(
     supabase,
@@ -199,7 +230,7 @@ export async function regenerateBookingsForEntry(formData: FormData) {
     entryId,
     entry.work_date,
     entry,
-    (segments ?? []).map((s) => ({ site_id: s.site_id, travel_minutes: s.travel_minutes })),
+    segments,
   );
   revalidatePayrollPaths();
 }

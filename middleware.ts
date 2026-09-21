@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { extractSubdomain } from '@/lib/tenant/config';
 
-const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/anfrage', '/api/tenant-request', '/api/auth/callback', '/showcase'];
+const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/passwort-setzen', '/anfrage', '/api/tenant-request', '/api/auth/callback', '/showcase'];
 const SUPERADMIN_PREFIX = '/superadmin';
 
 /** Öffentliche Routen, die auf Mandanten-Subdomains nicht nach /app/* umgeschrieben werden. */
@@ -11,10 +11,16 @@ const TENANT_REWRITE_SKIP = [
   '/register',
   '/forgot-password',
   '/reset-password',
+  '/passwort-setzen',
+  '/einladung',
   '/anfrage',
   '/showcase',
   SUPERADMIN_PREFIX,
 ];
+
+function isInvitationPath(pathname: string) {
+  return pathname === '/einladung' || pathname.startsWith('/einladung/');
+}
 
 function shouldSkipTenantRewrite(pathname: string) {
   return TENANT_REWRITE_SKIP.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -32,7 +38,7 @@ export async function middleware(request: NextRequest) {
     response.headers.set('x-tenant-slug', tenantSlug);
   }
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || isInvitationPath(pathname);
   const isApi = pathname.startsWith('/api/');
   const isShowcase = pathname.startsWith('/showcase');
   const isSuperadminRoute = pathname.startsWith(SUPERADMIN_PREFIX);

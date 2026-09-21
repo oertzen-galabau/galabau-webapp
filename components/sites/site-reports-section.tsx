@@ -1,0 +1,173 @@
+import Link from 'next/link';
+import type { ReportStatus } from '@/lib/types/database';
+import { GenerateReportButton } from '@/components/reports/generate-report-button';
+import { SendReportButton } from '@/components/reports/send-report-button';
+
+export type SiteReportEntry = {
+  id: string;
+  logDate: string;
+  weather: string | null;
+  notes: string | null;
+  workerCount: number;
+  totalHours: number;
+  report: {
+    id: string;
+    status: ReportStatus;
+    pdfUrl: string | null;
+    sentTo: string | null;
+    sentAt: string | null;
+  } | null;
+};
+
+type Props = {
+  siteId: string;
+  entries: SiteReportEntry[];
+  signedPdfUrls: Map<string, string>;
+  canManageDocs: boolean;
+  canNavDocs: boolean;
+  canGenerate: boolean;
+  canSend: boolean;
+  canCreate: boolean;
+  defaultSendTo?: string | null;
+};
+
+function formatDate(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function truncateNotes(notes: string | null, max = 80) {
+  if (!notes?.trim()) return null;
+  const trimmed = notes.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
+}
+
+function reportStatusLabel(entry: SiteReportEntry): { label: string; badgeClass: string } {
+  if (!entry.report) {
+    return { label: 'Kein PDF', badgeClass: '' };
+  }
+  if (entry.report.sentAt) {
+    return { label: 'Versendet', badgeClass: 'active' };
+  }
+  if (entry.report.status === 'final') {
+    return { label: 'Final', badgeClass: 'active' };
+  }
+  return { label: 'Entwurf', badgeClass: 'travel' };
+}
+
+function buildSummary(entry: SiteReportEntry) {
+  const parts: string[] = [];
+  if (entry.weather?.trim()) parts.push(entry.weather.trim());
+  if (entry.workerCount > 0) {
+    const hoursLabel =
+      entry.totalHours > 0
+        ? `${entry.workerCount} MA · ${entry.totalHours.toLocaleString('de-DE', { maximumFractionDigits: 1 })} h`
+        : `${entry.workerCount} MA`;
+    parts.push(hoursLabel);
+  }
+  const notes = truncateNotes(entry.notes);
+  if (notes) parts.push(notes);
+  return parts.join(' · ') || '—';
+}
+
+export function SiteReportsSection({
+  siteId,
+  entries,
+  signedPdfUrls,
+  canManageDocs,
+  canNavDocs,
+  canGenerate,
+  canSend,
+  canCreate,
+  defaultSendTo,
+}: Props) {
+  return (
+    <section className="site-detail-section">
+      <div className="site-detail-section-head">
+        <h2>Rapporte</h2>
+        {canCreate && (
+          <Link href={`/app/dokumentation?site=${siteId}`} className="text-button">
+            Neuer Rapport
+          </Link>
+        )}
+      </div>
+
+      {entries.length > 0 ? (
+        <div className="data-table-wrap">
+          <table className="data-table site-reports-table">
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Inhalt</th>
+                <th>PDF</th>
+                <th className="data-table-col--optional">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const { label: statusLabel, badgeClass } = reportStatusLabel(entry);
+                const pdfSignedUrl = entry.report?.pdfUrl
+                  ? signedPdfUrls.get(entry.report.pdfUrl)
+                  : null;
+
+                return (
+                  <tr key={entry.id}>
+                    <td>{formatDate(entry.logDate)}</td>
+                    <td>{buildSummary(entry)}</td>
+                    <td>
+                      <span className={`status-badge ${badgeClass}`.trim()}>{statusLabel}</span>
+                      {entry.report?.sentAt && entry.report.sentTo && (
+                        <div className="site-entity-row-meta">
+                          {entry.report.sentTo} ·{' '}
+                          {new Date(entry.report.sentAt).toLocaleDateString('de-DE')}
+                        </div>
+                      )}
+                    </td>
+                    <td className="data-table-col--optional">
+                      <div className="inline-actions site-reports-actions">
+                        {canManageDocs && (
+                          <Link
+                            href={`/app/dokumentation?edit=${entry.id}`}
+                            className="table-action-link"
+                          >
+                            Bearbeiten
+                          </Link>
+                        )}
+                        {canGenerate && !entry.report && (
+                          <GenerateReportButton dailyLogId={entry.id} label="PDF erzeugen" />
+                        )}
+                        {pdfSignedUrl && (
+                          <a href={pdfSignedUrl} target="_blank" rel="noreferrer" className="table-action-link">
+                            Download
+                          </a>
+                        )}
+                        {canSend && entry.report && !entry.report.sentAt && (
+                          <SendReportButton reportId={entry.report.id} defaultTo={defaultSendTo} />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="muted">
+          Noch keine Rapporte für diese Baustelle.
+          {canNavDocs && (
+            <>
+              {' '}
+              <Link href={canCreate ? `/app/dokumentation?site=${siteId}` : '/app/dokumentation'}>
+                Tagesrapport anlegen
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}

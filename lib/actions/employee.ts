@@ -4,21 +4,29 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
-import { isWithinEditableDateRange } from '@/lib/time-tracking/entry-editable';
+import { parseSegmentsFromForm } from '@/lib/time-tracking/form-parsing';
+import { processTimeEntrySubmission } from '@/lib/time-tracking/submission';
 import {
   deriveWorkDayState,
   todayWorkDate,
   toTimeString,
   type TimeEntryLike,
 } from '@/lib/time-tracking/work-day';
-import { calculateWorkMinutes, countLeaveDays } from '@/lib/utils/time';
+import { countLeaveDays } from '@/lib/utils/time';
 import {
+  loadEntrySegments,
   saveEntrySegments,
   syncAutoBookingsForLeave,
   syncAutoBookingsForTimeEntry,
   type SegmentInput,
 } from '@/lib/payroll/booking-service';
-import { leaveRuleKeyForType } from '@/lib/payroll/tenant-rules';
+import {
+  getBadWeatherSeasonFromConfig,
+  leaveRuleKeyForType,
+  loadTenantPayrollConfig,
+  type BadWeatherConfig,
+} from '@/lib/payroll/tenant-rules';
+import { isBadWeatherSeason } from '@/lib/payroll/constants';
 import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_BRAND_COLOR,
@@ -35,6 +43,7 @@ function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: Per
 function revalidateTimePaths() {
   revalidatePath('/app');
   revalidatePath('/app/zeiten');
+  revalidatePath('/app/baustellen', 'layout');
 }
 
 async function getTodayEntry(
@@ -194,12 +203,11 @@ export type ClockOutPayload = {
   isDriver: boolean;
   segments: SegmentInput[];
   badWeatherClaimed?: boolean;
+  missingBreakfastReason?: string | null;
+  missingLunchReason?: string | null;
 };
 
-export async function clockOutWork(
-  noBreakReason?: string | null,
-  payload?: ClockOutPayload,
-) {
+export async function clockOutWork(_legacyNoBreakReason?: string | null, payload?: ClockOutPayload) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'zeiten.record');
   const { tenantId, userId } = ctx;
@@ -209,43 +217,43 @@ export async function clockOutWork(
   const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
   assertState(entry, ['working']);
 
-  const withoutBreak = !entry!.breakfast_start && !entry!.lunch_start;
-  const reason = noBreakReason?.trim() ?? '';
-  if (withoutBreak && !reason) {
-    throw new Error('Bitte einen Grund angeben, warum heute keine Pause erfasst wurde.');
-  }
-
-  const segments = payload?.segments ?? [];
-  const totalTravel = segments.reduce((sum, s) => sum + s.travel_minutes, 0);
   const endTime = toTimeString(new Date());
-  const work_minutes = calculateWorkMinutes({
-    start_time: entry!.start_time,
+  const processed = await processTimeEntrySubmission(supabase, tenantId, {
+    start_time: entry!.start_time!,
     end_time: endTime,
     breakfast_start: entry!.breakfast_start,
     breakfast_end: entry!.breakfast_end,
     lunch_start: entry!.lunch_start,
     lunch_end: entry!.lunch_end,
+    missing_breakfast_reason: payload?.missingBreakfastReason,
+    missing_lunch_reason: payload?.missingLunchReason,
+    notes: entry!.notes,
+    segments: payload?.segments ?? [],
   });
 
-  let notes = entry!.notes;
-  if (withoutBreak) {
-    const noteLine = `Ohne Pause: ${reason}`;
-    notes = notes ? `${notes}\n${noteLine}` : noteLine;
-  }
-
-  const primarySiteId = segments[0]?.site_id ?? entry!.site_id;
   const now = new Date().toISOString();
+  const badWeatherClaimed = await sanitizeBadWeatherClaimed(
+    supabase,
+    tenantId,
+    workDate,
+    payload?.badWeatherClaimed ?? false,
+  );
   const { error } = await supabase
     .from('time_entries')
     .update({
-      end_time: endTime,
-      work_minutes,
-      travel_minutes: totalTravel,
-      site_id: primarySiteId,
+      end_time: processed.end_time,
+      work_minutes: processed.work_minutes,
+      travel_minutes: processed.travel_minutes,
+      site_id: processed.site_id ?? entry!.site_id,
+      breakfast_start: processed.breakfast_start,
+      breakfast_end: processed.breakfast_end,
+      lunch_start: processed.lunch_start,
+      lunch_end: processed.lunch_end,
+      missing_breakfast_reason: processed.missing_breakfast_reason,
+      missing_lunch_reason: processed.missing_lunch_reason,
       is_driver: payload?.isDriver ?? false,
-      bad_weather_claimed: payload?.badWeatherClaimed ?? false,
+      bad_weather_claimed: badWeatherClaimed,
       bad_weather_confirmed: null,
-      notes,
       approval_status: 'pending',
       submitted_at: now,
       rejection_reason: null,
@@ -255,8 +263,8 @@ export async function clockOutWork(
     .eq('id', entry!.id);
   if (error) throw new Error(error.message);
 
-  if (segments.length > 0) {
-    await saveEntrySegments(supabase, tenantId, entry!.id, segments);
+  if (processed.segments.length > 0) {
+    await saveEntrySegments(supabase, tenantId, entry!.id, processed.segments);
   }
 
   revalidateTimePaths();
@@ -286,36 +294,27 @@ function assertOwnTimeEntryModifiable(
   if (entry.approval_status === 'approved') {
     throw new Error('Freigegebene Zeiteinträge können nicht mehr geändert werden.');
   }
-  const today = todayWorkDate();
-  if (!isWithinEditableDateRange(entry.work_date, today)) {
-    throw new Error('Zeiteinträge können nur bis zu drei Tage zurück bearbeitet werden.');
-  }
   if (options.requireCompleted && !entry.end_time) {
     throw new Error('Laufende Zeiteinträge können hier nicht bearbeitet werden.');
   }
 }
 
-function parseSegmentsFromForm(formData: FormData): SegmentInput[] {
-  const siteIds = formData.getAll('segment_site_id[]');
-  const travelMinutes = formData.getAll('segment_travel_minutes[]');
-  const segments: SegmentInput[] = [];
-  for (let i = 0; i < siteIds.length; i++) {
-    const siteId = String(siteIds[i] ?? '').trim();
-    if (!siteId) continue;
-    segments.push({
-      site_id: siteId,
-      travel_minutes: Number(travelMinutes[i] ?? 0),
-    });
-  }
-  return segments;
+async function sanitizeBadWeatherClaimed(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  workDate: string,
+  claimed: boolean,
+): Promise<boolean> {
+  if (!claimed) return false;
+  const config = await loadTenantPayrollConfig(supabase, tenantId);
+  const cfg = config.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
+  const { season_start, season_end } = getBadWeatherSeasonFromConfig(cfg);
+  return isBadWeatherSeason(workDate, season_start, season_end);
 }
 
 function parseTimeEntryForm(formData: FormData) {
   const segments = parseSegmentsFromForm(formData);
-  const travelFromSegments = segments.reduce((sum, s) => sum + s.travel_minutes, 0);
-  const legacyTravel = Number(formData.get('travel_minutes') ?? 0);
   return {
-    site_id: segments[0]?.site_id ?? ((formData.get('site_id') as string) || null),
     work_date: formData.get('work_date') as string,
     start_time: formData.get('start_time') as string,
     end_time: formData.get('end_time') as string,
@@ -323,7 +322,8 @@ function parseTimeEntryForm(formData: FormData) {
     breakfast_end: (formData.get('breakfast_end') as string) || null,
     lunch_start: (formData.get('lunch_start') as string) || null,
     lunch_end: (formData.get('lunch_end') as string) || null,
-    travel_minutes: segments.length > 0 ? travelFromSegments : legacyTravel,
+    missing_breakfast_reason: (formData.get('missing_breakfast_reason') as string) || null,
+    missing_lunch_reason: (formData.get('missing_lunch_reason') as string) || null,
     is_driver: formData.get('is_driver') === 'on' || formData.get('is_driver') === 'true',
     bad_weather_claimed: formData.get('bad_weather_claimed') === 'on',
     notes: (formData.get('notes') as string) || null,
@@ -339,25 +339,44 @@ export async function saveTimeEntry(formData: FormData) {
   const supabase = await createClient();
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
-  const entry = {
-    tenant_id: tenantId,
-    user_id: userId,
-    ...entryFields,
-  };
+  entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
+    supabase,
+    tenantId,
+    entryFields.work_date,
+    entryFields.bad_weather_claimed,
+  );
 
-  const work_minutes = calculateWorkMinutes(entry);
+  const processed = await processTimeEntrySubmission(supabase, tenantId, {
+    ...entryFields,
+    segments,
+  });
   const now = new Date().toISOString();
 
   const { data: inserted, error } = await supabase.from('time_entries').insert({
-    ...entry,
-    work_minutes,
+    tenant_id: tenantId,
+    user_id: userId,
+    work_date: entryFields.work_date,
+    start_time: processed.start_time,
+    end_time: processed.end_time,
+    breakfast_start: processed.breakfast_start,
+    breakfast_end: processed.breakfast_end,
+    lunch_start: processed.lunch_start,
+    lunch_end: processed.lunch_end,
+    missing_breakfast_reason: processed.missing_breakfast_reason,
+    missing_lunch_reason: processed.missing_lunch_reason,
+    travel_minutes: processed.travel_minutes,
+    work_minutes: processed.work_minutes,
+    site_id: processed.site_id,
+    is_driver: entryFields.is_driver,
+    bad_weather_claimed: entryFields.bad_weather_claimed,
+    notes: entryFields.notes,
     approval_status: 'pending',
     submitted_at: now,
   }).select('id').single();
   if (error) throw new Error(error.message);
 
-  if (segments.length > 0 && inserted) {
-    await saveEntrySegments(supabase, tenantId, inserted.id, segments);
+  if (processed.segments.length > 0 && inserted) {
+    await saveEntrySegments(supabase, tenantId, inserted.id, processed.segments);
   }
   revalidateTimePaths();
 }
@@ -385,14 +404,36 @@ export async function resubmitTimeEntry(formData: FormData) {
 
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
-  const work_minutes = calculateWorkMinutes(entryFields);
+  entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
+    supabase,
+    tenantId,
+    entryFields.work_date,
+    entryFields.bad_weather_claimed,
+  );
+  const processed = await processTimeEntrySubmission(supabase, tenantId, {
+    ...entryFields,
+    segments,
+  });
   const now = new Date().toISOString();
 
   const { error } = await supabase
     .from('time_entries')
     .update({
-      ...entryFields,
-      work_minutes,
+      work_date: entryFields.work_date,
+      start_time: processed.start_time,
+      end_time: processed.end_time,
+      breakfast_start: processed.breakfast_start,
+      breakfast_end: processed.breakfast_end,
+      lunch_start: processed.lunch_start,
+      lunch_end: processed.lunch_end,
+      missing_breakfast_reason: processed.missing_breakfast_reason,
+      missing_lunch_reason: processed.missing_lunch_reason,
+      travel_minutes: processed.travel_minutes,
+      work_minutes: processed.work_minutes,
+      site_id: processed.site_id,
+      is_driver: entryFields.is_driver,
+      bad_weather_claimed: entryFields.bad_weather_claimed,
+      notes: entryFields.notes,
       approval_status: 'pending',
       submitted_at: now,
       rejection_reason: null,
@@ -403,7 +444,7 @@ export async function resubmitTimeEntry(formData: FormData) {
     .eq('id', entryId);
   if (error) throw new Error(error.message);
 
-  await saveEntrySegments(supabase, tenantId, entryId, segments);
+  await saveEntrySegments(supabase, tenantId, entryId, processed.segments);
   revalidateTimePaths();
 }
 
@@ -441,11 +482,7 @@ export async function approveTimeEntry(formData: FormData) {
     .eq('id', entryId);
   if (error) throw new Error(error.message);
 
-  const { data: segments } = await supabase
-    .from('time_entry_segments')
-    .select('site_id, travel_minutes')
-    .eq('time_entry_id', entryId)
-    .order('sort_order');
+  const segments = await loadEntrySegments(supabase, entryId);
 
   await syncAutoBookingsForTimeEntry(
     supabase,
@@ -454,7 +491,7 @@ export async function approveTimeEntry(formData: FormData) {
     entryId,
     entry.work_date,
     { ...entry, bad_weather_confirmed: badWeatherConfirmed },
-    (segments ?? []).map((s) => ({ site_id: s.site_id, travel_minutes: s.travel_minutes })),
+    segments,
   );
 
   revalidateTimePaths();
@@ -507,19 +544,37 @@ export async function updateTimeEntry(formData: FormData) {
 
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
-  const today = todayWorkDate();
-  if (!isWithinEditableDateRange(entryFields.work_date, today)) {
-    throw new Error('Das Datum muss innerhalb der letzten drei Tage liegen.');
-  }
 
-  const work_minutes = calculateWorkMinutes(entryFields);
+  entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
+    supabase,
+    tenantId,
+    entryFields.work_date,
+    entryFields.bad_weather_claimed,
+  );
+  const processed = await processTimeEntrySubmission(supabase, tenantId, {
+    ...entryFields,
+    segments,
+  });
   const now = new Date().toISOString();
 
   const { error } = await supabase
     .from('time_entries')
     .update({
-      ...entryFields,
-      work_minutes,
+      work_date: entryFields.work_date,
+      start_time: processed.start_time,
+      end_time: processed.end_time,
+      breakfast_start: processed.breakfast_start,
+      breakfast_end: processed.breakfast_end,
+      lunch_start: processed.lunch_start,
+      lunch_end: processed.lunch_end,
+      missing_breakfast_reason: processed.missing_breakfast_reason,
+      missing_lunch_reason: processed.missing_lunch_reason,
+      travel_minutes: processed.travel_minutes,
+      work_minutes: processed.work_minutes,
+      site_id: processed.site_id,
+      is_driver: entryFields.is_driver,
+      bad_weather_claimed: entryFields.bad_weather_claimed,
+      notes: entryFields.notes,
       approval_status: 'pending',
       submitted_at: now,
       rejection_reason: null,
@@ -530,7 +585,7 @@ export async function updateTimeEntry(formData: FormData) {
     .eq('id', entryId);
   if (error) throw new Error(error.message);
 
-  await saveEntrySegments(supabase, tenantId, entryId, segments);
+  await saveEntrySegments(supabase, tenantId, entryId, processed.segments);
   revalidateTimePaths();
 }
 
@@ -709,6 +764,49 @@ export async function markInboxDelivered() {
     .eq('recipient_id', userId)
     .is('delivered_at', null);
   if (error) throw new Error(error.message);
+}
+
+export async function getUnreadMessageCount(): Promise<number> {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'nav.nachrichten')) return 0;
+
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('recipient_id', ctx.userId)
+    .is('read_at', null);
+  if (error) throw new Error(error.message);
+
+  return count ?? 0;
+}
+
+export async function markConversationUnread(otherUserId: string) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'messages.send');
+  const { userId } = ctx;
+
+  const supabase = await createClient();
+  const { data: lastRead, error: selectError } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('sender_id', otherUserId)
+    .eq('recipient_id', userId)
+    .not('read_at', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (selectError) throw new Error(selectError.message);
+  if (!lastRead) return;
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ read_at: null })
+    .eq('id', lastRead.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/app/nachrichten');
+  revalidatePath(`/app/nachrichten/${otherUserId}`);
 }
 
 export async function saveClothingOrder(formData: FormData) {

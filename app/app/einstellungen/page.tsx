@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { TenantBrandingForm } from '@/components/settings/tenant-branding-form';
+import { TenantStartPasswordForm } from '@/components/settings/tenant-start-password-form';
 import {
   saveCompanyHoliday,
   deleteCompanyHoliday,
@@ -11,7 +13,9 @@ import { PayrollRuleMatrix } from '@/components/payroll/payroll-rule-matrix';
 import { SettingsTabs } from '@/components/settings/settings-tabs';
 import { loadTenantPayrollConfig, serializeTenantConfig } from '@/lib/payroll/tenant-rules';
 import { isSettingsTab, visibleSettingsTabs, type SettingsTabId } from '@/lib/settings/tabs';
-import type { PayrollBookingCode } from '@/lib/types/database';
+import { TenantTimeTrackingForm } from '@/components/settings/tenant-time-tracking-form';
+import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
+import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
 
 type PageProps = {
   searchParams: Promise<{ tab?: string }>;
@@ -45,6 +49,22 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
 
   let codes: PayrollBookingCode[] = [];
   let tenantConfig = null;
+  let defaultStartPassword: string | null = null;
+  let timeTrackingRules: TenantTimeTrackingRules | null = null;
+
+  if (activeTab === 'startpasswort' && canAccess(ctx, 'settings.start_password')) {
+    const admin = createAdminClient();
+    const { data: startPasswordRow } = await admin
+      .from('tenants')
+      .select('default_start_password')
+      .eq('id', tenantId)
+      .single();
+    defaultStartPassword = startPasswordRow?.default_start_password ?? null;
+  }
+
+  if (activeTab === 'zeiterfassung' && canAccess(ctx, 'settings.time_tracking')) {
+    timeTrackingRules = await loadTenantTimeTrackingRules(supabase, tenantId);
+  }
 
   if (activeTab === 'lohnregeln' && canAccess(ctx, 'settings.payroll_rules')) {
     const [codesResult, loadedConfig] = await Promise.all([
@@ -68,18 +88,33 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
           <p>
             {activeTab === 'lohnregeln'
               ? 'Lohnregeln und Buchungsnummern für die automatische Verbuchung.'
-              : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
+              : activeTab === 'zeiterfassung'
+                ? 'Regeln für erwartete Pausen und Pflichtbegründungen in der Zeiterfassung.'
+              : activeTab === 'startpasswort'
+                ? 'Einheitliches Startpasswort für alle Mitarbeiter-Accounts verwalten.'
+                : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
           </p>
         </div>
       </div>
 
       <SettingsTabs tabs={tabs} activeTab={activeTab} />
 
+      {activeTab === 'startpasswort' && canAccess(ctx, 'settings.start_password') ? (
+        <TenantStartPasswordForm
+          configured={Boolean(defaultStartPassword)}
+          currentPassword={defaultStartPassword}
+        />
+      ) : null}
+
       {activeTab === 'lohnregeln' && tenantConfig ? (
         <PayrollRuleMatrix
           codes={codes}
           tenantConfig={serializeTenantConfig(tenantConfig)}
         />
+      ) : null}
+
+      {activeTab === 'zeiterfassung' && timeTrackingRules ? (
+        <TenantTimeTrackingForm rules={timeTrackingRules} />
       ) : null}
 
       {activeTab === 'allgemein' ? (

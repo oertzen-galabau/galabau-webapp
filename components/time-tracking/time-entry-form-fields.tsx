@@ -1,35 +1,36 @@
 import type { TimeEntry } from '@/lib/types/database';
-import { TimeEntrySegmentsFields, type SiteOption } from '@/components/time-tracking/time-entry-segments-fields';
+import { TimeEntryTimelineFields, type SiteOption } from '@/components/time-tracking/time-entry-timeline-fields';
+import { BadWeatherClaimField } from '@/components/time-tracking/bad-weather-claim-field';
+import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
 
 type Site = SiteOption;
 
 type Props = {
   sites: Site[];
   entry?: TimeEntry | null;
-  initialSegments?: { siteId: string; travelMinutes: number }[];
+  initialBlocks?: TimelineBlockInput[];
   submitLabel: string;
   minDate?: string;
   maxDate?: string;
   compact?: boolean;
+  badWeatherSeasonStart?: string;
+  badWeatherSeasonEnd?: string;
 };
 
 export function TimeEntryFormFields({
   sites,
   entry,
-  initialSegments,
+  initialBlocks,
   submitLabel,
   minDate,
   maxDate,
   compact = false,
+  badWeatherSeasonStart,
+  badWeatherSeasonEnd,
 }: Props) {
   const today = new Date().toISOString().slice(0, 10);
-
-  const segmentDefaults = initialSegments ?? (entry?.site_id
-    ? [{
-        siteId: entry.site_id,
-        travelMinutes: entry.travel_minutes ?? 0,
-      }]
-    : []);
+  const startTime = entry?.start_time?.slice(0, 5) ?? '07:00';
+  const endTime = entry?.end_time?.slice(0, 5) ?? '16:00';
 
   const timeInputs = (
     <>
@@ -47,7 +48,7 @@ export function TimeEntryFormFields({
         <input
           type="time"
           name="start_time"
-          defaultValue={entry?.start_time?.slice(0, 5) ?? ''}
+          defaultValue={startTime}
           required
         />
       </label>
@@ -55,7 +56,7 @@ export function TimeEntryFormFields({
         <input
           type="time"
           name="end_time"
-          defaultValue={entry?.end_time?.slice(0, 5) ?? ''}
+          defaultValue={endTime}
           required
         />
       </label>
@@ -72,50 +73,43 @@ export function TimeEntryFormFields({
         />
         Heute Fahrer (Zuschlag nach Freigabe)
       </label>
-      <label className="input-form-checkbox">
-        <input
-          type="checkbox"
-          name="bad_weather_claimed"
-          defaultChecked={entry?.bad_weather_claimed === true}
+      {badWeatherSeasonStart && badWeatherSeasonEnd ? (
+        <BadWeatherClaimField
+          seasonStart={badWeatherSeasonStart}
+          seasonEnd={badWeatherSeasonEnd}
+          defaultClaimed={entry?.bad_weather_claimed === true}
+          defaultWorkDate={entry?.work_date}
         />
-        Schlechtwetter (KUG) — am Standort
-      </label>
+      ) : null}
     </>
   );
 
   const extraFields = (
     <>
-      <label>Frühstück Start
-        <input
-          type="time"
-          name="breakfast_start"
-          defaultValue={entry?.breakfast_start?.slice(0, 5) ?? ''}
-        />
-      </label>
-      <label>Frühstück Ende
-        <input
-          type="time"
-          name="breakfast_end"
-          defaultValue={entry?.breakfast_end?.slice(0, 5) ?? ''}
-        />
-      </label>
-      <label>Mittag Start
-        <input
-          type="time"
-          name="lunch_start"
-          defaultValue={entry?.lunch_start?.slice(0, 5) ?? ''}
-        />
-      </label>
-      <label>Mittag Ende
-        <input
-          type="time"
-          name="lunch_end"
-          defaultValue={entry?.lunch_end?.slice(0, 5) ?? ''}
-        />
-      </label>
       <div className="input-form-span-full">
-        <TimeEntrySegmentsFields sites={sites} initialSegments={segmentDefaults} />
+        <TimeEntryTimelineFields
+          sites={sites}
+          dayStart={startTime}
+          dayEnd={endTime}
+          initialBlocks={initialBlocks ?? []}
+        />
       </div>
+      <label>Grund fehlendes Frühstück
+        <input
+          type="text"
+          name="missing_breakfast_reason"
+          defaultValue={entry?.missing_breakfast_reason ?? ''}
+          placeholder="Nur wenn Frühstück erwartet, aber nicht erfasst"
+        />
+      </label>
+      <label>Grund fehlende Mittagspause
+        <input
+          type="text"
+          name="missing_lunch_reason"
+          defaultValue={entry?.missing_lunch_reason ?? ''}
+          placeholder="Nur wenn Mittag erwartet, aber nicht erfasst"
+        />
+      </label>
       <label className="input-form-notes">Notiz
         <input
           type="text"
@@ -133,7 +127,7 @@ export function TimeEntryFormFields({
         <div className="input-form-core input-form-core--time">{timeInputs}</div>
         <div className="input-form-checkboxes">{checkboxes}</div>
         <details className="input-form-extra">
-          <summary>Pausen, Baustellen & Notiz</summary>
+          <summary>Tagesaufteilung, Pausengründe & Notiz</summary>
           <div className="input-form-extra-grid">{extraFields}</div>
         </details>
         <div className="input-form-actions">
@@ -148,7 +142,7 @@ export function TimeEntryFormFields({
       <div className="input-form-core input-form-core--time">{timeInputs}</div>
       <div className="input-form-checkboxes">{checkboxes}</div>
       <details className="input-form-extra" open>
-        <summary>Pausen, Baustellen & Notiz</summary>
+        <summary>Tagesaufteilung, Pausengründe & Notiz</summary>
         <div className="input-form-extra-grid">{extraFields}</div>
       </details>
       <div className="input-form-actions">

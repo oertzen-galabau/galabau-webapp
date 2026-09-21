@@ -12,6 +12,7 @@ import { BookingPreviewList } from '@/components/payroll/booking-preview-list';
 import { AppSelect } from '@/components/ui/app-select';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 import { formatMinutes } from '@/lib/utils/time';
+import { BLOCK_TYPE_LABELS, blockDurationMinutes, isTimelineMode } from '@/lib/time-tracking/timeline';
 
 const UNIT_OPTIONS = [
   { value: 'hours', label: 'Std.' },
@@ -68,13 +69,10 @@ export function TimeApprovalRow({
   });
 
   const displayBookings = bookings.length > 0 ? bookings : preview.lines;
-
-  function run(action: () => Promise<void>) {
-    startTransition(async () => {
-      await action();
-      router.refresh();
-    });
-  }
+  const timelineBlocks = (entry.segments ?? []).filter(
+    (segment) => segment.start_time && segment.end_time,
+  );
+  const hasTimeline = isTimelineMode(entry.segments ?? []);
 
   return (
     <>
@@ -121,6 +119,40 @@ export function TimeApprovalRow({
                 Mitarbeiter meldet Schlechtwetter (KUG). Bitte bei Freigabe bestätigen oder abwählen.
               </p>
             ) : null}
+
+            {hasTimeline && (
+              <div className="time-timeline-summary" style={{ marginBottom: 12 }}>
+                <strong>Tagesaufteilung</strong>
+                <ul className="simple-list">
+                  {timelineBlocks.map((block, index) => (
+                    <li key={`${block.start_time}-${index}`}>
+                      {BLOCK_TYPE_LABELS[block.block_type]} · {block.start_time.slice(0, 5)}–
+                      {block.end_time.slice(0, 5)} ({formatMinutes(blockDurationMinutes(block))})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(entry.missing_breakfast_reason || entry.missing_lunch_reason) && (
+              <div className="callout callout-warning" style={{ marginBottom: 12 }}>
+                {entry.missing_breakfast_reason ? (
+                  <p><strong>Frühstück:</strong> {entry.missing_breakfast_reason}</p>
+                ) : null}
+                {entry.missing_lunch_reason ? (
+                  <p><strong>Mittag:</strong> {entry.missing_lunch_reason}</p>
+                ) : null}
+              </div>
+            )}
+
+            {preview.warnings.length > 0 && (
+              <div className="callout callout-warning" style={{ marginBottom: 12 }}>
+                {preview.warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            )}
+
             <BookingPreviewList
               lines={displayBookings}
               codeLabels={codeLabels}

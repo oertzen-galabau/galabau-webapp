@@ -116,7 +116,7 @@ export function DeliveryNoteScanForm({ logs, saveAction }: Props) {
   const canRemove = items.length > 1;
 
   return (
-    <form action={saveAction} className="input-form">
+    <form action={saveAction} className="input-form delivery-note-scan-form">
       <div className="input-form-core">
         <label>
           Tageseintrag

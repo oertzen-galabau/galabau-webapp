@@ -22,9 +22,15 @@ import {
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import { BookingPreviewList } from '@/components/payroll/booking-preview-list';
 import { computeBookingPreview } from '@/lib/payroll/booking-rules';
-import { deserializeTenantConfig, type SerializableTenantPayrollConfig } from '@/lib/payroll/tenant-rules';
+import {
+  deserializeTenantConfig,
+  getBadWeatherSeasonFromConfig,
+  type BadWeatherConfig,
+  type SerializableTenantPayrollConfig,
+} from '@/lib/payroll/tenant-rules';
 import { formatMinutes } from '@/lib/utils/time';
-import type { PayrollBooking, TimeEntry } from '@/lib/types/database';
+import type { PayrollBooking, TimeBlockType, TimeEntry } from '@/lib/types/database';
+import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
 
 type Site = { id: string; name: string };
 
@@ -34,7 +40,13 @@ type Props = {
   entry: EntryWithSite;
   sites: Site[];
   today: string;
-  segments?: { site_id: string; travel_minutes: number }[];
+  segments?: {
+    site_id: string | null;
+    travel_minutes: number;
+    block_type?: string;
+    start_time?: string | null;
+    end_time?: string | null;
+  }[];
   bookings?: PayrollBooking[];
   codeLabels?: Record<string, string>;
   tenantConfig: SerializableTenantPayrollConfig;
@@ -56,14 +68,27 @@ export function TimeEntryOverviewRow({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const deserializedConfig = deserializeTenantConfig(tenantConfig);
+  const badWeatherCfg = deserializedConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
+  const { season_start: badWeatherSeasonStart, season_end: badWeatherSeasonEnd } =
+    getBadWeatherSeasonFromConfig(badWeatherCfg);
+
+  const bookingSegments: TimelineBlockInput[] = segments.map((segment) => ({
+    block_type: (segment.block_type ?? 'site_work') as TimeBlockType,
+    start_time: segment.start_time?.slice(0, 5) ?? '',
+    end_time: segment.end_time?.slice(0, 5) ?? '',
+    site_id: segment.site_id,
+    travel_minutes: segment.travel_minutes,
+  }));
+
   const preview = computeBookingPreview({
     entry,
-    segments,
-    tenantConfig: deserializeTenantConfig(tenantConfig),
+    segments: bookingSegments,
+    tenantConfig: deserializedConfig,
   });
   const displayBookings = bookings.length > 0 ? bookings : preview.lines;
 
-  const editable = isTimeEntryEditable(entry, today);
+  const editable = isTimeEntryEditable(entry);
   const deletable = isTimeEntryDeletable(entry, today);
   const badgeClass = timeEntryStatusBadgeClass(entry.approval_status, !!entry.end_time);
   const showActions = editable || deletable;
@@ -175,14 +200,21 @@ export function TimeEntryOverviewRow({
               <TimeEntryFormFields
                 sites={sites}
                 entry={entry}
-                initialSegments={segments.map((s) => ({
-                  siteId: s.site_id,
-                  travelMinutes: s.travel_minutes,
-                }))}
+                initialBlocks={segments
+                  .filter((segment) => segment.start_time && segment.end_time)
+                  .map((segment) => ({
+                    block_type: (segment.block_type ?? 'site_work') as import('@/lib/types/database').TimeBlockType,
+                    start_time: segment.start_time!.slice(0, 5),
+                    end_time: segment.end_time!.slice(0, 5),
+                    site_id: segment.site_id,
+                    travel_minutes: segment.travel_minutes,
+                  }))}
                 submitLabel="Speichern"
                 minDate={minEditableWorkDate(today)}
                 maxDate={today}
                 compact
+                badWeatherSeasonStart={badWeatherSeasonStart}
+                badWeatherSeasonEnd={badWeatherSeasonEnd}
               />
             </form>
             {error && <p className="dialog-error">{error}</p>}
