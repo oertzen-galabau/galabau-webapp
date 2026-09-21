@@ -31,6 +31,8 @@ export type InfoboardWidgetDef = {
   maxW?: number;
   maxH?: number;
   enabled: boolean;
+  /** Pflicht-Widget: verschiebbar, aber nicht ausblendbar */
+  locked?: boolean;
 };
 
 export type DashboardLayoutItem = {
@@ -97,6 +99,7 @@ export type InfoboardWidgetData = {
     rows: ScheduleRow[];
   };
   posts: InfoboardPostRow[];
+  canManagePosts: boolean;
   leavePendingCount: number;
   unreadMessagesCount: number;
 };

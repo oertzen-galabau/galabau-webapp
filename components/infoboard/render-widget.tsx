@@ -56,7 +56,9 @@ export function RenderWidget({ widgetId, data }: Props) {
     case 'today_schedule':
       return <TodayScheduleWidget dateLabel={data.dateLabel} rows={data.schedule.rows} />;
     case 'infoboard_posts':
-      return <InfoboardPostsWidget posts={data.posts} />;
+      return (
+        <InfoboardPostsWidget posts={data.posts} canManagePosts={data.canManagePosts} />
+      );
     case 'leave_pending':
       return <LeavePendingWidget count={data.leavePendingCount} />;
     case 'messages_unread':

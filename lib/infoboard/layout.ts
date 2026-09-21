@@ -117,6 +117,12 @@ export function resolveEffectiveLayout(
 
   const items = [...merged.values()]
     .filter((item) => permitted.has(item.id))
+    .map((item) => {
+      if (WIDGET_REGISTRY[item.id]?.locked) {
+        return { ...item, visible: true };
+      }
+      return item;
+    })
     .sort((a, b) => a.y - b.y || a.x - b.x);
 
   return compactDashboardLayout({ version: 1, items });
@@ -161,11 +167,17 @@ export function mergeGridLayoutChange(
   };
 }
 
+export function isWidgetLocked(widgetId: InfoboardWidgetId): boolean {
+  return WIDGET_REGISTRY[widgetId]?.locked === true;
+}
+
 export function setWidgetVisibility(
   layout: DashboardLayout,
   widgetId: InfoboardWidgetId,
   visible: boolean,
 ): DashboardLayout {
+  if (!visible && isWidgetLocked(widgetId)) return layout;
+
   const existing = layout.items.find((item) => item.id === widgetId);
   if (!existing) return layout;
 

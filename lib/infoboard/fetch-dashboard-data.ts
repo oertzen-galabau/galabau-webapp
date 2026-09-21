@@ -71,7 +71,8 @@ export async function fetchInfoboardPayload(
 ): Promise<InfoboardPagePayload> {
   const today = todayWorkDate();
   const canApprove = canAccess(ctx, 'zeiten.approve');
-  const canViewPosts = canAccess(ctx, 'infoboard.posts');
+  const canViewPosts = canAccess(ctx, 'nav.infoboard');
+  const canManagePosts = canAccess(ctx, 'infoboard.posts');
   const canApproveLeave = canAccess(ctx, 'urlaub.approve');
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
   const now = new Date();
@@ -265,6 +266,7 @@ export async function fetchInfoboardPayload(
         publishedAt: post.published_at,
         createdAt: post.created_at,
       })),
+      canManagePosts,
       leavePendingCount: leavePendingCount ?? 0,
       unreadMessagesCount: unreadMessagesCount ?? 0,
     },

@@ -13,7 +13,9 @@ type Props = {
 };
 
 export function InfoboardWidgetFrame({ widgetId, isEditing, onRemove, children }: Props) {
-  const label = WIDGET_REGISTRY[widgetId].label;
+  const def = WIDGET_REGISTRY[widgetId];
+  const label = def.label;
+  const isLocked = def.locked === true;
 
   return (
     <div className={`infoboard-widget-frame${isEditing ? ' infoboard-widget-frame-editing' : ''}`}>
@@ -22,15 +24,18 @@ export function InfoboardWidgetFrame({ widgetId, isEditing, onRemove, children }
           <span className="infoboard-drag-handle" aria-label={`${label} verschieben`}>
             <GripVertical size={16} />
             {label}
+            {isLocked && <small className="infoboard-widget-locked-hint">Pflicht</small>}
           </span>
-          <button
-            type="button"
-            className="infoboard-widget-remove"
-            aria-label={`${label} ausblenden`}
-            onClick={onRemove}
-          >
-            <X size={16} />
-          </button>
+          {!isLocked && (
+            <button
+              type="button"
+              className="infoboard-widget-remove"
+              aria-label={`${label} ausblenden`}
+              onClick={onRemove}
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       )}
       <div className={`infoboard-widget-body${isEditing ? ' infoboard-widget-body-editing' : ''}`}>

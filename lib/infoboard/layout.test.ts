@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import {
   DEFAULT_DASHBOARD_LAYOUT,
+  isWidgetLocked,
   layoutsOverlap,
   resolveEffectiveLayout,
   setWidgetVisibility,
@@ -41,6 +42,21 @@ describe('resolveEffectiveLayout', () => {
     const layout = resolveEffectiveLayout(DEFAULT_DASHBOARD_LAYOUT, employeePermissions, false);
     assert.ok(!layout.items.some((item) => item.id === 'pending_approval'));
     assert.ok(layout.items.some((item) => item.id === 'metric_hours_today'));
+    assert.ok(layout.items.some((item) => item.id === 'infoboard_posts' && item.visible));
+  });
+
+  it('keeps locked widgets visible even when stored layout hides them', () => {
+    const hiddenPosts = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'infoboard_posts', false);
+    const layout = resolveEffectiveLayout(hiddenPosts, adminPermissions, false);
+    const posts = layout.items.find((item) => item.id === 'infoboard_posts');
+    assert.ok(posts?.visible);
+  });
+
+  it('prevents hiding locked widgets via setWidgetVisibility', () => {
+    assert.equal(isWidgetLocked('infoboard_posts'), true);
+    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'infoboard_posts', false);
+    const posts = hidden.items.find((item) => item.id === 'infoboard_posts');
+    assert.equal(posts?.visible, true);
   });
 
   it('toggle visibility adds widget at next row', () => {

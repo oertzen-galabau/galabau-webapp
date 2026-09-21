@@ -19,6 +19,7 @@ import type {
   InfoboardWidgetData,
   InfoboardWidgetId,
 } from '@/lib/infoboard/types';
+import { isWidgetLocked } from '@/lib/infoboard/layout';
 import { INFOBOARD_GRID_COLS, INFOBOARD_ROW_HEIGHT } from '@/lib/infoboard/widgets';
 
 type Props = {
@@ -90,6 +91,7 @@ export function InfoboardDashboard({
   }, []);
 
   const handleRemoveWidget = useCallback((widgetId: InfoboardWidgetId) => {
+    if (isWidgetLocked(widgetId)) return;
     setDraftLayout((current) => setWidgetVisibility(current, widgetId, false));
   }, []);
 

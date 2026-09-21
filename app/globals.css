@@ -410,6 +410,16 @@ button { cursor: pointer; }
 .infoboard-post-item header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .infoboard-post-item header small { color: var(--text-soft); font-size: var(--text-caption); white-space: nowrap; }
 .infoboard-post-item p { margin: 0 0 8px; color: var(--text-soft); font-size: var(--text-ui); line-height: 1.45; }
+.infoboard-post-item-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.infoboard-post-item-meta { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
+.infoboard-post-create { width: auto; min-height: 0; padding: 0; font-size: var(--text-caption); }
+.infoboard-post-actions { display: inline-flex; gap: 4px; }
+.infoboard-post-action { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface-raised); color: var(--text-soft); cursor: pointer; }
+.infoboard-post-action--danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.infoboard-post-form textarea { min-height: 96px; resize: vertical; }
+.infoboard-post-form-datetime { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.infoboard-widget-locked-hint { margin-left: 6px; color: var(--text-soft); font-size: var(--text-caption); font-weight: 500; }
+.infoboard-picker-item--locked { opacity: 0.72; cursor: default; }
 .infoboard-inline-link { width: auto; min-height: 0; padding: 0; font-size: var(--text-caption); }
 .react-grid-item.react-grid-placeholder { background: color-mix(in srgb, var(--brand) 16%, transparent); border-radius: var(--radius); opacity: 0.8; }
 .react-resizable-handle-se { width: 14px; height: 14px; right: 4px; bottom: 4px; cursor: se-resize; }

@@ -265,23 +265,6 @@ export async function softDeleteDailyLogPhoto(formData: FormData) {
   await softDeleteDocumentationEntry('daily_log_photos', id);
 }
 
-export async function saveInfoboardPost(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'infoboard.posts');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const { error } = await supabase.from('infoboard_posts').insert({
-    tenant_id: tenantId,
-    title: formData.get('title') as string,
-    content: formData.get('content') as string,
-    post_type: formData.get('post_type') as string,
-    created_by: userId,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath('/app');
-}
-
 export async function saveAssignment(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'infoboard.assignments');

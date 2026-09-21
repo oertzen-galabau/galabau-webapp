@@ -24,17 +24,23 @@ export function InfoboardWidgetPicker({ layout, allowedWidgetIds, onToggle }: Pr
         {allowedWidgetIds.map((id) => {
           const def = WIDGET_REGISTRY[id];
           const checked = visibleIds.has(id);
+          const isLocked = def.locked === true;
+          const categoryLabel =
+            def.category === 'metric' ? 'Metrik' : def.category === 'panel' ? 'Panel' : 'Hinweis';
           return (
             <li key={id}>
-              <label className="infoboard-picker-item">
+              <label className={`infoboard-picker-item${isLocked ? ' infoboard-picker-item--locked' : ''}`}>
                 <input
                   type="checkbox"
                   checked={checked}
+                  disabled={isLocked}
                   onChange={(event) => onToggle(id, event.target.checked)}
                 />
                 <span>
                   <strong>{def.label}</strong>
-                  <small>{def.category === 'metric' ? 'Metrik' : def.category === 'panel' ? 'Panel' : 'Hinweis'}</small>
+                  <small>
+                    {isLocked ? 'Pflicht-Widget' : categoryLabel}
+                  </small>
                 </span>
               </label>
             </li>
