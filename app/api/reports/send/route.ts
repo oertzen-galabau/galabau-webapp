@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendMail, getDefaultMailRecipient } from '@/lib/email/smtp';
+import { sendMail, getDefaultMailRecipient, sendMailFailureText } from '@/lib/email/smtp';
 
 export async function POST(request: Request) {
   const { reportId, to } = await request.json();
@@ -61,7 +61,11 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ ok: true, simulated: true, message: result.message });
+    return NextResponse.json({
+      ok: true,
+      simulated: result.simulated,
+      message: sendMailFailureText(result),
+    });
   }
 
   await supabase.from('reports').update({

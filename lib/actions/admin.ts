@@ -811,7 +811,11 @@ async function provisionEmployeeInvitation(
     tempPassword,
     expiresAt: invite.expiresAt.toISOString(),
     emailSent: mailResult.ok,
-    emailMessage: mailResult.ok ? undefined : mailResult.message,
+    emailMessage: mailResult.ok
+      ? undefined
+      : mailResult.simulated
+        ? mailResult.message
+        : mailResult.error,
   };
 }
 

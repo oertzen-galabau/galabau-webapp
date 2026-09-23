@@ -16,6 +16,28 @@ import {
 const SUCCESS_MESSAGE =
   'Falls ein Konto mit dieser E-Mail existiert, wurde ein Code gesendet.';
 
+const SMTP_UNAVAILABLE_ERROR =
+  'Der E-Mail-Versand ist derzeit nicht eingerichtet. Bitte wenden Sie sich an den Support.';
+
+async function invalidateLatestResetCode(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string,
+) {
+  const now = new Date().toISOString();
+  const { data: row } = await admin
+    .from('password_reset_codes')
+    .select('id')
+    .eq('email', email)
+    .is('used_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (row) {
+    await admin.from('password_reset_codes').update({ used_at: now }).eq('id', row.id);
+  }
+}
+
 export type PasswordResetResult =
   | { ok: true; message: string; simulated?: boolean }
   | { ok: false; error: string };
@@ -77,11 +99,18 @@ export async function requestPasswordResetCode(email: string): Promise<PasswordR
 
   const mailResult = await sendPasswordResetEmail(normalizedEmail, code, getPlatformName());
 
-  if (!mailResult.ok && mailResult.simulated) {
-    if (process.env.NODE_ENV === 'development') {
-      console.info(`[password-reset] Simulierter Code für ${normalizedEmail}: ${code}`);
+  if (!mailResult.ok) {
+    await invalidateLatestResetCode(admin, normalizedEmail);
+
+    if (mailResult.simulated) {
+      if (process.env.NODE_ENV === 'development') {
+        console.info(`[password-reset] Simulierter Code für ${normalizedEmail}: ${code}`);
+        return { ok: true, message: SUCCESS_MESSAGE, simulated: true };
+      }
+      return { ok: false, error: SMTP_UNAVAILABLE_ERROR };
     }
-    return { ok: true, message: SUCCESS_MESSAGE, simulated: true };
+
+    return { ok: false, error: mailResult.error };
   }
 
   return { ok: true, message: SUCCESS_MESSAGE };

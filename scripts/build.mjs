@@ -20,6 +20,13 @@ if (!env.SUPABASE_SERVICE_ROLE_KEY) {
   );
 }
 
+const smtpReady = Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_FROM);
+if (!smtpReady) {
+  console.warn(
+    '[build] WARNUNG: SMTP_HOST/SMTP_PORT/SMTP_FROM fehlen — Passwort-Reset, Einladungen und Rapport-Versand senden keine E-Mails. Auf Hostinger setzen (smtp.hostinger.com, Postfach @vaerkflow.de).',
+  );
+}
+
 const result = spawnSync('next', ['build'], {
   stdio: 'inherit',
   env,
