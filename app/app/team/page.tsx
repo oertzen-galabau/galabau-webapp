@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { InviteEmployeeForm } from '@/components/team/invite-employee-form';
+import { MemberAccessBadge } from '@/components/team/member-access-badge';
 
 export default async function TeamPage() {
   const ctx = await requireTenantMember();
@@ -47,8 +48,11 @@ export default async function TeamPage() {
                 <i className={member.is_active ? 'active' : ''} />
                 {member.email}
               </span>
-              <span className={`status-badge ${member.is_active ? 'active' : 'travel'}`}>
-                {member.is_active ? 'Aktiv' : 'Inaktiv'}
+              <span className="team-row-status">
+                <MemberAccessBadge
+                  is_active={member.is_active}
+                  must_change_password={member.must_change_password}
+                />
               </span>
             </Link>
           );

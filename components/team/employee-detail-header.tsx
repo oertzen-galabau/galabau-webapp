@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { initials } from '@/lib/auth/roles';
+import { MemberAccessBadge } from '@/components/team/member-access-badge';
 import type { Profile } from '@/lib/types/database';
 
 type Props = {
@@ -19,9 +20,10 @@ export function EmployeeDetailHeader({ member, roleName }: Props) {
         <div className="employee-detail-title">
           <span className="person-avatar person-avatar--lg">{initials(member)}</span>
           <div>
-            <span className={`status-badge ${member.is_active ? 'active' : 'travel'}`}>
-              {member.is_active ? 'Aktiv' : 'Inaktiv'}
-            </span>
+            <MemberAccessBadge
+              is_active={member.is_active}
+              must_change_password={member.must_change_password}
+            />
             <h1>{member.first_name} {member.last_name}</h1>
             <p>
               {roleName}

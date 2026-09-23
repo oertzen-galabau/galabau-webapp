@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { EmployeeInviteResult } from '@/lib/actions/admin';
 
@@ -46,23 +47,35 @@ export function EmployeeInviteCredentials({ title, result }: Props) {
         <div>
           <dt>Einladungslink</dt>
           <dd>
-            <code>{result.inviteUrl}</code>
-            <button type="button" className="text-button" onClick={() => copyText('link', result.inviteUrl)}>
-              {copiedField === 'link' ? 'Kopiert' : 'Link kopieren'}
-            </button>
+            <div className="invite-credentials-value">
+              <code>{result.inviteUrl}</code>
+            </div>
+            <div className="invite-credentials-actions">
+              <button type="button" className="text-button" onClick={() => copyText('link', result.inviteUrl)}>
+                {copiedField === 'link' ? 'Kopiert' : 'Link kopieren'}
+              </button>
+            </div>
           </dd>
         </div>
         <div>
           <dt>E-Mail</dt>
-          <dd><code>{result.email}</code></dd>
+          <dd>
+            <div className="invite-credentials-value">
+              <code>{result.email}</code>
+            </div>
+          </dd>
         </div>
         <div>
           <dt>Einmalpasswort</dt>
           <dd>
-            <code>{result.tempPassword}</code>
-            <button type="button" className="text-button" onClick={() => copyText('password', result.tempPassword)}>
-              {copiedField === 'password' ? 'Kopiert' : 'Passwort kopieren'}
-            </button>
+            <div className="invite-credentials-value">
+              <code>{result.tempPassword}</code>
+            </div>
+            <div className="invite-credentials-actions">
+              <button type="button" className="text-button" onClick={() => copyText('password', result.tempPassword)}>
+                {copiedField === 'password' ? 'Kopiert' : 'Passwort kopieren'}
+              </button>
+            </div>
           </dd>
         </div>
         <div>
@@ -84,6 +97,12 @@ export function EmployeeInviteCredentials({ title, result }: Props) {
           E-Mail-Versand: {result.emailMessage ?? 'Nicht versendet — bitte manuell weitergeben.'}
         </p>
       )}
+
+      <p className="muted invite-credentials-recovery">
+        Nach dem Schließen dieser Seite sind Link und Einmalpasswort nicht erneut abrufbar. Bei Verlust können Sie im{' '}
+        <Link href={`/app/team/${result.userId}?tab=rolle`}>Mitarbeiterprofil unter „Rolle &amp; Zugriff“</Link>{' '}
+        neue Zugangsdaten erzeugen.
+      </p>
     </div>
   );
 }

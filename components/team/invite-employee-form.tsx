@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState } from 'react';
 import { inviteEmployee, type EmployeeInviteResult } from '@/lib/actions/admin';
 import { AppSelect } from '@/components/ui/app-select';
@@ -21,10 +22,17 @@ export function InviteEmployeeForm({ roles }: { roles: RoleOption[] }) {
       </p>
 
       {state?.ok && (
-        <EmployeeInviteCredentials
-          title="Zugangsdaten für den neuen Mitarbeiter"
-          result={state}
-        />
+        <>
+          <EmployeeInviteCredentials
+            title="Zugangsdaten für den neuen Mitarbeiter"
+            result={state}
+          />
+          <p className="muted" style={{ marginBottom: 16 }}>
+            <Link href={`/app/team/${state.userId}?tab=rolle`} className="text-button">
+              Zum Mitarbeiterprofil
+            </Link>
+          </p>
+        </>
       )}
 
       {state && !state.ok && (

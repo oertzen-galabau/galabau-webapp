@@ -22,6 +22,10 @@ import type {
   TimeEntry,
 } from '@/lib/types/database';
 import { EmployeeInvitationPanel } from '@/components/team/employee-invitation-panel';
+import {
+  getMemberAccessStatus,
+  memberAccessStatusLabel,
+} from '@/lib/team/member-access-status';
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
@@ -294,7 +298,13 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
       <div className="employee-section-divider" />
 
       <h3>Status & Zugang</h3>
-      <p>Aktuell: {member.is_active ? 'Aktiv' : 'Inaktiv'}</p>
+      <p>
+        Aktuell:{' '}
+        {memberAccessStatusLabel(getMemberAccessStatus({
+          is_active: member.is_active,
+          must_change_password: member.must_change_password,
+        }))}
+      </p>
       <div className="inline-actions" style={{ marginTop: 8 }}>
         {canDeactivate && !isSelf && (
           <form action={setMemberActive}>

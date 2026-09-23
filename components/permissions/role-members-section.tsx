@@ -3,6 +3,7 @@ import { assignMemberToRole, removeMemberFromRole } from '@/lib/actions/permissi
 import { initials } from '@/lib/auth/roles';
 import type { Profile } from '@/lib/types/database';
 import type { TenantRole } from '@/lib/tenant/roles';
+import { MemberAccessBadge } from '@/components/team/member-access-badge';
 import { AppSelect } from '@/components/ui/app-select';
 
 type Props = {
@@ -61,8 +62,11 @@ export function RoleMembersSection({
                   <strong>{member.first_name} {member.last_name}</strong>
                   <small>{member.email}</small>
                 </span>
-                <span className={`status-badge ${member.is_active ? 'active' : 'travel'}`}>
-                  {member.is_active ? 'Aktiv' : 'Inaktiv'}
+                <span className="team-row-status">
+                  <MemberAccessBadge
+                    is_active={member.is_active}
+                    must_change_password={member.must_change_password}
+                  />
                 </span>
               </Link>
               <form action={removeMemberFromRole} className="role-member-remove-form">

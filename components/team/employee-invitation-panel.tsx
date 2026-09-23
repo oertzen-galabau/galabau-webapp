@@ -48,7 +48,15 @@ export function EmployeeInvitationPanel({
       <h3>Einladung & Erstlogin</h3>
 
       {mustChangePassword ? (
-        <p className="muted">Erstlogin ausstehend — {memberName} muss noch ein persönliches Passwort festlegen.</p>
+        <p className="muted">
+          Erstlogin ausstehend — {memberName} muss noch ein persönliches Passwort festlegen.
+          {status === 'expired' && (
+            <> Die letzte Einladung ist abgelaufen; erzeugen Sie neue Zugangsdaten.</>
+          )}
+          {' '}
+          Link oder Einmalpasswort vergessen? Nutzen Sie unten „Neue Zugangsdaten erzeugen“ — der alte Link wird
+          ungültig.
+        </p>
       ) : (
         <p className="muted">Erstlogin abgeschlossen.</p>
       )}
