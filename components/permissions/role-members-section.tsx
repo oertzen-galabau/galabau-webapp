@@ -58,7 +58,7 @@ export function RoleMembersSection({
             <div className="role-member-row" key={member.id}>
               <Link href={`/app/team/${member.id}`} className="team-row team-row--link">
                 <span className="person-avatar">{initials(member)}</span>
-                <span>
+                <span className="team-row-person">
                   <strong>{member.first_name} {member.last_name}</strong>
                   <small>{member.email}</small>
                 </span>

@@ -1070,6 +1070,30 @@ export async function setMemberActive(formData: FormData) {
   revalidateEmployeePaths(targetUserId);
 }
 
+export async function deleteTeamMember(formData: FormData) {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'team.delete') && !canAccess(ctx, 'team.deactivate')) {
+    throw new Error('Keine Berechtigung');
+  }
+  const { tenantId, userId } = ctx;
+
+  const targetUserId = formData.get('user_id') as string;
+  if (!targetUserId) throw new Error('Mitarbeiter nicht gefunden.');
+
+  if (targetUserId === userId) {
+    throw new Error('Sie können Ihr eigenes Konto nicht löschen.');
+  }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin');
+  const admin = createAdminClient();
+  await assertTenantMember(admin, tenantId, targetUserId);
+
+  const { error } = await admin.auth.admin.deleteUser(targetUserId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/app/team');
+}
+
 export async function sendEmployeePasswordReset(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'team.password_reset');

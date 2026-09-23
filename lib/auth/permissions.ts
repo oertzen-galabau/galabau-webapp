@@ -38,6 +38,7 @@ export const PERMISSION_KEYS = [
   'team.notes',
   'team.password_reset',
   'team.manage_invites',
+  'team.delete',
   'settings.branding',
   'settings.holidays',
   'settings.payroll_rules',
@@ -98,6 +99,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'team.notes', label: 'Personalnotizen pflegen', group: 'Team', implies: ['team.view'] },
   { key: 'team.password_reset', label: 'Passwort-Reset senden', group: 'Team', implies: ['team.view'] },
   { key: 'team.manage_invites', label: 'Einladungen verwalten', group: 'Team', implies: ['team.view'] },
+  { key: 'team.delete', label: 'Mitarbeiter löschen', group: 'Team', implies: ['team.view'] },
   { key: 'settings.branding', label: 'Branding anpassen', group: 'Einstellungen', implies: ['nav.einstellungen'] },
   { key: 'settings.holidays', label: 'Feiertage & Betriebsurlaub', group: 'Einstellungen', implies: ['nav.einstellungen'] },
   { key: 'settings.payroll_rules', label: 'Lohnregeln & Buchungsnummern', group: 'Einstellungen', implies: ['nav.einstellungen'] },
@@ -137,7 +139,7 @@ const ADMIN_EXTRA: PermissionKey[] = [
   'nav.team', 'nav.einstellungen', 'nav.rollen',
   'infoboard.posts', 'urlaub.approve', 'urlaub.view_all',
   'team.view', 'team.invite', 'team.assign_role', 'team.leave_entitlement',
-  'team.edit_profile', 'team.deactivate', 'team.notes', 'team.password_reset', 'team.manage_invites',
+  'team.edit_profile', 'team.deactivate', 'team.notes', 'team.password_reset', 'team.manage_invites', 'team.delete',
   'settings.branding', 'settings.holidays', 'settings.payroll_rules', 'settings.time_tracking', 'settings.start_password', 'roles.manage',
 ];
 
