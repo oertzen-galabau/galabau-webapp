@@ -27,7 +27,8 @@ if (!smtpReady) {
   );
 }
 
-const result = spawnSync('next', ['build'], {
+// Webpack statt Turbopack: Hostinger-Builds sind mit Turbopack+PostCSS instabil (Panic).
+const result = spawnSync('next', ['build', '--webpack'], {
   stdio: 'inherit',
   env,
   shell: true,
