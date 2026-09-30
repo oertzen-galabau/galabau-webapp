@@ -38,7 +38,15 @@ export default async function NachrichtenChatPage({
 
   if (!contact) notFound();
 
-  await markConversationRead(contactId);
+  try {
+    await markConversationRead(contactId);
+  } catch (err) {
+    console.error('[nachrichten] markConversationRead failed', {
+      userId: ctx.userId,
+      contactId,
+      error: err instanceof Error ? err.message : err,
+    });
+  }
 
   const profile = contact as Profile & { tenant_roles?: { name: string } | null };
 

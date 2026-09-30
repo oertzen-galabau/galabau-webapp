@@ -19,7 +19,14 @@ export default async function NachrichtenLayout({
     return <p className="muted">Keine Berechtigung.</p>;
   }
 
-  await markInboxDelivered();
+  try {
+    await markInboxDelivered();
+  } catch (err) {
+    console.error('[nachrichten] markInboxDelivered failed', {
+      userId: ctx.userId,
+      error: err instanceof Error ? err.message : err,
+    });
+  }
 
   const supabase = await createClient();
   const [{ data: members }, { data: messages }] = await Promise.all([
