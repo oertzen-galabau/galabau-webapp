@@ -2,6 +2,7 @@ import type { TimeEntry } from '@/lib/types/database';
 import { TimeEntryTimelineFields, type SiteOption } from '@/components/time-tracking/time-entry-timeline-fields';
 import { BadWeatherClaimField } from '@/components/time-tracking/bad-weather-claim-field';
 import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
+import { todayWorkDate } from '@/lib/time-tracking/work-day';
 
 type Site = SiteOption;
 
@@ -28,7 +29,7 @@ export function TimeEntryFormFields({
   badWeatherSeasonStart,
   badWeatherSeasonEnd,
 }: Props) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayWorkDate();
   const startTime = entry?.start_time?.slice(0, 5) ?? '07:00';
   const endTime = entry?.end_time?.slice(0, 5) ?? '16:00';
 

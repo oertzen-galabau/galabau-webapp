@@ -7,6 +7,7 @@ import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-over
 import { BadWeatherFreigabeControl } from '@/components/payroll/bad-weather-freigabe-control';
 import { TimeApprovalRow } from '@/components/payroll/time-approval-row';
 import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
+import { fetchAccessibleSites } from '@/lib/sites/access';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { formatMinutes } from '@/lib/utils/time';
 import { isBadWeatherForPreview } from '@/lib/payroll/bad-weather-entry';
@@ -23,7 +24,7 @@ export default async function ZeitenPage() {
   if (!canAccess(ctx, 'nav.zeiten')) return <p className="muted">Keine Berechtigung.</p>;
 
   const supabase = await createClient();
-  const month = new Date().toISOString().slice(0, 7);
+  const month = todayWorkDate().slice(0, 7);
   const canApprove = canAccess(ctx, 'zeiten.approve');
   const canEditBookings = canAccess(ctx, 'zeiten.bookings.edit');
   const canMarkBadWeather = canAccess(ctx, 'zeiten.bad_weather.mark');
@@ -38,7 +39,7 @@ export default async function ZeitenPage() {
     { data: entries },
     { data: rejectedEntries },
     { data: pendingEntries },
-    { data: sites },
+    sites,
     { data: bookingCodes },
     { data: badWeatherDays },
   ] = await Promise.all([
@@ -61,10 +62,7 @@ export default async function ZeitenPage() {
           .eq('approval_status', 'pending')
           .order('submitted_at', { ascending: true })
       : Promise.resolve({ data: [] as TimeEntry[] }),
-    supabase
-      .from('sites')
-      .select('id, name, default_travel_minutes')
-      .eq('is_active', true),
+    fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes'),
     supabase
       .from('payroll_booking_codes')
       .select('*')
@@ -195,7 +193,7 @@ export default async function ZeitenPage() {
               <form action={resubmitTimeEntry} className="input-form">
                 <input type="hidden" name="id" value={entry.id} />
                 <TimeEntryFormFields
-                  sites={sites ?? []}
+                  sites={sites}
                   entry={entry}
                   initialBlocks={(segmentsByEntry.get(entry.id) ?? [])
                     .filter((segment) => segment.start_time && segment.end_time)
@@ -302,7 +300,7 @@ export default async function ZeitenPage() {
                 <TimeEntryOverviewRow
                   key={entry.id}
                   entry={entry}
-                  sites={sites ?? []}
+                  sites={sites}
                   today={today}
                   segments={segmentsByEntry.get(entry.id) ?? []}
                   bookings={bookingsByEntry.get(entry.id) ?? []}

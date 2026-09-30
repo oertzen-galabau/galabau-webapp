@@ -6,6 +6,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
 import { enumRoleFromTenantRoleId } from '@/lib/tenant/roles';
+import { canViewAllSites } from '@/lib/sites/access';
 import { readSiteAddressFromForm } from '@/lib/sites/format-address';
 import { syncSiteGeocoding } from '@/lib/weather/sync-site-geocoding';
 
@@ -21,6 +22,11 @@ export async function saveSite(formData: FormData) {
   const supabase = await createClient();
 
   const siteAddress = readSiteAddressFromForm(formData);
+  const responsibleRaw = (formData.get('responsible_user_id') as string)?.trim();
+  // Wer keine mandantenweite Sicht hat (z.B. Vorarbeiter mit sites.manage), soll die
+  // selbst angelegte Baustelle nicht sofort aus der eigenen Sicht verlieren (RLS-Filter
+  // in lib/sites/access.ts zeigt Nicht-Verwaltung nur zugewiesene/verantwortete Sites).
+  const responsible_user_id = responsibleRaw || (canViewAllSites(ctx) ? null : ctx.userId);
 
   const { data: site, error } = await supabase
     .from('sites')
@@ -34,6 +40,7 @@ export async function saveSite(formData: FormData) {
       client_name: (formData.get('client_name') as string) || null,
       directions: (formData.get('directions') as string) || null,
       notes: (formData.get('notes') as string) || null,
+      responsible_user_id,
     })
     .select('id')
     .single();
@@ -293,10 +300,20 @@ export async function updateSite(formData: FormData) {
 
   const { data: existing } = await supabase
     .from('sites')
-    .select('street, zip_code, city, address')
+    .select('street, zip_code, city, address, responsible_user_id')
     .eq('id', siteId)
     .eq('tenant_id', tenantId)
     .single();
+
+  const responsibleRaw = (formData.get('responsible_user_id') as string)?.trim();
+  // Wer keine mandantenweite Sicht hat, kann sich beim Leeren des Felds nicht selbst
+  // aussperren — dann bleibt der bisherige Verantwortliche erhalten. Nur Verwaltung
+  // darf den Verantwortlichen bewusst auf "keiner" zurücksetzen.
+  const responsible_user_id = responsibleRaw
+    ? responsibleRaw
+    : canViewAllSites(ctx)
+      ? null
+      : existing?.responsible_user_id ?? null;
 
   const { error } = await supabase
     .from('sites')
@@ -311,6 +328,7 @@ export async function updateSite(formData: FormData) {
       start_date: (formData.get('start_date') as string) || null,
       end_date: (formData.get('end_date') as string) || null,
       notes: (formData.get('notes') as string) || null,
+      responsible_user_id,
     })
     .eq('id', siteId)
     .eq('tenant_id', tenantId);
@@ -488,6 +506,7 @@ export async function saveSiteSuppliers(formData: FormData) {
   const contactPersons = formData.getAll('contact_person[]');
   const phones = formData.getAll('phone[]');
   const emails = formData.getAll('email[]');
+  const notesList = formData.getAll('notes[]');
   const rowCount = names.length;
 
   for (let i = 0; i < rowCount; i++) {
@@ -500,6 +519,7 @@ export async function saveSiteSuppliers(formData: FormData) {
       contact_person: String(contactPersons[i] ?? '').trim() || null,
       phone: String(phones[i] ?? '').trim() || null,
       email: String(emails[i] ?? '').trim() || null,
+      notes: String(notesList[i] ?? '').trim() || null,
     });
     if (error) throw new Error(error.message);
   }
@@ -577,6 +597,59 @@ export async function deleteSiteSupplier(formData: FormData) {
   const id = formData.get('id') as string;
   if (!id) throw new Error('Kein Eintrag ausgewählt');
   const siteId = await deleteSiteEntity('site_suppliers', id, ctx.tenantId);
+  revalidatePath(`/app/baustellen/${siteId}`);
+}
+
+export async function updateSiteContact(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'sites.manage');
+  const { tenantId } = ctx;
+
+  const id = formData.get('id') as string;
+  const siteId = formData.get('site_id') as string;
+  const name = String(formData.get('name') ?? '').trim();
+  if (!id || !siteId || !name) throw new Error('Pflichtfelder fehlen.');
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('site_contacts')
+    .update({
+      name,
+      role: String(formData.get('role') ?? '').trim() || null,
+      phone: String(formData.get('phone') ?? '').trim() || null,
+      email: String(formData.get('email') ?? '').trim() || null,
+    })
+    .eq('id', id)
+    .eq('site_id', siteId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/app/baustellen/${siteId}`);
+}
+
+export async function updateSiteSupplier(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'sites.manage');
+  const { tenantId } = ctx;
+
+  const id = formData.get('id') as string;
+  const siteId = formData.get('site_id') as string;
+  const name = String(formData.get('name') ?? '').trim();
+  if (!id || !siteId || !name) throw new Error('Pflichtfelder fehlen.');
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('site_suppliers')
+    .update({
+      name,
+      contact_person: String(formData.get('contact_person') ?? '').trim() || null,
+      phone: String(formData.get('phone') ?? '').trim() || null,
+      email: String(formData.get('email') ?? '').trim() || null,
+      notes: String(formData.get('notes') ?? '').trim() || null,
+    })
+    .eq('id', id)
+    .eq('site_id', siteId)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
   revalidatePath(`/app/baustellen/${siteId}`);
 }
 

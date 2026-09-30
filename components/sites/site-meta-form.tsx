@@ -1,12 +1,15 @@
 import { updateSite } from '@/lib/actions/admin';
+import { AppSelect } from '@/components/ui/app-select';
+import type { ForemanOption } from '@/lib/sites/foremen-options';
 import type { Site } from '@/lib/types/database';
 
 type Props = {
   site: Site;
   canEdit: boolean;
+  foremanOptions: ForemanOption[];
 };
 
-export function SiteMetaForm({ site, canEdit }: Props) {
+export function SiteMetaForm({ site, canEdit, foremanOptions }: Props) {
   return (
     <form action={canEdit ? updateSite : undefined} className="site-meta-form input-form">
       <input type="hidden" name="site_id" value={site.id} />
@@ -41,6 +44,17 @@ export function SiteMetaForm({ site, canEdit }: Props) {
         <label>
           Kunde
           <input name="client_name" defaultValue={site.client_name ?? ''} readOnly={!canEdit} disabled={!canEdit} />
+        </label>
+        <label className="input-form-span-full">
+          Verantwortlicher Vorarbeiter
+          <AppSelect
+            name="responsible_user_id"
+            defaultValue={site.responsible_user_id ?? ''}
+            allowEmpty
+            placeholder="— optional —"
+            disabled={!canEdit}
+            options={foremanOptions}
+          />
         </label>
         <label>
           Von

@@ -20,6 +20,8 @@ import {
 import { formatBadWeatherSeasonLabel, isBadWeatherSeason } from '@/lib/payroll/constants';
 import { buildDefaultTimeline, type TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
+import { fetchAccessibleSites } from '@/lib/sites/access';
+import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -35,16 +37,11 @@ export async function getClockOutContext() {
   if (!canAccess(ctx, 'zeiten.record')) throw new Error('Keine Berechtigung');
 
   const supabase = await createClient();
-  const workDate = new Date().toISOString().slice(0, 10);
+  const workDate = todayWorkDate();
 
-  const [{ data: sites }, { data: assignment }, { data: todayEntry }, tenantConfig, timeRules] =
+  const [sites, { data: assignment }, { data: todayEntry }, tenantConfig, timeRules] =
     await Promise.all([
-    supabase
-      .from('sites')
-      .select('id, name, default_travel_minutes')
-      .eq('tenant_id', ctx.tenantId)
-      .eq('is_active', true)
-      .order('name'),
+    fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes'),
     supabase
       .from('daily_assignments')
       .select('site_id, sites(id, name, default_travel_minutes)')
@@ -72,7 +69,7 @@ export async function getClockOutContext() {
     | null
     | undefined;
 
-  const endTime = new Date().toTimeString().slice(0, 5);
+  const endTime = toTimeString(new Date());
   const defaultTimeline: TimelineBlockInput[] = todayEntry?.start_time
     ? buildDefaultTimeline({
         startTime: todayEntry.start_time.slice(0, 5),
@@ -86,7 +83,7 @@ export async function getClockOutContext() {
     : [];
 
   return {
-    sites: sites ?? [],
+    sites,
     defaultTimeline,
     assignedSiteId: assignedSite?.id ?? null,
     startTime: todayEntry?.start_time?.slice(0, 5) ?? null,

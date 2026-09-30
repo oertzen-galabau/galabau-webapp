@@ -1,6 +1,6 @@
-import { deleteSiteContact, saveSiteContacts } from '@/lib/actions/admin';
+import { saveSiteContacts } from '@/lib/actions/admin';
+import { SiteContactRow } from '@/components/sites/site-contact-row';
 import { DynamicFormRows } from '@/components/ui/dynamic-form-rows';
-import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
 
 type Contact = {
   id: string;
@@ -31,23 +31,7 @@ export function SiteContactsSection({ siteId, contacts, canEdit }: Props) {
       {contacts.length > 0 ? (
         <ul className="site-entity-list">
           {contacts.map((contact) => (
-            <li key={contact.id} className="site-entity-row">
-              <div className="site-entity-row-body">
-                <strong>{contact.name}</strong>
-                {contact.role && <span>{contact.role}</span>}
-                <div className="site-entity-row-meta">
-                  {contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}
-                  {contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}
-                </div>
-              </div>
-              {canEdit && (
-                <SiteEntityDeleteButton
-                  id={contact.id}
-                  entityLabel="Ansprechpartner"
-                  onDelete={deleteSiteContact}
-                />
-              )}
-            </li>
+            <SiteContactRow key={contact.id} siteId={siteId} contact={contact} canEdit={canEdit} />
           ))}
         </ul>
       ) : (

@@ -33,6 +33,8 @@ export function RenderWidget({ widgetId, data }: Props) {
           totalMinutesToday={data.metrics.totalMinutesToday}
           activeWorkers={data.metrics.activeWorkers}
           totalWorkers={data.metrics.totalWorkers}
+          showTeamStats={data.showTeamTimeStats}
+          ownMinutesToday={data.ownMinutesToday}
         />
       );
     case 'metric_open_sites':

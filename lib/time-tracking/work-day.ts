@@ -142,3 +142,29 @@ export function currentHour(timeZone = 'Europe/Berlin'): number {
   }).format(new Date());
   return Number(hour);
 }
+
+/** Kalenderdatum ± Tage (ISO YYYY-MM-DD), DST-sicher über UTC-Mittag. */
+export function addCalendarDays(isoDate: string, delta: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Montag der Woche, die refDate enthält (Europe/Berlin). */
+export function startOfWeekDate(refDate?: string, timeZone = 'Europe/Berlin'): string {
+  const ref = refDate ?? todayWorkDate(timeZone);
+  let cursor = ref;
+  for (let i = 0; i < 7; i++) {
+    const weekday = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' }).format(
+      new Date(`${cursor}T12:00:00Z`),
+    );
+    if (weekday === 'Monday') return cursor;
+    cursor = addCalendarDays(cursor, -1);
+  }
+  return ref;
+}
+
+export function endOfWeekDate(refDate?: string, timeZone = 'Europe/Berlin'): string {
+  return addCalendarDays(startOfWeekDate(refDate, timeZone), 6);
+}

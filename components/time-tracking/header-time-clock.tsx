@@ -248,6 +248,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
             onClick={(event) => event.stopPropagation()}
           >
             <h2>Feierabend</h2>
+            <div className="dialog-panel-body">
             <p className="muted">
               Teile deinen Arbeitstag lückenlos in Baustellen, Wegezeiten, Pausen oder sonstige Arbeit ein.
             </p>
@@ -310,6 +311,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
             )}
 
             {error && <p className="dialog-error">{error}</p>}
+            </div>
 
             <div className="dialog-actions">
               <button type="button" className="text-button" onClick={() => setClockOutOpen(false)}>

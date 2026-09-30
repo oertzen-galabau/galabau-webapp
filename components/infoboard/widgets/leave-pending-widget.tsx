@@ -12,8 +12,8 @@ export function LeavePendingWidget({ count }: Props) {
       <span>Offene Urlaubsanträge</span>
       <strong>{count}</strong>
       <p>
-        <Link href="/app/urlaub" className="text-button infoboard-inline-link">
-          Zur Urlaubsübersicht <ArrowRight size={14} />
+        <Link href="/app/urlaub/freigabe" className="text-button infoboard-inline-link">
+          Zur Freigabe-Übersicht <ArrowRight size={14} />
         </Link>
       </p>
     </article>

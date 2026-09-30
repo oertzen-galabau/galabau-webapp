@@ -4,7 +4,10 @@ import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { saveSite } from '@/lib/actions/admin';
 import { SitesArchivedToggle } from '@/components/sites/sites-archived-toggle';
+import { AppSelect } from '@/components/ui/app-select';
+import { resolveAccessibleSiteIds } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
+import { loadForemanOptions } from '@/lib/sites/foremen-options';
 import type { Site } from '@/lib/types/database';
 
 type PageProps = {
@@ -32,13 +35,24 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
   const showArchived = archivedParam === '1';
 
   const supabase = await createClient();
+  const accessibleIds = await resolveAccessibleSiteIds(supabase, ctx);
 
-  const activeQuery = supabase.from('sites').select('*').eq('is_active', true).order('name');
+  let activeQuery = supabase.from('sites').select('*').eq('is_active', true).order('name');
+  if (accessibleIds !== null) {
+    activeQuery = accessibleIds.length
+      ? activeQuery.in('id', accessibleIds)
+      : activeQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
+  }
   const archivedQuery = showArchived
     ? supabase.from('sites').select('*').eq('is_active', false).order('name')
     : Promise.resolve({ data: [] as Site[] });
 
-  const [{ data: activeSites }, { data: archivedSites }] = await Promise.all([activeQuery, archivedQuery]);
+  const canManage = canAccess(ctx, 'sites.manage');
+  const [{ data: activeSites }, { data: archivedSites }, foremanOptions] = await Promise.all([
+    activeQuery,
+    archivedQuery,
+    canManage ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
+  ]);
 
   return (
     <>
@@ -53,13 +67,22 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
         </Suspense>
       </div>
 
-      {canAccess(ctx, 'sites.manage') && (
+      {canManage && (
         <section className="panel form-panel">
           <h2>Neue Baustelle</h2>
           <form action={saveSite} className="input-form">
             <div className="input-form-core">
               <label>Name<input name="name" required /></label>
               <label>Kunde<input name="client_name" /></label>
+              <label className="input-form-span-full">
+                Verantwortlicher Vorarbeiter
+                <AppSelect
+                  name="responsible_user_id"
+                  allowEmpty
+                  placeholder="— optional —"
+                  options={foremanOptions}
+                />
+              </label>
               <label>Straße mit Nr.<input name="street" /></label>
               <label>PLZ<input name="zip_code" /></label>
               <label>Ort<input name="city" /></label>

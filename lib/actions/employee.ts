@@ -659,6 +659,24 @@ export async function updateLeaveStatus(formData: FormData) {
   }).eq('id', requestId);
   if (error) throw new Error(error.message);
 
+  if (request.user_id !== userId) {
+    const { insertDirectMessage } = await import('@/lib/messages/status-notify');
+    const { formatLeaveType } = await import('@/lib/leave/labels');
+    const typeLabel = formatLeaveType(request.leave_type, request.notes);
+    const statusLabel = status === 'approved' ? 'genehmigt' : 'abgelehnt';
+    const range = `${request.start_date} – ${request.end_date}`;
+    try {
+      await insertDirectMessage(supabase, {
+        tenantId: request.tenant_id,
+        senderId: userId,
+        recipientId: request.user_id,
+        body: `Dein Antrag (${typeLabel}, ${range}) wurde ${statusLabel}.`,
+      });
+    } catch {
+      // Chat-Benachrichtigung optional — Freigabe bleibt gültig
+    }
+  }
+
   if (status === 'approved' && leaveRuleKeyForType(request.leave_type)) {
     await syncAutoBookingsForLeave(
       supabase,
@@ -699,6 +717,8 @@ export async function updateLeaveStatus(formData: FormData) {
   }
 
   revalidatePath('/app/urlaub');
+  revalidatePath('/app/urlaub/freigabe');
+  revalidatePath('/app/nachrichten');
 }
 
 export async function sendChatMessage(recipientId: string, body: string) {

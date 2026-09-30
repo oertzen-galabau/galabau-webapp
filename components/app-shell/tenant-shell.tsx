@@ -8,11 +8,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
-  LogOut, Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
+  Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { createClient } from '@/lib/supabase/client';
+import { LogoutButton } from '@/components/auth/logout-button';
 import { RoleSwitcher } from '@/components/dev/role-switcher';
 import { HeaderTimeClock } from '@/components/time-tracking/header-time-clock';
 import { HeaderWeather } from '@/components/weather/header-weather';
@@ -156,12 +157,6 @@ export function TenantShell({
     ?? tenantRoleName
     ?? '—';
 
-  async function logout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.href = '/login';
-  }
-
   return (
     <main className="design-system-app">
       <div className="app-frame">
@@ -211,7 +206,7 @@ export function TenantShell({
                 <small>{tenantRoleName ?? '—'}</small>
               </span>
             </Link>
-            <button type="button" onClick={logout} aria-label="Abmelden"><LogOut size={16} /></button>
+            <LogoutButton variant="icon" />
           </div>
         </aside>
 
@@ -281,6 +276,7 @@ export function TenantShell({
                 <span className="avatar avatar--sm">{initials(profile)}</span>
                 Mein Profil
               </Link>
+              <LogoutButton variant="drawer" />
             </div>
           )}
 

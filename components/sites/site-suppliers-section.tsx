@@ -1,6 +1,6 @@
-import { deleteSiteSupplier, saveSiteSuppliers } from '@/lib/actions/admin';
+import { saveSiteSuppliers } from '@/lib/actions/admin';
+import { SiteSupplierRow } from '@/components/sites/site-supplier-row';
 import { DynamicFormRows } from '@/components/ui/dynamic-form-rows';
-import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
 
 type Supplier = {
   id: string;
@@ -8,6 +8,7 @@ type Supplier = {
   contact_person: string | null;
   phone: string | null;
   email: string | null;
+  notes: string | null;
 };
 
 type Props = {
@@ -21,6 +22,7 @@ const SUPPLIER_FIELDS = [
   { name: 'contact_person[]', label: 'Ansprechpartner' },
   { name: 'phone[]', label: 'Telefon', type: 'tel' },
   { name: 'email[]', label: 'E-Mail', type: 'email' },
+  { name: 'notes[]', label: 'Bemerkung', className: 'input-form-span-full' },
 ];
 
 export function SiteSuppliersSection({ siteId, suppliers, canEdit }: Props) {
@@ -31,23 +33,7 @@ export function SiteSuppliersSection({ siteId, suppliers, canEdit }: Props) {
       {suppliers.length > 0 ? (
         <ul className="site-entity-list">
           {suppliers.map((supplier) => (
-            <li key={supplier.id} className="site-entity-row">
-              <div className="site-entity-row-body">
-                <strong>{supplier.name}</strong>
-                {supplier.contact_person && <span>{supplier.contact_person}</span>}
-                <div className="site-entity-row-meta">
-                  {supplier.phone && <a href={`tel:${supplier.phone}`}>{supplier.phone}</a>}
-                  {supplier.email && <a href={`mailto:${supplier.email}`}>{supplier.email}</a>}
-                </div>
-              </div>
-              {canEdit && (
-                <SiteEntityDeleteButton
-                  id={supplier.id}
-                  entityLabel="Lieferant"
-                  onDelete={deleteSiteSupplier}
-                />
-              )}
-            </li>
+            <SiteSupplierRow key={supplier.id} siteId={siteId} supplier={supplier} canEdit={canEdit} />
           ))}
         </ul>
       ) : (

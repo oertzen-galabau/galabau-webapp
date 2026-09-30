@@ -15,7 +15,9 @@ import {
   SiteTimeEntriesSection,
   type SiteApprovedTimeEntry,
 } from '@/components/sites/site-time-entries-section';
+import { userCanAccessSite } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
+import { loadForemanOptions } from '@/lib/sites/foremen-options';
 import type { TimeBlockType } from '@/lib/types/database';
 
 async function countRows(
@@ -36,6 +38,10 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   if (!canAccess(ctx, 'nav.baustellen')) return <p className="muted">Keine Berechtigung.</p>;
 
   const supabase = await createClient();
+  const canAccessSite = await userCanAccessSite(supabase, ctx, id);
+  if (!canAccessSite) notFound();
+
+  const canManageSites = canAccess(ctx, 'sites.manage');
 
   const [
     { data: site },
@@ -51,6 +57,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     assignmentCount,
     badWeatherCount,
     segmentCount,
+    foremanOptions,
   ] = await Promise.all([
     supabase.from('sites').select('*').eq('id', id).single(),
     supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
@@ -73,6 +80,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     countRows(supabase, 'daily_assignments', id),
     countRows(supabase, 'bad_weather_days', id),
     countRows(supabase, 'time_entry_segments', id),
+    canManageSites ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
   ]);
 
   const dailyLogIds = (dailyLogs ?? []).map((log) => log.id);
@@ -215,7 +223,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
       <div className="order-layout">
         <section className="panel order-main">
-          <SiteMetaForm site={site} canEdit={canEdit} />
+          <SiteMetaForm site={site} canEdit={canEdit} foremanOptions={foremanOptions} />
           <SiteContactsSection siteId={id} contacts={contacts ?? []} canEdit={canEdit} />
           <SiteSuppliersSection siteId={id} suppliers={suppliers ?? []} canEdit={canEdit} />
           <SiteReportsSection

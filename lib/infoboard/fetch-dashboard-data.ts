@@ -10,7 +10,13 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import type { SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
 import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
-import { currentHour, greetingForHour, todayWorkDate } from '@/lib/time-tracking/work-day';
+import {
+  currentHour,
+  endOfWeekDate,
+  greetingForHour,
+  startOfWeekDate,
+  todayWorkDate,
+} from '@/lib/time-tracking/work-day';
 
 type ProfileRef = { first_name: string; last_name: string };
 type SiteRef = { name: string; address: string | null };
@@ -25,20 +31,6 @@ function asSiteRef(value: unknown): SiteRef | null {
   if (!value || Array.isArray(value)) return null;
   const site = value as SiteRef;
   return site.name ? site : null;
-}
-
-function startOfWeek(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
-function endOfWeek(date: Date): string {
-  const d = new Date(startOfWeek(date));
-  d.setDate(d.getDate() + 6);
-  return d.toISOString().slice(0, 10);
 }
 
 function formatAppointmentTime(iso: string): string {
@@ -77,8 +69,8 @@ export async function fetchInfoboardPayload(
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const weekStart = startOfWeek(now);
-  const weekEnd = endOfWeek(now);
+  const weekStart = startOfWeekDate(today);
+  const weekEnd = endOfWeekDate(today);
   const dayStart = `${today}T00:00:00`;
   const dayEnd = `${today}T23:59:59`;
 
@@ -173,8 +165,12 @@ export async function fetchInfoboardPayload(
   ]);
 
   const totalMinutesToday = (todayEntries ?? []).reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
+  const ownMinutesToday = (todayEntries ?? [])
+    .filter((e) => e.user_id === ctx.userId)
+    .reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const activeWorkers = (todayEntries ?? []).filter((e) => !e.end_time).length;
   const totalWorkers = activeProfiles?.length ?? 0;
+  const showTeamTimeStats = canAccess(ctx, 'zeiten.view_all');
   const pendingReports = (openReports ?? []).filter((r) => r.status === 'draft').length;
   const rejectedCount = rejectedTimeEntries?.length ?? 0;
   const totalPending = pendingCount ?? 0;
@@ -237,10 +233,13 @@ export async function fetchInfoboardPayload(
       greeting,
       firstName,
       dateLabel,
-      subtitle:
-        activeWorkers > 0
+      subtitle: showTeamTimeStats
+        ? activeWorkers > 0
           ? `${activeWorkers} Mitarbeitende sind heute aktiv.`
-          : 'Dein Betrieb ist bereit — Starte die Zeit oben im Header.',
+          : 'Dein Betrieb ist bereit — Starte die Zeit oben im Header.'
+        : ownMinutesToday > 0
+          ? 'Deine Zeiten für heute sind erfasst.'
+          : 'Starte die Zeiterfassung oben im Header.',
       rejectedCount,
       pendingApproval: {
         rows: pendingRows,
@@ -269,6 +268,8 @@ export async function fetchInfoboardPayload(
       canManagePosts,
       leavePendingCount: leavePendingCount ?? 0,
       unreadMessagesCount: unreadMessagesCount ?? 0,
+      showTeamTimeStats,
+      ownMinutesToday,
     },
   };
 }

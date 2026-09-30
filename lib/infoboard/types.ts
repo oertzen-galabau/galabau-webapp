@@ -102,4 +102,6 @@ export type InfoboardWidgetData = {
   canManagePosts: boolean;
   leavePendingCount: number;
   unreadMessagesCount: number;
+  showTeamTimeStats: boolean;
+  ownMinutesToday: number;
 };

@@ -583,11 +583,43 @@ label.dialog-field.input-form-checkbox {
 }
 .dialog-panel {
   width: min(100%, 480px); flex: none; margin: auto;
-  overflow: visible;
+  display: flex; max-height: min(92dvh, 720px); flex-direction: column;
+  overflow: hidden;
   padding: 20px; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--surface-raised); box-shadow: var(--shadow);
 }
 .dialog-panel--wide { width: min(100%, 760px); }
+.dialog-panel-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding-bottom: 8px;
+}
+.dialog-panel .dialog-actions {
+  position: sticky; bottom: 0; z-index: 2;
+  flex-shrink: 0;
+  margin-top: auto; padding-top: 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+@media (max-width: 760px) {
+  .dialog-backdrop { align-items: flex-end; padding: 0; }
+  .dialog-panel {
+    width: 100%; max-height: min(88dvh, 720px); margin: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  }
+  .dialog-panel .dialog-actions {
+    padding-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  }
+}
+.site-entity-edit { margin-top: 8px; }
+.site-entity-edit-form { margin-top: 10px; display: grid; gap: 8px; }
+.site-entity-notes { margin: 6px 0 0; white-space: pre-wrap; }
+.profile-requests-grid {
+  display: grid; gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.profile-requests-overview h3 { margin: 0 0 8px; font-size: var(--text-ui); }
 .time-timeline { display: grid; gap: 12px; margin: 12px 0; overflow: visible; }
 .time-timeline-header { display: grid; gap: 4px; }
 .time-timeline-row {
@@ -1793,6 +1825,13 @@ button.input-form-file-cta {
 .mobile-bottom-nav a.active { color: var(--brand); }
 .mobile-drawer a { display: flex; min-height: 52px; align-items: center; gap: 12px; padding: 0 14px; border-radius: var(--radius-small); color: #ffffffb7; }
 .mobile-drawer a.active { background: var(--brand); color: var(--on-brand); }
+.mobile-drawer-logout {
+  display: flex; width: 100%; min-height: 52px; align-items: center; gap: 12px;
+  margin-top: 8px; padding: 0 14px; border: none; border-radius: var(--radius-small);
+  background: transparent; color: #ffffffb7; font-family: var(--font-ui); font-size: var(--text-ui); cursor: pointer;
+}
+.mobile-drawer-logout:hover { background: color-mix(in srgb, #fff 8%, transparent); }
+.logout-button { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; }
 
 /* Chat (WhatsApp-Layout) */
 .chat-shell {

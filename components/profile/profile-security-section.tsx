@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import { LogoutButton } from '@/components/auth/logout-button';
 import {
   changeOwnEmail,
   changeOwnPassword,
@@ -92,6 +93,12 @@ export function ProfileSecuritySection({ email, canChangeEmail, canChangePasswor
         ) : (
           <p className="muted">Keine Berechtigung zum Ändern des Passworts.</p>
         )}
+      </div>
+
+      <div className="profile-security-block">
+        <h3>Sitzung</h3>
+        <p className="muted">Sie melden sich mit Ihrem persönlichen Konto an. Zum Wechseln der Person bitte abmelden.</p>
+        <LogoutButton />
       </div>
     </section>
   );
