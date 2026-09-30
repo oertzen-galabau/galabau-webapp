@@ -2,10 +2,18 @@ import Link from 'next/link';
 import type { ReportStatus } from '@/lib/types/database';
 import { GenerateReportButton } from '@/components/reports/generate-report-button';
 import { SendReportButton } from '@/components/reports/send-report-button';
+import { DailyLogReportTypeBadge } from '@/components/documentation/daily-log-report-type-badge';
+import {
+  displayTitleForLog,
+  isHourlyWageRapport,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 export type SiteReportEntry = {
   id: string;
   logDate: string;
+  reportType: DailyLogReportType;
+  customTitle: string | null;
   weather: string | null;
   notes: string | null;
   workerCount: number;
@@ -60,8 +68,10 @@ function reportStatusLabel(entry: SiteReportEntry): { label: string; badgeClass:
 
 function buildSummary(entry: SiteReportEntry) {
   const parts: string[] = [];
+  const title = displayTitleForLog(entry.reportType, entry.customTitle);
+  if (entry.customTitle?.trim()) parts.push(title);
   if (entry.weather?.trim()) parts.push(entry.weather.trim());
-  if (entry.workerCount > 0) {
+  if (isHourlyWageRapport(entry.reportType) && entry.workerCount > 0) {
     const hoursLabel =
       entry.totalHours > 0
         ? `${entry.workerCount} MA · ${entry.totalHours.toLocaleString('de-DE', { maximumFractionDigits: 1 })} h`
@@ -87,10 +97,10 @@ export function SiteReportsSection({
   return (
     <section className="site-detail-section">
       <div className="site-detail-section-head">
-        <h2>Rapporte</h2>
+        <h2>Berichte</h2>
         {canCreate && (
           <Link href={`/app/dokumentation?site=${siteId}`} className="text-button">
-            Neuer Rapport
+            Neuer Bericht
           </Link>
         )}
       </div>
@@ -101,6 +111,7 @@ export function SiteReportsSection({
             <thead>
               <tr>
                 <th>Datum</th>
+                <th>Art</th>
                 <th>Inhalt</th>
                 <th>PDF</th>
                 <th className="data-table-col--optional">Aktionen</th>
@@ -116,6 +127,9 @@ export function SiteReportsSection({
                 return (
                   <tr key={entry.id}>
                     <td>{formatDate(entry.logDate)}</td>
+                    <td>
+                      <DailyLogReportTypeBadge reportType={entry.reportType} customTitle={entry.customTitle} />
+                    </td>
                     <td>{buildSummary(entry)}</td>
                     <td>
                       <span className={`status-badge ${badgeClass}`.trim()}>{statusLabel}</span>
@@ -157,12 +171,12 @@ export function SiteReportsSection({
         </div>
       ) : (
         <p className="muted">
-          Noch keine Rapporte für diese Baustelle.
+          Noch keine Berichte für diese Baustelle.
           {canNavDocs && (
             <>
               {' '}
               <Link href={canCreate ? `/app/dokumentation?site=${siteId}` : '/app/dokumentation'}>
-                Tagesrapport anlegen
+                Bericht anlegen
               </Link>
             </>
           )}

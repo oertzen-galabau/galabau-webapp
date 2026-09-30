@@ -14,6 +14,11 @@ import {
   validatePhotoCount,
 } from '@/lib/documentation/report-validation';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
+import {
+  isHourlyWageRapport,
+  parseDailyLogReportType,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -24,10 +29,30 @@ async function replaceChildRows(
   tenantId: string,
   dailyLogId: string,
   formData: FormData,
+  reportType: DailyLogReportType,
 ) {
-  await supabase.from('daily_log_worker_hours').delete().eq('daily_log_id', dailyLogId);
+  const hourly = isHourlyWageRapport(reportType);
+
   await supabase.from('daily_log_work').delete().eq('daily_log_id', dailyLogId);
+  await supabase.from('daily_log_worker_hours').delete().eq('daily_log_id', dailyLogId);
   await supabase.from('equipment_hours').delete().eq('daily_log_id', dailyLogId);
+
+  const workItems = parseWorkItemRows(formData);
+  if (workItems.length > 0) {
+    const { error } = await supabase.from('daily_log_work').insert(
+      workItems.map((item) => ({
+        tenant_id: tenantId,
+        daily_log_id: dailyLogId,
+        description: item.description,
+        worker_hours: 0,
+        quantity: item.quantity,
+        unit: item.unit,
+      })),
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  if (!hourly) return;
 
   const workers = parseWorkerHoursRows(formData);
   if (workers.length > 0) {
@@ -52,21 +77,6 @@ async function replaceChildRows(
           hours: row.hours,
         };
       }),
-    );
-    if (error) throw new Error(error.message);
-  }
-
-  const workItems = parseWorkItemRows(formData);
-  if (workItems.length > 0) {
-    const { error } = await supabase.from('daily_log_work').insert(
-      workItems.map((item) => ({
-        tenant_id: tenantId,
-        daily_log_id: dailyLogId,
-        description: item.description,
-        worker_hours: 0,
-        quantity: item.quantity,
-        unit: item.unit,
-      })),
     );
     if (error) throw new Error(error.message);
   }
@@ -163,6 +173,9 @@ export async function saveDailyReport(formData: FormData) {
 
   if (!siteId || !logDate) throw new Error('Baustelle und Datum sind erforderlich');
 
+  const customTitle = String(formData.get('custom_title') ?? '').trim() || null;
+  let reportType = parseDailyLogReportType(String(formData.get('report_type') ?? ''));
+
   const removedPhotoIds = formData.getAll('removed_photo_id[]').map((id) => String(id));
   const photoFiles = formData.getAll('photos').filter(
     (entry): entry is File => entry instanceof File && entry.size > 0,
@@ -173,11 +186,12 @@ export async function saveDailyReport(formData: FormData) {
   if (existingLogId) {
     const { data: existingLog, error: loadError } = await supabase
       .from('daily_logs')
-      .select('id, tenant_id, site_id')
+      .select('id, tenant_id, site_id, report_type')
       .eq('id', existingLogId)
       .single();
     if (loadError || !existingLog) throw new Error('Tageseintrag nicht gefunden');
     if (existingLog.tenant_id !== tenantId) throw new Error('Keine Berechtigung');
+    reportType = parseDailyLogReportType(existingLog.report_type as string);
 
     const { data: activePhotos } = await supabase
       .from('daily_log_photos')
@@ -198,12 +212,24 @@ export async function saveDailyReport(formData: FormData) {
         dictation_extraction: formData.get('dictation_extraction')
           ? (JSON.parse(String(formData.get('dictation_extraction'))) as Record<string, unknown>)
           : null,
+        custom_title: customTitle,
       })
       .eq('id', existingLogId);
     if (error) throw new Error(error.message);
 
-    await replaceChildRows(supabase, tenantId, existingLogId, formData);
-    await saveSignatures(supabase, tenantId, siteId, existingLogId, formData);
+    await replaceChildRows(supabase, tenantId, existingLogId, formData, reportType);
+    if (isHourlyWageRapport(reportType)) {
+      await saveSignatures(supabase, tenantId, siteId, existingLogId, formData);
+    } else {
+      const { data: existingSignatures } = await supabase
+        .from('daily_log_signatures')
+        .select('id, file_url')
+        .eq('daily_log_id', existingLogId);
+      for (const signature of existingSignatures ?? []) {
+        if (signature.file_url) await deletePrivateFile('daily-photos', signature.file_url);
+        await supabase.from('daily_log_signatures').delete().eq('id', signature.id);
+      }
+    }
 
     for (const photoId of removedPhotoIds) {
       const { data: photo } = await supabase
@@ -234,8 +260,10 @@ export async function saveDailyReport(formData: FormData) {
           dictation_extraction: formData.get('dictation_extraction')
             ? (JSON.parse(String(formData.get('dictation_extraction'))) as Record<string, unknown>)
             : null,
+          report_type: reportType,
+          custom_title: customTitle,
         },
-        { onConflict: 'tenant_id,site_id,log_date' },
+        { onConflict: 'tenant_id,site_id,log_date,report_type' },
       )
       .select('*')
       .single();
@@ -243,8 +271,10 @@ export async function saveDailyReport(formData: FormData) {
     if (error || !log) throw new Error(error?.message ?? 'Fehler beim Speichern');
     logId = log.id;
 
-    await replaceChildRows(supabase, tenantId, log.id, formData);
-    await saveSignatures(supabase, tenantId, siteId, log.id, formData);
+    await replaceChildRows(supabase, tenantId, log.id, formData, reportType);
+    if (isHourlyWageRapport(reportType)) {
+      await saveSignatures(supabase, tenantId, siteId, log.id, formData);
+    }
   }
 
   if (!logId) throw new Error('Tageseintrag konnte nicht gespeichert werden');

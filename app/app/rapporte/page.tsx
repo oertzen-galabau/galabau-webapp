@@ -3,6 +3,11 @@ import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { GenerateReportButton } from '@/components/reports/generate-report-button';
 import { SendReportButton } from '@/components/reports/send-report-button';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
+import {
+  displayTitleForLog,
+  parseDailyLogReportType,
+  shortLabelForReportType,
+} from '@/lib/documentation/report-labels';
 
 export default async function RapportePage() {
   const ctx = await requireTenantMember();
@@ -17,7 +22,7 @@ export default async function RapportePage() {
 
   const { data: logs } = await supabase
     .from('daily_logs')
-    .select('id, log_date, site_id, sites(name)')
+    .select('id, log_date, site_id, report_type, custom_title, sites(name)')
     .order('log_date', { ascending: false })
     .limit(30);
 
@@ -37,13 +42,20 @@ export default async function RapportePage() {
       <section className="panel">
         <h2>Rapport aus Tagesdaten erzeugen</h2>
         <div className="form-stack">
-          {(logs ?? []).map((log) => (
-            <GenerateReportButton
-              key={log.id}
-              dailyLogId={log.id}
-              label={`${log.log_date} · ${(log.sites as { name: string }[] | null)?.[0]?.name ?? ''}`}
-            />
-          ))}
+          {(logs ?? []).map((log) => {
+            const siteRaw = log.sites as { name: string } | { name: string }[] | null;
+            const siteName = Array.isArray(siteRaw) ? siteRaw[0]?.name ?? '' : siteRaw?.name ?? '';
+            const reportType = parseDailyLogReportType(log.report_type as string);
+            const title = displayTitleForLog(reportType, log.custom_title as string | null);
+            const typeLabel = shortLabelForReportType(reportType);
+            return (
+              <GenerateReportButton
+                key={log.id}
+                dailyLogId={log.id}
+                label={`${log.log_date} · ${siteName} · ${typeLabel}${log.custom_title?.trim() ? ` · ${title}` : ''}`}
+              />
+            );
+          })}
           {!logs?.length && <p className="muted">Keine Tagesdaten vorhanden.</p>}
         </div>
       </section>

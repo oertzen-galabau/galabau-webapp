@@ -10,6 +10,12 @@ import {
 } from '@/lib/actions/admin';
 import { ConfirmDialog } from '@/components/ui/app-dialogs';
 import { formatSignatureAuditLine } from '@/lib/documentation/signature-location';
+import { DailyLogReportTypeBadge } from '@/components/documentation/daily-log-report-type-badge';
+import {
+  displayTitleForLog,
+  isHourlyWageRapport,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 type DeleterProfile = {
   first_name: string;
@@ -83,6 +89,8 @@ type SignatureSummary = {
 type LogEntry = {
   id: string;
   log_date: string;
+  report_type: DailyLogReportType;
+  custom_title: string | null;
   weather: string | null;
   notes: string | null;
   site_name: string;
@@ -190,11 +198,20 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
     <>
       {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
       <div className="form-stack">
-        {logs.map((log) => (
+        {logs.map((log) => {
+          const hourly = isHourlyWageRapport(log.report_type);
+          const displayTitle = displayTitleForLog(log.report_type, log.custom_title);
+          return (
           <div key={log.id} className="panel" style={{ padding: 16 }}>
             <div className="documentation-entry-row">
               <div>
-                <strong>{log.log_date} · {log.site_name}</strong>
+                <div className="documentation-entry-title-row">
+                  <strong>{log.log_date} · {log.site_name}</strong>
+                  <DailyLogReportTypeBadge reportType={log.report_type} customTitle={log.custom_title} />
+                </div>
+                {log.custom_title?.trim() && (
+                  <p className="muted" style={{ marginTop: 4 }}>{displayTitle}</p>
+                )}
                 <p className="muted">
                   Auftraggeber: {log.client_name ?? '—'} · Wetter: {log.weather ?? '—'}
                   {log.notes ? ` · Notiz: ${log.notes}` : ''}
@@ -207,7 +224,7 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
               )}
             </div>
 
-            {log.workers.length > 0 && (
+            {hourly && log.workers.length > 0 && (
               <div className="documentation-entry-group">
                 <p className="documentation-entry-group-title">Mitarbeiter</p>
                 <ul className="documentation-entry-list">
@@ -235,7 +252,7 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
               </div>
             )}
 
-            {log.resources.length > 0 && (
+            {hourly && log.resources.length > 0 && (
               <div className="documentation-entry-group">
                 <p className="documentation-entry-group-title">Maschine / Material</p>
                 <ul className="documentation-entry-list">
@@ -250,7 +267,7 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
               </div>
             )}
 
-            {log.signatures.length > 0 && (
+            {hourly && log.signatures.length > 0 && (
               <div className="documentation-entry-group">
                 <p className="documentation-entry-group-title">Unterschriften</p>
                 <div className="documentation-photo-grid">
@@ -413,7 +430,8 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
               </ul>
             )}
           </div>
-        ))}
+        );
+        })}
       </div>
 
       <ConfirmDialog

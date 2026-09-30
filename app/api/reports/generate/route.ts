@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildReportPdf, type ReportPhotoInput, type ReportSignatureInput } from '@/lib/reports/pdf';
 import { buildStoragePath } from '@/lib/supabase/storage';
+import { parseDailyLogReportType } from '@/lib/documentation/report-labels';
 
 export async function POST(request: Request) {
   const { dailyLogId } = await request.json();
@@ -98,6 +99,8 @@ export async function POST(request: Request) {
     siteName: site?.name ?? 'Baustelle',
     siteAddress: site?.address ?? null,
     reportDate: log.log_date,
+    reportType: parseDailyLogReportType(log.report_type as string),
+    customTitle: log.custom_title as string | null,
     weather: log.weather,
     notes: log.notes,
     workers: (workers ?? []).map((row) => ({

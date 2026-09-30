@@ -3,6 +3,11 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendMail, getDefaultMailRecipient, sendMailFailureText } from '@/lib/email/smtp';
+import {
+  displayTitleForLog,
+  parseDailyLogReportType,
+  pdfFilenameStem,
+} from '@/lib/documentation/report-labels';
 
 export async function POST(request: Request) {
   const { reportId, to } = await request.json();
@@ -23,10 +28,10 @@ export async function POST(request: Request) {
 
   const { data: report } = await supabase
     .from('reports')
-    .select('*, sites(name), tenants(name)')
+    .select('*, sites(name), tenants(name), daily_logs(report_type, custom_title)')
     .eq('id', reportId)
     .single();
-  if (!report) return NextResponse.json({ error: 'Rapport nicht gefunden' }, { status: 404 });
+  if (!report) return NextResponse.json({ error: 'Bericht nicht gefunden' }, { status: 404 });
   if (!report.pdf_url) return NextResponse.json({ error: 'Kein PDF für diesen Rapport vorhanden' }, { status: 400 });
 
   const recipient = (to as string) || getDefaultMailRecipient();
@@ -50,14 +55,21 @@ export async function POST(request: Request) {
   const tenantName = (report.tenants as { name: string } | { name: string }[] | null);
   const tenantLabel = Array.isArray(tenantName) ? tenantName[0]?.name : tenantName?.name;
 
+  const dailyLogRaw = report.daily_logs as
+    | { report_type: string; custom_title: string | null }
+    | { report_type: string; custom_title: string | null }[]
+    | null;
+  const dailyLog = Array.isArray(dailyLogRaw) ? dailyLogRaw[0] : dailyLogRaw;
+  const reportType = parseDailyLogReportType(dailyLog?.report_type);
+  const docTitle = displayTitleForLog(reportType, dailyLog?.custom_title);
+  const filename = `${pdfFilenameStem(reportType, dailyLog?.custom_title ?? null, report.report_date)}.pdf`;
+
   const result = await sendMail({
     to: recipient,
-    subject: `Bautagesrapport ${report.report_date} · ${siteLabel ?? ''}`,
-    text: `Anbei der Bautagesrapport vom ${report.report_date} für ${siteLabel ?? 'die Baustelle'} (${tenantLabel ?? ''}).`,
+    subject: `${docTitle} ${report.report_date} · ${siteLabel ?? ''}`,
+    text: `Anbei „${docTitle}“ vom ${report.report_date} für ${siteLabel ?? 'die Baustelle'} (${tenantLabel ?? ''}).`,
     replyTo: user.email ?? undefined,
-    attachments: [
-      { filename: `Rapport_${report.report_date}.pdf`, content: buffer, contentType: 'application/pdf' },
-    ],
+    attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
   });
 
   if (!result.ok) {

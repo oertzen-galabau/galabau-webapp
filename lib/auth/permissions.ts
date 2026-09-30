@@ -23,6 +23,7 @@ export const PERMISSION_KEYS = [
   'urlaub.view_all',
   'sites.view',
   'sites.manage',
+  'sites.assign_team',
   'documentation.manage',
   'documentation.dictate',
   'reports.generate',
@@ -84,6 +85,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'urlaub.view_all', label: 'Alle Anträge einsehen', group: 'Urlaub' },
   { key: 'sites.view', label: 'Baustellen einsehen', group: 'Baustellen' },
   { key: 'sites.manage', label: 'Baustellen bearbeiten', group: 'Baustellen', implies: ['sites.view'] },
+  { key: 'sites.assign_team', label: 'Baustellen-Team zuweisen', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'documentation.manage', label: 'Tagesdokumentation', group: 'Dokumentation', implies: ['sites.view'] },
   { key: 'documentation.dictate', label: 'Diktierfunktion', group: 'Dokumentation', implies: ['documentation.manage'] },
   { key: 'reports.generate', label: 'Rapporte erstellen', group: 'Rapporte', implies: ['sites.view'] },
@@ -136,6 +138,7 @@ const FOREMAN_EXTRA: PermissionKey[] = [
 ];
 
 const ADMIN_EXTRA: PermissionKey[] = [
+  'sites.assign_team',
   'nav.team', 'nav.einstellungen', 'nav.rollen',
   'infoboard.posts', 'urlaub.approve', 'urlaub.view_all',
   'team.view', 'team.invite', 'team.assign_role', 'team.leave_entitlement',

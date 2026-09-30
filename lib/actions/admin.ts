@@ -67,7 +67,8 @@ export async function saveDailyLog(formData: FormData) {
     weather: (formData.get('weather') as string) || null,
     notes: (formData.get('notes') as string) || null,
     created_by: userId,
-  }, { onConflict: 'tenant_id,site_id,log_date' }).select('*').single();
+    report_type: 'hourly_wage_rapport',
+  }, { onConflict: 'tenant_id,site_id,log_date,report_type' }).select('*').single();
 
   if (error || !log) throw new Error(error?.message ?? 'Fehler');
 

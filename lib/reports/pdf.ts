@@ -1,4 +1,10 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import {
+  displayTitleForLog,
+  isHourlyWageRapport,
+  parseDailyLogReportType,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 export type ReportPhotoInput = {
   bytes: Uint8Array;
@@ -23,6 +29,8 @@ export type ReportInput = {
   siteName: string;
   siteAddress: string | null;
   reportDate: string;
+  reportType?: DailyLogReportType;
+  customTitle?: string | null;
   weather: string | null;
   notes: string | null;
   workers: { worker_name: string; job_title: string | null; hours: number }[];
@@ -51,6 +59,10 @@ function formatQuantityLine(quantity: number | null, unit: string | null, hours?
 }
 
 export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
+  const reportType = parseDailyLogReportType(input.reportType);
+  const hourly = isHourlyWageRapport(reportType);
+  const headingTitle = displayTitleForLog(reportType, input.customTitle);
+
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -84,7 +96,7 @@ export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
     y -= 14;
   };
 
-  drawHeading('Rapportzettel – Stundenlohn-Arbeiten');
+  drawHeading(headingTitle);
   drawLine(`Auftragnehmer: ${input.tenantName}`);
   drawLine(`Auftraggeber: ${input.clientName ?? '—'}`);
   drawLine(`Baustelle: ${input.siteName}`);
@@ -93,19 +105,21 @@ export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
   drawLine(`Wetter: ${input.weather ?? '—'}`);
   y -= 8;
 
-  drawSubheading('Lohn / Mitarbeiter');
-  if (input.workers.length) {
-    for (const worker of input.workers) {
-      drawLine(`${worker.worker_name}${worker.job_title ? ` (${worker.job_title})` : ''} — ${worker.hours} Std.`);
+  if (hourly) {
+    drawSubheading('Lohn / Mitarbeiter');
+    if (input.workers.length) {
+      for (const worker of input.workers) {
+        drawLine(`${worker.worker_name}${worker.job_title ? ` (${worker.job_title})` : ''} — ${worker.hours} Std.`);
+      }
+      const totalHours = input.workers.reduce((sum, worker) => sum + worker.hours, 0);
+      drawLine(`Gesamt: ${totalHours} Std.`);
+    } else {
+      drawLine('Keine Einträge');
     }
-    const totalHours = input.workers.reduce((sum, worker) => sum + worker.hours, 0);
-    drawLine(`Gesamt: ${totalHours} Std.`);
-  } else {
-    drawLine('Keine Einträge');
+    y -= 8;
   }
-  y -= 8;
 
-  drawSubheading('Bezeichnung der Leistung');
+  drawSubheading(hourly ? 'Bezeichnung der Leistung' : 'Tätigkeiten / Leistung');
   if (input.workItems.length) {
     for (const item of input.workItems) {
       drawLine(`${item.description}${formatQuantityLine(item.quantity, item.unit)}`);
@@ -115,15 +129,17 @@ export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
   }
   y -= 8;
 
-  drawSubheading('Maschine / Material');
-  if (input.resources.length) {
-    for (const item of input.resources) {
-      drawLine(`${item.equipment_name}${formatQuantityLine(item.quantity, item.unit, item.hours)}`);
+  if (hourly) {
+    drawSubheading('Maschine / Material');
+    if (input.resources.length) {
+      for (const item of input.resources) {
+        drawLine(`${item.equipment_name}${formatQuantityLine(item.quantity, item.unit, item.hours)}`);
+      }
+    } else {
+      drawLine('Keine Einträge');
     }
-  } else {
-    drawLine('Keine Einträge');
+    y -= 8;
   }
-  y -= 8;
 
   drawSubheading('Subunternehmer');
   if (input.subcontractors.length) {
@@ -151,7 +167,7 @@ export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
   drawSubheading('Bemerkung');
   drawLine(input.notes ?? '—');
 
-  if (input.signatures?.length) {
+  if (hourly && input.signatures?.length) {
     y -= 8;
     drawSubheading('Unterschriften');
     for (const signature of input.signatures) {

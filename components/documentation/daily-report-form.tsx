@@ -11,6 +11,13 @@ import { AppSelect } from '@/components/ui/app-select';
 import { DictationRecorder } from '@/components/documentation/dictation-recorder';
 import { ReportPhotoManager } from '@/components/documentation/report-photo-manager';
 import { SignaturePadField } from '@/components/documentation/signature-pad-field';
+import {
+  DEFAULT_DAILY_LOG_REPORT_TYPE,
+  defaultTitleForReportType,
+  isHourlyWageRapport,
+  parseDailyLogReportType,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 type SiteOption = {
   id: string;
@@ -45,6 +52,8 @@ type ExistingSignature = {
 
 export type DailyReportFormInitial = {
   dailyLogId?: string;
+  reportType?: DailyLogReportType;
+  customTitle?: string | null;
   siteId?: string;
   logDate?: string;
   weather?: string;
@@ -64,6 +73,7 @@ type Props = {
   canDictate: boolean;
   dictationConfigured: boolean;
   initial?: DailyReportFormInitial;
+  defaultReportType?: DailyLogReportType;
 };
 
 let nextRowId = 1;
@@ -136,11 +146,27 @@ function unitOptions(current = '') {
   return [...values].map((value) => ({ value, label: value }));
 }
 
-export function DailyReportForm({ sites, employees, canDictate, dictationConfigured, initial }: Props) {
+export function DailyReportForm({
+  sites,
+  employees,
+  canDictate,
+  dictationConfigured,
+  initial,
+  defaultReportType = DEFAULT_DAILY_LOG_REPORT_TYPE,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [dictationMessage, setDictationMessage] = useState<string | null>(null);
+
+  const lockedReportType = initial?.dailyLogId
+    ? parseDailyLogReportType(initial.reportType)
+    : null;
+  const [reportType, setReportType] = useState<DailyLogReportType>(
+    lockedReportType ?? parseDailyLogReportType(defaultReportType),
+  );
+  const [customTitle, setCustomTitle] = useState(initial?.customTitle ?? '');
+  const hourlyRapport = isHourlyWageRapport(reportType);
 
   const [siteId, setSiteId] = useState(initial?.siteId ?? sites[0]?.id ?? '');
   const [logDate, setLogDate] = useState(initial?.logDate ?? new Date().toISOString().slice(0, 10));
@@ -278,7 +304,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
     if (draft.weather) setWeather(draft.weather);
     if (draft.notes) setNotes((current) => (current ? `${current}\n${draft.notes}` : draft.notes ?? ''));
 
-    if (draft.workers.length > 0) {
+    if (hourlyRapport && draft.workers.length > 0) {
       setWorkers(
         draft.workers.map((worker) =>
           createWorkerRow({
@@ -303,7 +329,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
       );
     }
 
-    if (draft.resources.length > 0) {
+    if (hourlyRapport && draft.resources.length > 0) {
       setResources(
         draft.resources.map((item) =>
           createResourceRow({
@@ -316,7 +342,9 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
       );
     }
 
-    const lowMatches = draft.workers.filter((worker) => worker.matchConfidence === 'low').length;
+    const lowMatches = hourlyRapport
+      ? draft.workers.filter((worker) => worker.matchConfidence === 'low').length
+      : 0;
     setDictationMessage(
       lowMatches > 0
         ? `Entwurf übernommen. ${lowMatches} Mitarbeiter-Zuordnung(en) bitte prüfen.`
@@ -350,6 +378,8 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
     formData.set('log_date', logDate);
     formData.set('weather', weather);
     formData.set('notes', notes);
+    formData.set('report_type', reportType);
+    formData.set('custom_title', customTitle);
     if (initial?.dailyLogId) formData.set('daily_log_id', initial.dailyLogId);
     if (dictationTranscript) formData.set('dictation_transcript', dictationTranscript);
     if (dictationExtraction) formData.set('dictation_extraction', dictationExtraction);
@@ -369,6 +399,59 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
   return (
     <form className="input-form daily-report-form" onSubmit={handleSubmit}>
       {initial?.dailyLogId && <input type="hidden" name="daily_log_id" value={initial.dailyLogId} />}
+
+      <section className="input-form-section">
+        <h3 className="input-form-section-title">Berichtsart</h3>
+        <div className="input-form-core daily-report-type-row">
+          {lockedReportType ? (
+            <>
+              <input type="hidden" name="report_type" value={reportType} />
+              <p className="muted input-form-span-full">
+                {reportType === 'daily_report' ? 'Tagesbericht' : 'Std.-Lohnarbeit (Rapport)'} — Art kann nachträglich nicht geändert werden.
+              </p>
+            </>
+          ) : (
+            <fieldset className="daily-report-type-fieldset input-form-span-full">
+              <legend className="sr-only">Berichtsart wählen</legend>
+              <label className="daily-report-type-option">
+                <input
+                  type="radio"
+                  name="report_type"
+                  value="daily_report"
+                  checked={reportType === 'daily_report'}
+                  onChange={() => setReportType('daily_report')}
+                />
+                <span>
+                  <strong>Tagesbericht</strong>
+                  <span className="muted">Wetter, Tätigkeiten, Fotos, Bemerkung — ohne Stunden und Unterschriften</span>
+                </span>
+              </label>
+              <label className="daily-report-type-option">
+                <input
+                  type="radio"
+                  name="report_type"
+                  value="hourly_wage_rapport"
+                  checked={reportType === 'hourly_wage_rapport'}
+                  onChange={() => setReportType('hourly_wage_rapport')}
+                />
+                <span>
+                  <strong>Std.-Lohnarbeit (Rapport)</strong>
+                  <span className="muted">Stunden, Leistung, Maschine/Material, Unterschriften</span>
+                </span>
+              </label>
+            </fieldset>
+          )}
+          <label className="input-form-span-full">
+            Titel <span className="report-optional-label">optional</span>
+            <input
+              name="custom_title"
+              value={customTitle}
+              onChange={(event) => setCustomTitle(event.target.value)}
+              placeholder={defaultTitleForReportType(reportType)}
+            />
+          </label>
+        </div>
+      </section>
 
       {canDictate && (
         <section className="input-form-section report-dictation-section">
@@ -431,6 +514,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
         </div>
       </section>
 
+      {hourlyRapport && (
       <section className="input-form-section">
         <h3 className="input-form-section-title">Lohn / Mitarbeiter</h3>
         <div className="input-form-work-equipment-rows">
@@ -516,9 +600,12 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
           ))}
         </div>
       </section>
+      )}
 
       <section className="input-form-section">
-        <h3 className="input-form-section-title">Bezeichnung der Leistung</h3>
+        <h3 className="input-form-section-title">
+          {hourlyRapport ? 'Bezeichnung der Leistung' : 'Tätigkeiten / Leistung'}
+        </h3>
         <div className="input-form-work-equipment-rows">
           {workItems.map((row, index) => (
             <div key={row.id} className="input-form-work-equipment-row">
@@ -590,6 +677,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
         </div>
       </section>
 
+      {hourlyRapport && (
       <section className="input-form-section">
         <h3 className="input-form-section-title">Maschine / Material</h3>
         <div className="input-form-work-equipment-rows">
@@ -678,6 +766,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
           ))}
         </div>
       </section>
+      )}
 
       <section className="input-form-section">
         <h3 className="input-form-section-title">Fotos</h3>
@@ -694,6 +783,7 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
         </label>
       </section>
 
+      {hourlyRapport && (
       <section className="input-form-section">
         <h3 className="input-form-section-title">Unterschriften</h3>
         <div className="report-signatures-grid">
@@ -731,12 +821,19 @@ export function DailyReportForm({ sites, employees, canDictate, dictationConfigu
           />
         </div>
       </section>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 
       <div className="input-form-actions daily-report-form-actions">
         <button type="submit" className="primary-button primary-button--compact" disabled={pending}>
-          {pending ? 'Speichert…' : initial?.dailyLogId ? 'Rapport aktualisieren' : 'Rapport speichern'}
+          {pending
+            ? 'Speichert…'
+            : initial?.dailyLogId
+              ? 'Bericht aktualisieren'
+              : hourlyRapport
+                ? 'Rapport speichern'
+                : 'Tagesbericht speichern'}
         </button>
       </div>
     </form>

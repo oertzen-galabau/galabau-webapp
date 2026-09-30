@@ -5,6 +5,7 @@ import { canAccess } from '@/lib/auth/session';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
 import { SiteMetaForm } from '@/components/sites/site-meta-form';
 import { SiteContactsSection } from '@/components/sites/site-contacts-section';
+import { SiteTeamSection, type SiteTeamMemberRow } from '@/components/sites/site-team-section';
 import { SiteSuppliersSection } from '@/components/sites/site-suppliers-section';
 import { SiteAppointmentsSection } from '@/components/sites/site-appointments-section';
 import { SiteDocumentsSection } from '@/components/sites/site-documents-section';
@@ -17,8 +18,9 @@ import {
 } from '@/components/sites/site-time-entries-section';
 import { userCanAccessSite } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
-import { loadForemanOptions } from '@/lib/sites/foremen-options';
+import { loadForemanOptions, loadTenantEmployeeTeamOptions } from '@/lib/sites/foremen-options';
 import type { TimeBlockType } from '@/lib/types/database';
+import { parseDailyLogReportType } from '@/lib/documentation/report-labels';
 
 async function countRows(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -42,6 +44,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   if (!canAccessSite) notFound();
 
   const canManageSites = canAccess(ctx, 'sites.manage');
+  const canManageTeam = canAccess(ctx, 'sites.assign_team');
 
   const [
     { data: site },
@@ -58,6 +61,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     badWeatherCount,
     segmentCount,
     foremanOptions,
+    { data: teamRows },
   ] = await Promise.all([
     supabase.from('sites').select('*').eq('id', id).single(),
     supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
@@ -66,7 +70,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     supabase.from('site_appointments').select('*').eq('site_id', id).order('appointment_at'),
     supabase
       .from('daily_logs')
-      .select('id, log_date, weather, notes')
+      .select('id, log_date, weather, notes, report_type, custom_title')
       .eq('site_id', id)
       .order('log_date', { ascending: false }),
     supabase
@@ -81,7 +85,32 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     countRows(supabase, 'bad_weather_days', id),
     countRows(supabase, 'time_entry_segments', id),
     canManageSites ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
+    supabase
+      .from('site_team_members')
+      .select('id, user_id, profiles(first_name, last_name, tenant_roles(name, slug))')
+      .eq('site_id', id)
+      .order('created_at'),
   ]);
+
+  const teamMembers: SiteTeamMemberRow[] = (teamRows ?? []).map((row) => {
+    const profileRaw = row.profiles;
+    const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
+    const roleRaw = profile?.tenant_roles;
+    const role = Array.isArray(roleRaw) ? roleRaw[0] : roleRaw;
+    const first = profile?.first_name ?? '';
+    const last = profile?.last_name ?? '';
+    return {
+      id: row.id,
+      userId: row.user_id,
+      displayName: `${first} ${last}`.trim() || '—',
+      roleLabel: (role as { name?: string } | null)?.name ?? 'Mitarbeiter',
+    };
+  });
+
+  const assignedUserIds = teamMembers.map((member) => member.userId);
+  const employeeTeamOptions = canManageTeam
+    ? await loadTenantEmployeeTeamOptions(supabase, ctx.tenant!.id, assignedUserIds)
+    : [];
 
   const dailyLogIds = (dailyLogs ?? []).map((log) => log.id);
   const { data: workerHours } = dailyLogIds.length
@@ -111,6 +140,8 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     return {
       id: log.id,
       logDate: log.log_date,
+      reportType: parseDailyLogReportType(log.report_type as string),
+      customTitle: log.custom_title as string | null,
       weather: log.weather,
       notes: log.notes,
       workerCount: stats?.count ?? 0,
@@ -224,6 +255,12 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       <div className="order-layout">
         <section className="panel order-main">
           <SiteMetaForm site={site} canEdit={canEdit} foremanOptions={foremanOptions} />
+          <SiteTeamSection
+            siteId={id}
+            members={teamMembers}
+            employeeOptions={employeeTeamOptions}
+            canEdit={canManageTeam && site.is_active}
+          />
           <SiteContactsSection siteId={id} contacts={contacts ?? []} canEdit={canEdit} />
           <SiteSuppliersSection siteId={id} suppliers={suppliers ?? []} canEdit={canEdit} />
           <SiteReportsSection

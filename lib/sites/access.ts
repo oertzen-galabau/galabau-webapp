@@ -55,6 +55,15 @@ export async function resolveAccessibleSiteIds(
     ids.add(row.id);
   }
 
+  const { data: teamSites } = await supabase
+    .from('site_team_members')
+    .select('site_id')
+    .eq('user_id', access.userId);
+
+  for (const row of teamSites ?? []) {
+    if (row.site_id) ids.add(row.site_id);
+  }
+
   return [...ids];
 }
 

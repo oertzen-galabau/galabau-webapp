@@ -29,3 +29,31 @@ export async function loadForemanOptions(
     label: `${p.first_name} ${p.last_name}`.trim(),
   }));
 }
+
+export type EmployeeTeamOption = { value: string; label: string; roleLabel: string };
+
+/** Aktive Mandanten-Mitarbeiter für Baustellen-Team (optional ohne bereits Zugewiesene). */
+export async function loadTenantEmployeeTeamOptions(
+  supabase: SupabaseClient,
+  tenantId: string,
+  excludeUserIds: string[] = [],
+): Promise<EmployeeTeamOption[]> {
+  const exclude = new Set(excludeUserIds);
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, first_name, last_name, tenant_roles(name, slug)')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('last_name');
+
+  return (profiles ?? [])
+    .filter((p) => !exclude.has(p.id))
+    .map((p) => {
+      const roleRaw = p.tenant_roles;
+      const role = Array.isArray(roleRaw) ? roleRaw[0] : roleRaw;
+      const roleLabel = (role as { name?: string } | null)?.name ?? 'Mitarbeiter';
+      const label = `${p.first_name} ${p.last_name}`.trim();
+      return { value: p.id, label, roleLabel };
+    });
+}

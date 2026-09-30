@@ -8,9 +8,14 @@ import { DailyReportForm, type DailyReportFormInitial } from '@/components/docum
 import { DeliveryNoteScanForm } from '@/components/documentation/delivery-note-scan-form';
 import { isDictationConfigured } from '@/lib/ai/daily-log-dictation';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
-
+import { fetchAccessibleSites } from '@/lib/sites/access';
+import {
+  isDailyLogReportType,
+  parseDailyLogReportType,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 type PageProps = {
-  searchParams: Promise<{ edit?: string; site?: string }>;
+  searchParams: Promise<{ edit?: string; site?: string; type?: string; art?: string }>;
 };
 
 export default async function DokumentationPage({ searchParams }: PageProps) {
@@ -19,20 +24,31 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     return <p className="muted">Keine Berechtigung für die Baustellendokumentation.</p>;
   }
 
-  const { edit: editLogId, site: preselectedSiteId } = await searchParams;
+  const { edit: editLogId, site: preselectedSiteId, type: preselectedType, art: artFilter } =
+    await searchParams;
+  const defaultReportType: DailyLogReportType =
+    preselectedType && isDailyLogReportType(preselectedType)
+      ? preselectedType
+      : 'hourly_wage_rapport';
+  const listArtFilter = artFilter === 'daily_report' || artFilter === 'hourly_wage_rapport' ? artFilter : null;
   const canManage = canAccess(ctx, 'documentation.manage');
   const canDictate = canAccess(ctx, 'documentation.dictate');
   const dictationConfigured = isDictationConfigured();
 
   const supabase = await createClient();
-  const [{ data: sites }, { data: employees }] = await Promise.all([
-    supabase
-      .from('sites')
-      .select('id, name, client_name, address, latitude, longitude')
-      .eq('is_active', true)
-      .order('name'),
+  const [sitesRaw, { data: employees }] = await Promise.all([
+    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, latitude, longitude'),
     supabase.from('profiles').select('id, first_name, last_name, job_title').eq('tenant_id', ctx.tenant!.id).eq('is_active', true).order('last_name'),
   ]);
+
+  const sites = sitesRaw as Array<{
+    id: string;
+    name: string;
+    client_name: string | null;
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }>;
 
   const { data: logs } = await supabase
     .from('daily_logs')
@@ -136,6 +152,8 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     if (editLog) {
       editInitial = {
         dailyLogId: editLog.id,
+        reportType: parseDailyLogReportType(editLog.report_type as string),
+        customTitle: editLog.custom_title,
         siteId: editLog.site_id,
         logDate: editLog.log_date,
         weather: editLog.weather ?? '',
@@ -175,9 +193,15 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     }
   }
 
-  const logEntries = (logs ?? []).map((log) => ({
+  const filteredLogs = listArtFilter
+    ? (logs ?? []).filter((log) => parseDailyLogReportType(log.report_type as string) === listArtFilter)
+    : (logs ?? []);
+
+  const logEntries = filteredLogs.map((log) => ({
     id: log.id,
     log_date: log.log_date,
+    report_type: parseDailyLogReportType(log.report_type as string),
+    custom_title: log.custom_title as string | null,
     weather: log.weather,
     notes: log.notes,
     site_name: (log.sites as { name: string; client_name: string | null; address: string | null } | null)?.name ?? '',
@@ -245,25 +269,28 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     })),
   }));
 
-  const dailyLogOptions = (logs ?? []).map((log) => ({
-    id: log.id,
-    label: `${log.log_date} · ${(log.sites as { name: string }[] | null)?.[0]?.name ?? ''}`,
-  }));
+  const dailyLogOptions = (logs ?? []).map((log) => {
+    const siteName = (log.sites as { name: string } | null)?.name ?? '';
+    return {
+      id: log.id,
+      label: `${log.log_date} · ${siteName}`,
+    };
+  });
 
   return (
     <>
       <div className="page-heading">
         <div>
           <span className="eyebrow">Baustellendokumentation</span>
-          <h1>Tagesrapport</h1>
-          <p>Rapportzettel digital erfassen – mit optionaler Diktierfunktion und Pflichtfotos.</p>
+          <h1>Baustellendokumentation</h1>
+          <p>Tagesberichte und Std.-Lohn-Rapporte digital erfassen – mit optionaler Diktierfunktion und Pflichtfotos.</p>
         </div>
       </div>
 
       {canManage && (
         <section className="panel form-panel">
           <div className="daily-report-form-heading">
-            <h2>{editInitial ? 'Rapport bearbeiten' : 'Neuer Tagesrapport'}</h2>
+            <h2>{editInitial ? 'Bericht bearbeiten' : 'Neuer Bericht'}</h2>
             {editInitial && (
               <Link href="/app/dokumentation" className="table-action-link">
                 Abbrechen
@@ -271,13 +298,14 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
             )}
           </div>
           <DailyReportForm
-            sites={sites ?? []}
+            sites={sites}
             employees={employees ?? []}
             canDictate={canDictate}
             dictationConfigured={dictationConfigured}
+            defaultReportType={defaultReportType}
             initial={
               editInitial ??
-              (preselectedSiteId && (sites ?? []).some((s) => s.id === preselectedSiteId)
+              (preselectedSiteId && sites.some((s) => s.id === preselectedSiteId)
                 ? { siteId: preselectedSiteId }
                 : undefined)
             }
@@ -290,7 +318,7 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
         {dailyLogOptions.length > 0 ? (
           <DeliveryNoteScanForm logs={dailyLogOptions} saveAction={saveDeliveryNote} />
         ) : (
-          <p className="muted">Bitte zuerst einen Tagesrapport anlegen, bevor Lieferungen erfasst werden können.</p>
+          <p className="muted">Bitte zuerst einen Bericht anlegen, bevor Lieferungen erfasst werden können.</p>
         )}
       </section>
 
@@ -320,7 +348,29 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
-        <h2>Letzte Rapporte</h2>
+        <div className="documentation-list-head">
+          <h2>Letzte Berichte</h2>
+          <nav className="inline-actions documentation-list-filter" aria-label="Berichte filtern">
+            <Link
+              href="/app/dokumentation"
+              className={`table-action-link${!listArtFilter ? ' table-action-link--active' : ''}`}
+            >
+              Alle
+            </Link>
+            <Link
+              href="/app/dokumentation?art=daily_report"
+              className={`table-action-link${listArtFilter === 'daily_report' ? ' table-action-link--active' : ''}`}
+            >
+              Tagesberichte
+            </Link>
+            <Link
+              href="/app/dokumentation?art=hourly_wage_rapport"
+              className={`table-action-link${listArtFilter === 'hourly_wage_rapport' ? ' table-action-link--active' : ''}`}
+            >
+              Rapporte
+            </Link>
+          </nav>
+        </div>
         <DailyLogEntriesList
           logs={logEntries}
           signedUrls={signedUrls}

@@ -785,6 +785,41 @@ label.dialog-field.input-form-checkbox {
 .daily-report-core-meta {
   display: grid; gap: 8px 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.daily-report-type-fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.daily-report-type-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.daily-report-type-option input { margin-top: 4px; flex-shrink: 0; }
+.daily-report-type-option span { display: grid; gap: 2px; }
+.documentation-report-type-badge { margin-left: 8px; vertical-align: middle; }
+.documentation-entry-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.documentation-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.documentation-list-head h2 { margin: 0; }
+.documentation-list-filter { gap: 12px; }
+.table-action-link--active { font-weight: 700; text-decoration: underline; }
 .daily-report-row-grid .input-form-span-full { grid-column: 1 / -1; }
 .daily-report-row-grid .input-form-field--narrow { max-width: none; }
 @media (min-width: 521px) and (max-width: 720px) {
