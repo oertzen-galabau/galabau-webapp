@@ -59,7 +59,7 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
 
   return (
     <div className={`chat-shell${activeContactId ? ' chat-shell--chat-open' : ''}`}>
-      <aside className={`chat-sidebar${activeContactId ? ' chat-sidebar--hidden-mobile' : ''}`}>
+      <aside className="chat-sidebar">
         <div className="chat-sidebar-head">
           <h1>Nachrichten</h1>
         </div>
@@ -141,7 +141,7 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
         </div>
       </aside>
 
-      <section className={`chat-main${activeContactId ? ' chat-main--visible-mobile' : ''}`}>
+      <section className="chat-main">
         {children}
       </section>
     </div>

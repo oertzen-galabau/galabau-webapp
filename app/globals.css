@@ -1205,6 +1205,24 @@ button.input-form-file-cta {
   .header-clock-time { font-size: 18px; }
   .header-clock-action span { display: none; }
   .header-clock-action { min-width: 44px; padding: 0 10px; }
+
+  .app-main--nachrichten-list .app-header,
+  .app-main--nachrichten-thread .app-header {
+    display: none;
+  }
+  .app-frame--nachrichten-thread .mobile-bottom-nav {
+    display: none;
+  }
+  .app-main--nachrichten-list .app-content {
+    padding: 0 0 72px;
+  }
+  .app-main--nachrichten-thread .app-content {
+    padding: 0;
+  }
+  .app-main--nachrichten-list,
+  .app-main--nachrichten-thread {
+    padding-bottom: 0;
+  }
 }
 
 /* Marketing & Auth */
@@ -1547,6 +1565,9 @@ button.input-form-file-cta {
 }
 @media (max-width: 400px) {
   .metric-grid { grid-template-columns: 1fr; }
+  .page-heading--stack h1 { font-size: 24px; }
+  .infoboard-widget-body .metric-card > strong { font-size: 24px; }
+  .infoboard-widget-body .job-row { grid-template-columns: 38px 8px minmax(0, 1fr) 16px; }
 }
 .auth-intro { margin: 0 0 16px; font-size: var(--text-ui); color: var(--text-soft); line-height: 1.55; }
 .auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--surface); }
@@ -1848,8 +1869,49 @@ button.input-form-file-cta {
 .employee-notes-list p { margin: 0 0 6px; font-size: var(--text-ui); line-height: 1.5; }
 .employee-notes-list small { color: var(--text-soft); font-size: var(--text-caption); }
 @media (max-width: 760px) {
+  .page-heading--stack { flex-direction: column; align-items: stretch; gap: 16px; }
+  .page-heading--stack h1 { font-size: 26px; line-height: 1.12; overflow-wrap: anywhere; }
+  .page-heading--stack .infoboard-customize-button--full { width: 100%; min-height: 44px; }
+  .infoboard-shell-mobile { gap: 12px; }
+  .infoboard-shell-mobile-editing { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
   .infoboard-shell-editing { grid-template-columns: 1fr; }
   .infoboard-widget-picker { position: static; }
+  .infoboard-picker-item { align-items: center; min-height: 44px; padding: 12px 0; }
+  .infoboard-picker-item input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; margin-top: 0; }
+  .infoboard-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .infoboard-widget-frame-stack { height: auto; overflow: visible; }
+  .infoboard-widget-frame-stack .infoboard-widget-body { flex: none; min-height: 0; overflow: visible; }
+  .infoboard-widget-frame-stack .infoboard-widget-body .metric-card,
+  .infoboard-widget-frame-stack .infoboard-widget-body .panel,
+  .infoboard-widget-frame-stack .infoboard-widget-body .callout { height: auto; min-height: 0; }
+  .infoboard-widget-frame-stack .infoboard-panel-widget,
+  .infoboard-widget-frame-stack .infoboard-metric-widget,
+  .infoboard-widget-frame-stack .infoboard-alert-widget { height: auto; }
+  .infoboard-widget-body .metric-card { min-height: 0; padding: 16px; }
+  .infoboard-widget-body .metric-card > strong { font-size: 26px; }
+  .infoboard-widget-body .metric-card > span { margin-top: 12px; }
+  .infoboard-widget-body .metric-card p { overflow-wrap: anywhere; }
+  .infoboard-widget-body .panel-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .infoboard-widget-body .panel-head .text-button { align-self: flex-start; min-height: 44px; padding: 8px 0; }
+  .infoboard-widget-body .panel-head h2 { font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
+  .infoboard-widget-body .job-list { margin-left: 0; margin-right: 0; }
+  .infoboard-widget-body .job-row { min-height: 56px; grid-template-columns: 42px 8px minmax(0, 1fr) 18px; gap: 8px; padding: 10px 4px; text-decoration: none; }
+  .infoboard-widget-body .job-copy { min-width: 0; }
+  .infoboard-widget-body .job-copy strong,
+  .infoboard-widget-body .job-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .infoboard-post-item header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .infoboard-post-item header small { white-space: normal; }
+  .infoboard-post-action { width: 40px; height: 40px; }
+  .infoboard-post-form-datetime { grid-template-columns: 1fr; }
+  .infoboard-edit-actions--sticky {
+    position: fixed; right: 0; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); left: 0; z-index: 16;
+    display: flex; flex-direction: column; gap: 8px; padding: 12px 17px;
+    border-top: 1px solid var(--line); background: var(--surface-raised); box-shadow: 0 -8px 24px #00000014;
+  }
+  .infoboard-edit-actions--sticky .infoboard-save-message { width: 100%; text-align: center; }
+  .infoboard-edit-actions-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+  .infoboard-edit-actions-buttons .secondary-button,
+  .infoboard-edit-actions-buttons .primary-button { width: 100%; min-height: 44px; margin: 0; }
   .employee-feed-grid { grid-template-columns: 1fr; }
   .team-list--links { grid-template-columns: 38px 1fr 6.75rem; }
   .team-list--links.team-list--with-actions { grid-template-columns: 38px 1fr 6.75rem 6.75rem; }
@@ -2151,6 +2213,12 @@ button.input-form-file-cta {
 .chat-status-icon--sent { opacity: 0.75; }
 .chat-status-icon--delivered { opacity: 0.85; }
 .chat-status-icon--read { color: color-mix(in srgb, var(--accent) 70%, var(--on-brand)); }
+.chat-status-placeholder {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
 .chat-input-bar {
   display: flex;
   align-items: flex-end;
@@ -2217,15 +2285,32 @@ button.input-form-file-cta {
 .chat-empty p { max-width: 360px; margin: 0; font-size: var(--text-ui); }
 @media (max-width: 760px) {
   .chat-shell {
-    height: calc(100dvh - 61px - 72px);
-    margin: -22px -17px -90px;
+    grid-template-columns: minmax(0, 1fr);
+    height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));
+    margin: 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
   }
+  .chat-shell--chat-open {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
   .chat-shell--chat-open .chat-sidebar { display: none; }
   .chat-shell:not(.chat-shell--chat-open) .chat-main { display: none; }
   .chat-back-button { display: inline-flex; }
+  .chat-shell--chat-open .chat-input-bar {
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
+  .chat-shell--chat-open .chat-bubble {
+    max-width: min(88%, 520px);
+  }
+  .chat-sidebar-item-menu-trigger {
+    opacity: 1;
+  }
+  .chat-empty-hint-desktop {
+    display: none;
+  }
 }
 
 @theme inline {

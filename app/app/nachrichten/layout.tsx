@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { markInboxDelivered } from '@/lib/actions/employee';
+import { markInboxDeliveredForUser } from '@/lib/messages/read-state';
 import { ChatShell } from '@/components/messages/chat-shell';
 import {
   buildConversationSummaries,
@@ -19,16 +19,17 @@ export default async function NachrichtenLayout({
     return <p className="muted">Keine Berechtigung.</p>;
   }
 
-  try {
-    await markInboxDelivered();
-  } catch (err) {
-    console.error('[nachrichten] markInboxDelivered failed', {
-      userId: ctx.userId,
-      error: err instanceof Error ? err.message : err,
-    });
-  }
-
   const supabase = await createClient();
+
+  if (canAccess(ctx, 'messages.send')) {
+    const deliveredError = await markInboxDeliveredForUser(supabase, ctx.userId);
+    if (deliveredError) {
+      console.error('[nachrichten] markInboxDelivered failed', {
+        userId: ctx.userId,
+        error: deliveredError,
+      });
+    }
+  }
   const [{ data: members }, { data: messages }] = await Promise.all([
     supabase
       .from('profiles')

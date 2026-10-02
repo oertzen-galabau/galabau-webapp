@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { ArrowLeft, Check, CheckCheck, Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { displayName, initials } from '@/lib/auth/roles';
 import { markConversationRead, sendChatMessage } from '@/lib/actions/employee';
 import {
@@ -48,9 +47,29 @@ function StatusIcon({ status }: { status: 'sent' | 'delivered' | 'read' }) {
   );
 }
 
+type DeliveryPatch = Pick<Message, 'delivered_at' | 'read_at'>;
+
+function applyDeliveryPatch(msg: Message, patch?: DeliveryPatch): Message {
+  if (!patch) return msg;
+  return {
+    ...msg,
+    delivered_at: patch.delivered_at ?? msg.delivered_at,
+    read_at: patch.read_at ?? msg.read_at,
+  };
+}
+
+function patchMessageDelivery(msg: Message, patch: DeliveryPatch): Message {
+  return {
+    ...msg,
+    delivered_at: patch.delivered_at ?? msg.delivered_at,
+    read_at: patch.read_at ?? msg.read_at,
+  };
+}
+
 export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
-  const router = useRouter();
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [deliveryPatches, setDeliveryPatches] = useState<Record<string, DeliveryPatch>>({});
+  const [bubbleKeys, setBubbleKeys] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -59,12 +78,25 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
 
   const sortedMessages = useMemo(() => {
     const merged = new Map<string, Message>();
-    for (const msg of initialMessages) merged.set(msg.id, msg);
-    for (const msg of localMessages) merged.set(msg.id, msg);
+    for (const msg of initialMessages) {
+      merged.set(msg.id, applyDeliveryPatch(msg, deliveryPatches[msg.id]));
+    }
+    for (const msg of localMessages) {
+      if (msg.id.startsWith('optimistic-')) {
+        const hasServerCopy = [...merged.values()].some(
+          (existing) =>
+            existing.sender_id === msg.sender_id
+            && existing.recipient_id === msg.recipient_id
+            && existing.body === msg.body,
+        );
+        if (hasServerCopy) continue;
+      }
+      merged.set(msg.id, applyDeliveryPatch(msg, deliveryPatches[msg.id]));
+    }
     return [...merged.values()].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
-  }, [initialMessages, localMessages]);
+  }, [initialMessages, localMessages, deliveryPatches]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,7 +126,6 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
             return [...prev, incoming];
           });
           void markConversationRead(contact.id).catch(() => undefined);
-          router.refresh();
         },
       )
       .on(
@@ -108,7 +139,14 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
         (payload) => {
           const updated = payload.new as Message;
           if (updated.recipient_id !== contact.id) return;
-          router.refresh();
+          const patch: DeliveryPatch = {
+            delivered_at: updated.delivered_at,
+            read_at: updated.read_at,
+          };
+          setDeliveryPatches((prev) => ({ ...prev, [updated.id]: patch }));
+          setLocalMessages((prev) =>
+            prev.map((m) => (m.id === updated.id ? patchMessageDelivery(m, patch) : m)),
+          );
         },
       )
       .subscribe();
@@ -116,7 +154,7 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [contact.id, currentUserId, router]);
+  }, [contact.id, currentUserId]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -137,13 +175,17 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
     };
 
     setDraft('');
+    setBubbleKeys((prev) => ({ ...prev, [optimisticId]: optimisticId }));
     setLocalMessages((prev) => [...prev, optimisticMessage]);
 
     startTransition(async () => {
       try {
-        await sendChatMessage(contact.id, text);
-        setLocalMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-        router.refresh();
+        const saved = await sendChatMessage(contact.id, text);
+        const persisted = saved as Message;
+        setBubbleKeys((prev) => ({ ...prev, [persisted.id]: optimisticId }));
+        setLocalMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? persisted : m)),
+        );
       } catch (err) {
         setLocalMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setDraft(text);
@@ -175,9 +217,12 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
           const prev = sortedMessages[index - 1];
           const showDateDivider = !prev || !isSameChatDay(prev.created_at, msg.created_at);
           const isOwn = msg.sender_id === currentUserId;
+          const rowKey = bubbleKeys[msg.id] ?? msg.id;
+          const isPending = msg.id.startsWith('optimistic-');
+          const showStatus = isOwn && !isPending;
 
           return (
-            <div key={msg.id}>
+            <div key={rowKey}>
               {showDateDivider && (
                 <div className="chat-date-divider">
                   <span>{formatChatDateDivider(msg.created_at)}</span>
@@ -188,8 +233,10 @@ export function ChatPanel({ currentUserId, contact, initialMessages }: Props) {
                   <p>{msg.body}</p>
                   <div className="chat-bubble-meta">
                     <time dateTime={msg.created_at}>{formatChatTime(msg.created_at)}</time>
-                    {isOwn && !msg.id.startsWith('optimistic-') && (
+                    {showStatus ? (
                       <StatusIcon status={messageStatus(msg)} />
+                    ) : (
+                      isOwn && <span className="chat-status-placeholder" aria-hidden />
                     )}
                   </div>
                 </div>

@@ -17,6 +17,11 @@ export const SETTINGS_TABS = [
     label: 'Zeiterfassung & Pausen',
     permission: 'settings.time_tracking' as PermissionKey,
   },
+  {
+    id: 'bestellbudget',
+    label: 'Bestellbudget',
+    permission: 'orders.manage_budget' as PermissionKey,
+  },
 ] as const;
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];

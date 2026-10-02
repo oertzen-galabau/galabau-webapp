@@ -30,6 +30,9 @@ export const PERMISSION_KEYS = [
   'reports.send',
   'messages.send',
   'orders.create',
+  'orders.manage_catalog',
+  'orders.manage',
+  'orders.manage_budget',
   'team.view',
   'team.invite',
   'team.assign_role',
@@ -92,6 +95,24 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'reports.send', label: 'Rapporte versenden', group: 'Rapporte', implies: ['reports.generate'] },
   { key: 'messages.send', label: 'Nachrichten senden', group: 'Nachrichten' },
   { key: 'orders.create', label: 'Bestellungen aufgeben', group: 'Bestellungen' },
+  {
+    key: 'orders.manage_catalog',
+    label: 'Bestellkatalog verwalten',
+    group: 'Bestellungen',
+    implies: ['nav.bestellungen'],
+  },
+  {
+    key: 'orders.manage',
+    label: 'Bestellungen verwalten',
+    group: 'Bestellungen',
+    implies: ['nav.bestellungen'],
+  },
+  {
+    key: 'orders.manage_budget',
+    label: 'Bestellbudget verwalten',
+    group: 'Bestellungen',
+    implies: ['nav.bestellungen'],
+  },
   { key: 'team.view', label: 'Team einsehen', group: 'Team', implies: ['nav.team'] },
   { key: 'team.invite', label: 'Mitarbeiter anlegen', group: 'Team', implies: ['team.view'] },
   { key: 'team.assign_role', label: 'Rollen zuweisen', group: 'Team', implies: ['team.view'] },
@@ -144,6 +165,9 @@ const ADMIN_EXTRA: PermissionKey[] = [
   'team.view', 'team.invite', 'team.assign_role', 'team.leave_entitlement',
   'team.edit_profile', 'team.deactivate', 'team.notes', 'team.password_reset', 'team.manage_invites', 'team.delete',
   'settings.branding', 'settings.holidays', 'settings.payroll_rules', 'settings.time_tracking', 'settings.start_password', 'roles.manage',
+  'orders.manage_catalog',
+  'orders.manage',
+  'orders.manage_budget',
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleSlug, PermissionKey[]> = {

@@ -1,16 +1,17 @@
 # Aktueller Stand
 
 ## Letzte Änderungen
-- **Dokumentation: Tagesbericht vs. Std.-Lohn-Rapport** umgesetzt — `daily_logs.report_type` (`daily_report` | `hourly_wage_rapport`), optional `custom_title`; Formular, Listen, Baustellen-Berichte, PDF-Erzeugung und E-Mail-Versand; Labels in `lib/documentation/report-labels.ts`. Migration `galabau_045_daily_log_report_type.sql` (Remote galabau angewendet).
+- **Bestellformular mit Katalog & Budget** (Migration `galabau_048_catalog_orders_budget.sql`, auf Supabase galabau): Warenkorb aus aktivem Katalog, Jahresbudget (Mandanten-Standard + Mitarbeiter-Override), Eigenanteil bei Überschreitung, Preis-Snapshots in `catalog_orders` / `catalog_order_items`. Permissions `orders.manage`, `orders.manage_budget`. Legacy `clothing_orders` nur noch lesend.
+- UI: Tab Bestellen (Budgetkarten, Warenkorb, Meine Bestellungen), Tab Alle Bestellungen, Einstellungen Tab Bestellbudget, Team-Tab Bestellungen, Profil-Übersicht. Server Actions in `lib/actions/orders.ts`; Rechenlogik `lib/orders/budget.ts` + Tests.
+- **Größen pro Betrieb**: Migration `049` — `order_catalog_size_options` (Kleidung/Schuhe), Kategorie-Feld `size_kind`; Pflege unter Katalog → Größen; Bestell-UI nutzt Mandantenlisten (Artikel optional einschränken).
 
 ## Fokus
-Manueller Feldtest der zwei Berichtsarten (anlegen, bearbeiten, PDF, optional eigener Titel); Deploy/Migration auf Hostinger-DB falls nötig.
+Manueller End-to-End-Test: Bestellen mit/ohne Budget, Eigenanteil, Zurückziehen, Admin-Status, Budget pflegen. Migration 048 auf Hostinger-Prod falls separate DB.
 
 ## Nächste Schritte
-- Migration `045` auf Prod/Hostinger-DB prüfen bzw. anwenden.
-- Tagesbericht + Rapport je einmal durchspielen; Altbestand (nur Rapport-Typ) stichprobenartig.
-- Weiterhin offen: Chat-Feldtest, SMTP/Passwort-Reset live.
+- Optional: Lieferanten-PDF (VO-Layout), Benachrichtigungen bei neuen Bestellungen (nicht im Scope).
+- Feldtest Katalog + Bestellungen nach Deploy.
 
 ## Offene Punkte
 - SMTP/Impressum/Datenschutz auf Live unvollständig.
-- Optional später: mandantenweite Standard-Bezeichnungen für die beiden Berichtsarten in Einstellungen (Branding).
+- Shop-Import scheitert bei rein JS-gerenderten Shops — manuelle Pflege.

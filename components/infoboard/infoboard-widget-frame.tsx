@@ -7,19 +7,21 @@ import type { InfoboardWidgetId } from '@/lib/infoboard/types';
 
 type Props = {
   widgetId: InfoboardWidgetId;
-  isEditing: boolean;
+  showEditChrome: boolean;
   onRemove: () => void;
   children: ReactNode;
 };
 
-export function InfoboardWidgetFrame({ widgetId, isEditing, onRemove, children }: Props) {
+export function InfoboardWidgetFrame({ widgetId, showEditChrome, onRemove, children }: Props) {
   const def = WIDGET_REGISTRY[widgetId];
   const label = def.label;
   const isLocked = def.locked === true;
 
   return (
-    <div className={`infoboard-widget-frame${isEditing ? ' infoboard-widget-frame-editing' : ''}`}>
-      {isEditing && (
+    <div
+      className={`infoboard-widget-frame${showEditChrome ? ' infoboard-widget-frame-editing' : ''}${!showEditChrome ? ' infoboard-widget-frame-stack' : ''}`}
+    >
+      {showEditChrome && (
         <div className="infoboard-widget-chrome">
           <span className="infoboard-drag-handle" aria-label={`${label} verschieben`}>
             <GripVertical size={16} />
@@ -38,7 +40,9 @@ export function InfoboardWidgetFrame({ widgetId, isEditing, onRemove, children }
           )}
         </div>
       )}
-      <div className={`infoboard-widget-body${isEditing ? ' infoboard-widget-body-editing' : ''}`}>
+      <div
+        className={`infoboard-widget-body${showEditChrome ? ' infoboard-widget-body-editing' : ''}`}
+      >
         {children}
       </div>
     </div>

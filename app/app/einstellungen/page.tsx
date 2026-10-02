@@ -14,6 +14,7 @@ import { SettingsTabs } from '@/components/settings/settings-tabs';
 import { loadTenantPayrollConfig, serializeTenantConfig } from '@/lib/payroll/tenant-rules';
 import { isSettingsTab, visibleSettingsTabs, type SettingsTabId } from '@/lib/settings/tabs';
 import { TenantTimeTrackingForm } from '@/components/settings/tenant-time-tracking-form';
+import { TenantOrderBudgetForm } from '@/components/settings/tenant-order-budget-form';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
 
@@ -92,6 +93,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                 ? 'Regeln für erwartete Pausen und Pflichtbegründungen in der Zeiterfassung.'
               : activeTab === 'startpasswort'
                 ? 'Einheitliches Startpasswort für alle Mitarbeiter-Accounts verwalten.'
+                : activeTab === 'bestellbudget'
+                  ? 'Standard-Jahresbudget für Arbeitskleidung pro Mitarbeiter.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
           </p>
         </div>
@@ -115,6 +118,14 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
 
       {activeTab === 'zeiterfassung' && timeTrackingRules ? (
         <TenantTimeTrackingForm rules={timeTrackingRules} />
+      ) : null}
+
+      {activeTab === 'bestellbudget' && canAccess(ctx, 'orders.manage_budget') && tenant ? (
+        <TenantOrderBudgetForm
+          defaultBudgetEur={tenant.default_clothing_order_budget_eur != null
+            ? Number(tenant.default_clothing_order_budget_eur)
+            : null}
+        />
       ) : null}
 
       {activeTab === 'allgemein' ? (

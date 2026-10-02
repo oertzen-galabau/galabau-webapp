@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { saveLeaveRequest } from '@/lib/actions/employee';
 import { canAccess } from '@/lib/auth/session';
 import { LeaveRequestForm } from '@/components/leave/leave-request-form';
+import { LeaveBalanceMetrics } from '@/components/leave/leave-balance-metrics';
 import { formatLeaveType } from '@/lib/leave/labels';
+import { loadLeaveBalanceContext } from '@/lib/leave/balance';
 import { businessDaysBetween } from '@/lib/utils/time';
 
 export default async function UrlaubPage() {
@@ -13,19 +15,17 @@ export default async function UrlaubPage() {
 
   const supabase = await createClient();
   const year = new Date().getFullYear();
+  const tenantId = ctx.tenant!.id;
 
-  const [{ data: balance }, { data: requests }, { data: holidays }, { data: bridgeDays }] = await Promise.all([
-    supabase.from('leave_balances').select('*').eq('user_id', ctx.userId).eq('year', year).maybeSingle(),
+  const [{ breakdown, companyHolidays, bridgeDays }, { data: requests }] = await Promise.all([
+    loadLeaveBalanceContext(supabase, tenantId, ctx.userId, year),
     supabase
       .from('leave_requests')
       .select('*')
       .eq('user_id', ctx.userId)
       .order('created_at', { ascending: false }),
-    supabase.from('company_holidays').select('*').gte('end_date', `${year}-01-01`),
-    supabase.from('bridge_days').select('*').gte('date', `${year}-01-01`).order('date'),
   ]);
 
-  const remaining = (balance?.entitlement_days ?? 30) + (balance?.carried_over_days ?? 0) - (balance?.used_days ?? 0);
   const canReview = canAccess(ctx, 'urlaub.approve');
 
   return (
@@ -34,7 +34,7 @@ export default async function UrlaubPage() {
         <div>
           <span className="eyebrow">Urlaub & Fehlzeiten</span>
           <h1>Mein Urlaubskonto</h1>
-          <p>Resturlaub {year}: {remaining.toFixed(1)} Tage</p>
+          <p>Resturlaub {year}: {breakdown.remaining.toFixed(1)} Tage</p>
         </div>
         {canReview && (
           <Link href="/app/urlaub/freigabe" className="text-button">
@@ -43,12 +43,7 @@ export default async function UrlaubPage() {
         )}
       </div>
 
-      <div className="metric-grid">
-        <article className="metric-card"><span>Anspruch</span><strong>{balance?.entitlement_days ?? 30}</strong></article>
-        <article className="metric-card"><span>Vorjahr</span><strong>{balance?.carried_over_days ?? 0}</strong></article>
-        <article className="metric-card"><span>Genutzt</span><strong>{balance?.used_days ?? 0}</strong></article>
-        <article className="metric-card metric-feature"><span>Rest</span><strong>{remaining.toFixed(1)}</strong></article>
-      </div>
+      <LeaveBalanceMetrics breakdown={breakdown} />
 
       <section className="panel form-panel">
         <h2>Antrag / Fehlzeit erfassen</h2>
@@ -77,16 +72,18 @@ export default async function UrlaubPage() {
       <section className="panel" style={{ marginTop: 16 }}>
         <h2>Betriebsurlaub</h2>
         <ul className="simple-list">
-          {(holidays ?? []).map((h) => <li key={h.id}>{h.title}: {h.start_date} – {h.end_date}</li>)}
-          {!holidays?.length && <li>Keine Einträge</li>}
+          {companyHolidays.map((h) => (
+            <li key={h.id}>{h.title}: {h.start_date} – {h.end_date}</li>
+          ))}
+          {!companyHolidays.length && <li>Keine Einträge</li>}
         </ul>
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
         <h2>Brückentage</h2>
         <ul className="simple-list">
-          {(bridgeDays ?? []).map((b) => <li key={b.id}>{b.title}: {b.date}</li>)}
-          {!bridgeDays?.length && <li>Keine Einträge</li>}
+          {bridgeDays.map((b) => <li key={b.id}>{b.title}: {b.date}</li>)}
+          {!bridgeDays.length && <li>Keine Einträge</li>}
         </ul>
       </section>
     </>

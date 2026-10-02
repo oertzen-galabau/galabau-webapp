@@ -67,6 +67,15 @@ function NavUnreadBadge({ count }: { count: number }) {
   return <span className="nav-badge">{count > 99 ? '99+' : count}</span>;
 }
 
+function isNavItemActive(pathname: string, href: string) {
+  if (href === '/app/nachrichten') {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+  return pathname === href || (href !== '/app' && pathname.startsWith(`${href}/`));
+}
+
+const NACHRICHTEN_THREAD_PATH = /^\/app\/nachrichten\/[^/]+$/;
+
 export function TenantShell({
   theme,
   profile,
@@ -157,9 +166,25 @@ export function TenantShell({
     ?? tenantRoleName
     ?? '—';
 
+  const isNachrichtenList = pathname === '/app/nachrichten';
+  const isNachrichtenThread = NACHRICHTEN_THREAD_PATH.test(pathname);
+  const appMainClass = [
+    'app-main',
+    isNachrichtenList ? 'app-main--nachrichten-list' : '',
+    isNachrichtenThread ? 'app-main--nachrichten-thread' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const appFrameClass = [
+    'app-frame',
+    isNachrichtenThread ? 'app-frame--nachrichten-thread' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <main className="design-system-app">
-      <div className="app-frame">
+      <div className={appFrameClass}>
         <aside className="app-sidebar">
           <div className="brand-lockup">
             {theme.logoUrl ? (
@@ -210,7 +235,7 @@ export function TenantShell({
           </div>
         </aside>
 
-        <div className="app-main">
+        <div className={appMainClass}>
           <header className="app-header">
             <button type="button" className="mobile-menu-button" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Menü">
               <Menu size={21} />
@@ -286,7 +311,7 @@ export function TenantShell({
         <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
           {mobileNav.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = isNavItemActive(pathname, item.href);
             return (
               <Link key={item.href} href={item.href} className={active ? 'active' : ''}>
                 <Icon size={20} />

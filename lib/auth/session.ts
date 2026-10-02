@@ -138,7 +138,7 @@ export async function requireSuperadmin() {
 }
 
 export async function requireTenantMember(tenantSlug?: string) {
-  const ctx = await requireAuth();
+  const ctx = await ensureTenantContext(await requireAuth());
   if (isSuperadmin(ctx.profile.role)) return ctx;
   if (!ctx.tenant) redirect('/login');
   if (tenantSlug && ctx.tenant.slug !== tenantSlug) redirect('/login');
@@ -156,6 +156,24 @@ async function resolveTenantId(profile: Profile): Promise<string | null> {
 
   const tenant = await getTenantBySlug(tenantSlug);
   return tenant?.id ?? null;
+}
+
+/** Mandanten-ID für Server Components (Profil, geladener Tenant oder Subdomain bei Superadmin). */
+export async function getTenantIdForSession(ctx: SessionContext): Promise<string | null> {
+  if (ctx.tenant?.id) return ctx.tenant.id;
+  return resolveTenantId(ctx.profile);
+}
+
+async function ensureTenantContext(ctx: SessionContext): Promise<SessionContext> {
+  if (ctx.tenant) return ctx;
+  const tenantId = await resolveTenantId(ctx.profile);
+  if (!tenantId) return ctx;
+
+  const supabase = await createClient();
+  const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single();
+  if (!data) return ctx;
+
+  return enrichContext(ctx.userId, ctx.profile, data as Tenant, ctx.devRoleOverrideId);
 }
 
 export async function getActionContext(): Promise<ActionContext> {

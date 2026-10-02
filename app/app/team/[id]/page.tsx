@@ -7,7 +7,19 @@ import { EmployeeDetailHeader } from '@/components/team/employee-detail-header';
 import { EmployeeDetailTabs } from '@/components/team/employee-detail-tabs';
 import { EmployeeTabPanel } from '@/components/team/employee-tab-panels';
 import { isEmployeeTab, visibleEmployeeTabs, type EmployeeTabId } from '@/lib/team/detail-tabs';
-import type { ClothingOrder, EmployeeNote, LeaveRequest, Profile, TenantRole, TimeEntry } from '@/lib/types/database';
+import { loadLeaveBalanceContext } from '@/lib/leave/balance';
+import { buildBudgetBreakdown } from '@/lib/orders/budget';
+import { loadClothingOrderBudgetBreakdown } from '@/lib/orders/load-budget';
+import type {
+  CatalogOrder,
+  CatalogOrderItem,
+  ClothingOrder,
+  EmployeeNote,
+  LeaveRequest,
+  Profile,
+  TenantRole,
+  TimeEntry,
+} from '@/lib/types/database';
 
 type AssignmentRow = {
   id: string;
@@ -61,7 +73,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
 
   const [
     { data: tenantRoles },
-    { data: balance },
+    leaveContext,
     { data: leaveRequests },
     { data: overviewTimeEntries },
     { data: monthTimeEntries },
@@ -72,7 +84,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     { data: notesRaw },
   ] = await Promise.all([
     supabase.from('tenant_roles').select('*').order('sort_order'),
-    supabase.from('leave_balances').select('*').eq('user_id', id).eq('year', year).maybeSingle(),
+    loadLeaveBalanceContext(supabase, ctx.tenant!.id, id, year),
     supabase.from('leave_requests').select('*').eq('user_id', id).order('created_at', { ascending: false }),
     supabase.from('time_entries').select('*').eq('user_id', id).order('work_date', { ascending: false }).limit(5),
     supabase.from('time_entries').select('*').eq('user_id', id).gte('work_date', monthStart).lt('work_date', monthEnd).order('work_date', { ascending: false }),
@@ -102,6 +114,33 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     ? await fetchLatestInvitation(createAdminClient(), id)
     : null;
 
+  let catalogOrders: (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[] = [];
+  let orderBudgetBreakdown = buildBudgetBreakdown(year, null, 0);
+  let employeeOrderBudgetEur: number | null = null;
+
+  if (activeTab === 'bestellungen' && ctx.tenant?.id) {
+    const tenantId = ctx.tenant.id;
+    const [catalogRes, budgetRow, breakdown] = await Promise.all([
+      supabase
+        .from('catalog_orders')
+        .select('*, catalog_order_items(*)')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('clothing_order_budgets')
+        .select('budget_eur')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', id)
+        .eq('year', year)
+        .maybeSingle(),
+      loadClothingOrderBudgetBreakdown(supabase, tenantId, id, year),
+    ]);
+    catalogOrders = (catalogRes.data ?? []) as (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[];
+    employeeOrderBudgetEur = budgetRow.data?.budget_eur != null ? Number(budgetRow.data.budget_eur) : null;
+    orderBudgetBreakdown = breakdown;
+  }
+
   return (
     <>
       <EmployeeDetailHeader member={member} roleName={roleName} />
@@ -123,11 +162,15 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         }}
         year={year}
         month={month}
-        balance={balance}
+        balance={leaveContext.balance}
+        leaveBreakdown={leaveContext.breakdown}
         leaveRequests={(leaveRequests ?? []) as LeaveRequest[]}
         timeEntries={timeEntries as TimeEntry[]}
         assignments={normalizeAssignments(assignments)}
         orders={(orders ?? []) as ClothingOrder[]}
+        catalogOrders={catalogOrders}
+        orderBudgetBreakdown={orderBudgetBreakdown}
+        employeeOrderBudgetEur={employeeOrderBudgetEur}
         notes={notes}
         monthMinutes={monthMinutes}
         pendingLeaveCount={pendingLeaveCount}

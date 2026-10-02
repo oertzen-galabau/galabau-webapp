@@ -19,6 +19,7 @@ export type Tenant = {
   sidebar_text_color: string;
   surface_color: string;
   default_start_password: string | null;
+  default_clothing_order_budget_eur: number | null;
   status: TenantStatus;
   plan: string;
   created_at: string;
@@ -401,6 +402,84 @@ export type ClothingOrder = {
   status: ClothingStatus;
   notes: string | null;
   created_at: string;
+};
+
+export type OrderCatalogSizeKind = 'clothing' | 'shoes';
+
+export type OrderCatalogCategorySizeKind = OrderCatalogSizeKind | 'custom';
+
+export type OrderCatalogSizeOption = {
+  id: string;
+  tenant_id: string;
+  kind: OrderCatalogSizeKind;
+  value: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type OrderCatalogCategory = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sort_order: number;
+  size_kind: OrderCatalogCategorySizeKind;
+  created_at: string;
+};
+
+export type OrderCatalogItem = {
+  id: string;
+  tenant_id: string;
+  category_id: string;
+  article_number: string | null;
+  clothing_style: string;
+  series: string | null;
+  price: number | null;
+  shop_url: string | null;
+  sizes: string[];
+  is_active: boolean;
+  shop_imported_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClothingOrderBudget = {
+  tenant_id: string;
+  user_id: string;
+  year: number;
+  budget_eur: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogOrder = {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  status: ClothingStatus;
+  total_eur: number;
+  budget_covered_eur: number;
+  own_share_eur: number;
+  budget_year: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogOrderItem = {
+  id: string;
+  order_id: string;
+  tenant_id: string;
+  catalog_item_id: string;
+  category_name: string;
+  article_number: string | null;
+  clothing_style: string;
+  series: string | null;
+  unit_price_eur: number | null;
+  size: string;
+  quantity: number;
+  name_print: string | null;
+  line_total_eur: number;
+  sort_order: number;
 };
 
 export type InfoboardPost = {

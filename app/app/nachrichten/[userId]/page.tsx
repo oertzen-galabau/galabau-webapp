@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { markConversationRead } from '@/lib/actions/employee';
+import { markIncomingMessagesRead } from '@/lib/messages/read-state';
 import { ChatPanel } from '@/components/messages/chat-panel';
 import type { Message, Profile } from '@/lib/types/database';
 
@@ -38,14 +38,18 @@ export default async function NachrichtenChatPage({
 
   if (!contact) notFound();
 
-  try {
-    await markConversationRead(contactId);
-  } catch (err) {
-    console.error('[nachrichten] markConversationRead failed', {
-      userId: ctx.userId,
-      contactId,
-      error: err instanceof Error ? err.message : err,
+  if (canAccess(ctx, 'messages.send')) {
+    const readError = await markIncomingMessagesRead(supabase, {
+      recipientUserId: ctx.userId,
+      senderUserId: contactId,
     });
+    if (readError) {
+      console.error('[nachrichten] markIncomingMessagesRead failed', {
+        userId: ctx.userId,
+        contactId,
+        error: readError,
+      });
+    }
   }
 
   const profile = contact as Profile & { tenant_roles?: { name: string } | null };

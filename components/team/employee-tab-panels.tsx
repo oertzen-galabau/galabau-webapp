@@ -9,11 +9,19 @@ import {
   saveEmployeeNote,
 } from '@/lib/actions/admin';
 import { updateLeaveStatus } from '@/lib/actions/employee';
+import { updateEmployeeClothingOrderBudget } from '@/lib/actions/orders';
 import { canAccess } from '@/lib/auth/session';
+import { LeaveBalanceMetrics } from '@/components/leave/leave-balance-metrics';
 import { formatLeaveType } from '@/lib/leave/labels';
+import type { LeaveBalanceBreakdown } from '@/lib/leave/balance';
+import type { BudgetBreakdown } from '@/lib/orders/budget';
+import { OrderBudgetMetrics } from '@/components/orders/order-budget-metrics';
+import { formatOrderEuro, ORDER_STATUS_LABELS } from '@/lib/orders/labels';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
 import type {
   ClothingOrder,
+  CatalogOrder,
+  CatalogOrderItem,
   EmployeeInvitation,
   EmployeeNote,
   LeaveRequest,
@@ -61,10 +69,14 @@ type Props = {
     carried_over_days: number;
     used_days: number;
   } | null;
+  leaveBreakdown: LeaveBalanceBreakdown;
   leaveRequests: LeaveRequest[];
   timeEntries: TimeEntry[];
   assignments: AssignmentRow[];
   orders: ClothingOrder[];
+  catalogOrders: (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[];
+  orderBudgetBreakdown: BudgetBreakdown;
+  employeeOrderBudgetEur: number | null;
   notes: (EmployeeNote & { author?: { first_name: string; last_name: string } | null })[];
   monthMinutes: number;
   pendingLeaveCount: number;
@@ -80,12 +92,6 @@ const LEAVE_STATUS_LABELS: Record<string, string> = {
   pending: 'Offen',
   approved: 'Genehmigt',
   rejected: 'Abgelehnt',
-};
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  pending: 'Offen',
-  ordered: 'Bestellt',
-  delivered: 'Geliefert',
 };
 
 export function EmployeeTabPanel(props: Props) {
@@ -115,24 +121,19 @@ function OverviewTab({
   member,
   ctx,
   year,
-  balance,
   monthMinutes,
   pendingLeaveCount,
   todayAssignment,
   timeEntries,
   leaveRequests,
+  leaveBreakdown,
 }: Props) {
-  const remaining =
-    (balance?.entitlement_days ?? 30) +
-    (balance?.carried_over_days ?? 0) -
-    (balance?.used_days ?? 0);
-
   return (
     <section className="panel employee-section">
       <div className="employee-overview-grid metric-grid">
         <article className="metric-card">
           <span>Resturlaub {year}</span>
-          <strong>{remaining.toFixed(1)}</strong>
+          <strong>{leaveBreakdown.remaining.toFixed(1)}</strong>
         </article>
         <article className="metric-card">
           <span>Stunden (Monat)</span>
@@ -334,21 +335,13 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
   );
 }
 
-function UrlaubTab({ member, ctx, year, balance, leaveRequests }: Props) {
+function UrlaubTab({ member, ctx, year, balance, leaveRequests, leaveBreakdown }: Props) {
   const canEditEntitlement = can(ctx, 'team.leave_entitlement');
   const canApprove = can(ctx, 'urlaub.approve');
-  const remaining =
-    (balance?.entitlement_days ?? 30) +
-    (balance?.carried_over_days ?? 0) -
-    (balance?.used_days ?? 0);
 
   return (
     <>
-      <div className="employee-overview-grid metric-grid">
-        <article className="metric-card"><span>Anspruch</span><strong>{balance?.entitlement_days ?? 30}</strong></article>
-        <article className="metric-card"><span>Genutzt</span><strong>{balance?.used_days ?? 0}</strong></article>
-        <article className="metric-card metric-feature"><span>Rest</span><strong>{remaining.toFixed(1)}</strong></article>
-      </div>
+      <LeaveBalanceMetrics breakdown={leaveBreakdown} />
 
       {canEditEntitlement && (
         <section className="panel form-panel employee-section">
@@ -478,30 +471,94 @@ function EinsatzTab({ assignments }: Props) {
   );
 }
 
-function BestellungenTab({ orders }: Props) {
+function BestellungenTab({
+  member,
+  ctx,
+  year,
+  orders,
+  catalogOrders,
+  orderBudgetBreakdown,
+  employeeOrderBudgetEur,
+}: Props) {
+  const canEditBudget = can(ctx, 'orders.manage_budget');
+
   return (
-    <section className="panel employee-section">
-      <h2>Arbeitskleidung</h2>
-      <div className="data-table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr><th>Datum</th><th>Artikel</th><th>Größe</th><th>Menge</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.id}>
-                <td>{new Date(order.created_at).toLocaleDateString('de-DE')}</td>
-                <td>{order.item_type}</td>
-                <td>{order.size}</td>
-                <td>{order.quantity}</td>
-                <td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {orders.length === 0 && <p className="muted">Keine Bestellungen.</p>}
-    </section>
+    <>
+      <OrderBudgetMetrics breakdown={orderBudgetBreakdown} />
+
+      {canEditBudget && (
+        <section className="panel form-panel employee-section">
+          <h2>Bestellbudget {year}</h2>
+          <form action={updateEmployeeClothingOrderBudget} className="input-form">
+            <input type="hidden" name="user_id" value={member.id} />
+            <input type="hidden" name="year" value={year} />
+            <div className="input-form-core">
+              <label>
+                Budget (EUR)
+                <input
+                  type="number"
+                  name="budget_eur"
+                  min={0}
+                  step={0.01}
+                  defaultValue={employeeOrderBudgetEur ?? orderBudgetBreakdown.budgetEur ?? 0}
+                />
+              </label>
+            </div>
+            <div className="input-form-actions">
+              <button type="submit" className="primary-button primary-button--compact">Speichern</button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <section className="panel employee-section">
+        <h2>Katalog-Bestellungen</h2>
+        {catalogOrders.length === 0 && <p className="muted">Keine Bestellungen.</p>}
+        {catalogOrders.map((order) => (
+          <details key={order.id} style={{ marginBottom: 8 }}>
+            <summary>
+              {new Date(order.created_at).toLocaleDateString('de-DE')}
+              {' · '}
+              {formatOrderEuro(order.total_eur)}
+              {' · '}
+              {ORDER_STATUS_LABELS[order.status]}
+            </summary>
+            <ul className="simple-list">
+              {order.catalog_order_items.map((line) => (
+                <li key={line.id}>
+                  {line.clothing_style}, Gr. {line.size}, {line.quantity}×
+                  {line.name_print ? ` · Namensdruck: ${line.name_print}` : ''}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </section>
+
+      {orders.length > 0 && (
+        <section className="panel employee-section">
+          <h2>Ältere Bestellungen</h2>
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr><th>Datum</th><th>Artikel</th><th>Größe</th><th>Menge</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td>{new Date(order.created_at).toLocaleDateString('de-DE')}</td>
+                    <td>{order.item_type}</td>
+                    <td>{order.size}</td>
+                    <td>{order.quantity}</td>
+                    <td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
   );
 }
 

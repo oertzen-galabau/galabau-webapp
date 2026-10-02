@@ -1,26 +1,119 @@
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { saveClothingOrder } from '@/lib/actions/employee';
-import { AppSelect } from '@/components/ui/app-select';
+import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
+import { OrderTabs } from '@/components/orders/order-tabs';
+import { OrderCatalogManager } from '@/components/orders/order-catalog-manager';
+import { OrderCartForm, type CatalogItemForOrder } from '@/components/orders/order-cart-form';
+import { OrderBudgetMetrics } from '@/components/orders/order-budget-metrics';
+import { MyCatalogOrders, type CatalogOrderWithItems } from '@/components/orders/my-catalog-orders';
+import { OrderAdminPanel, type AdminCatalogOrder } from '@/components/orders/order-admin-panel';
+import { loadClothingOrderBudgetBreakdown } from '@/lib/orders/load-budget';
+import { loadOrderCatalogSizePresets } from '@/lib/orders/load-size-presets';
+import type { SizePresetsMap } from '@/lib/orders/catalog-sizes';
+import {
+  isOrderTab,
+  resolveCatalogSubTab,
+  visibleOrderTabs,
+  type OrderTabId,
+} from '@/lib/orders/tabs';
+import type { ClothingOrder, OrderCatalogCategory, OrderCatalogSizeOption } from '@/lib/types/database';
 
-const ITEM_TYPE_OPTIONS = [
-  { value: 'schuhe', label: 'Schuhe' },
-  { value: 'hose', label: 'Hose' },
-  { value: 'jacke', label: 'Jacke' },
-  { value: 'shirt', label: 'Shirt' },
-];
+type PageProps = {
+  searchParams: Promise<{ tab?: string; katalog?: string }>;
+};
 
-export default async function BestellungenPage() {
+export default async function BestellungenPage({ searchParams }: PageProps) {
+  const { tab: tabParam, katalog: katalogParam } = await searchParams;
+
   const ctx = await requireTenantMember();
   if (!canAccess(ctx, 'nav.bestellungen')) return <p className="muted">Keine Berechtigung.</p>;
 
-  const supabase = await createClient();
+  const tabs = visibleOrderTabs(ctx.permissions, ctx.isSuperadminBypass);
+  const activeTab: OrderTabId = isOrderTab(tabParam) && tabs.some((t) => t.id === tabParam)
+    ? tabParam
+    : tabs[0].id;
 
-  const { data: orders } = await supabase
-    .from('clothing_orders')
-    .select('*')
-    .eq('user_id', ctx.userId)
-    .order('created_at', { ascending: false });
+  const tenantId = await getTenantIdForSession(ctx);
+  if (!tenantId) {
+    return (
+      <p className="muted">
+        Kein Mandantenkontext. Bitte über die Subdomain Ihres Betriebs zugreifen.
+      </p>
+    );
+  }
+
+  const supabase = await createClient();
+  const year = new Date().getFullYear();
+
+  let categories: OrderCatalogCategory[] = [];
+  let catalogItemsForOrder: CatalogItemForOrder[] = [];
+  let catalogItemsAdmin: Awaited<ReturnType<typeof loadCatalogItemsAdmin>> = [];
+  let myCatalogOrders: CatalogOrderWithItems[] = [];
+  let legacyOrders: ClothingOrder[] = [];
+  let adminOrders: AdminCatalogOrder[] = [];
+  let budgetBreakdown = await loadClothingOrderBudgetBreakdown(supabase, tenantId, ctx.userId, year);
+  let sizePresets: SizePresetsMap = { clothing: [], shoes: [] };
+  let sizeOptionRows: OrderCatalogSizeOption[] = [];
+
+  if (activeTab === 'bestellen') {
+    const [catRes, itemRes, ordersRes, legacyRes, budget, presets] = await Promise.all([
+      supabase.from('order_catalog_categories').select('*').eq('tenant_id', tenantId).order('sort_order').order('name'),
+      supabase
+        .from('order_catalog_items')
+        .select('*, order_catalog_categories(name, sort_order, size_kind)')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .order('clothing_style'),
+      supabase
+        .from('catalog_orders')
+        .select('*, catalog_order_items(*)')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', ctx.userId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('clothing_orders')
+        .select('*')
+        .eq('user_id', ctx.userId)
+        .order('created_at', { ascending: false }),
+      loadClothingOrderBudgetBreakdown(supabase, tenantId, ctx.userId, year),
+      loadOrderCatalogSizePresets(supabase, tenantId),
+    ]);
+    categories = catRes.data ?? [];
+    catalogItemsForOrder = (itemRes.data ?? []) as CatalogItemForOrder[];
+    myCatalogOrders = (ordersRes.data ?? []) as CatalogOrderWithItems[];
+    legacyOrders = legacyRes.data ?? [];
+    budgetBreakdown = budget;
+    sizePresets = presets;
+  }
+
+  if (activeTab === 'alle' && canAccess(ctx, 'orders.manage')) {
+    const { data } = await supabase
+      .from('catalog_orders')
+      .select('*, catalog_order_items(*), profiles(first_name, last_name)')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    adminOrders = (data ?? []) as AdminCatalogOrder[];
+  }
+
+  if (activeTab === 'katalog' && canAccess(ctx, 'orders.manage_catalog')) {
+    const [catRes, itemRes, presets, sizeRowsRes] = await Promise.all([
+      loadCatalogCategories(supabase, tenantId),
+      loadCatalogItemsAdmin(supabase, tenantId),
+      loadOrderCatalogSizePresets(supabase, tenantId),
+      supabase
+        .from('order_catalog_size_options')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('kind')
+        .order('sort_order')
+        .order('value'),
+    ]);
+    categories = catRes;
+    catalogItemsAdmin = itemRes;
+    sizePresets = presets;
+    sizeOptionRows = (sizeRowsRes.data ?? []) as OrderCatalogSizeOption[];
+  }
+
+  const catalogSubTab = resolveCatalogSubTab(katalogParam);
 
   return (
     <>
@@ -28,56 +121,73 @@ export default async function BestellungenPage() {
         <div>
           <span className="eyebrow">Bestellungen</span>
           <h1>Schuhe & Kleidung</h1>
-          <p>Bestellformular für Arbeitskleidung.</p>
+          <p>Betriebskatalog, Budget und Bestellungen.</p>
         </div>
       </div>
 
-      <section className="panel form-panel">
-        <h2>Neue Bestellung</h2>
-        <form action={saveClothingOrder} className="input-form">
-          <div className="input-form-core">
-            <label>Artikel
-              <AppSelect
-                name="item_type"
-                defaultValue="schuhe"
-                allowEmpty={false}
-                options={ITEM_TYPE_OPTIONS}
-              />
-            </label>
-            <label>Größe<input name="size" required /></label>
-            <label>Menge<input type="number" name="quantity" min={1} defaultValue={1} /></label>
-          </div>
-          <details className="input-form-extra">
-            <summary>Notiz</summary>
-            <div className="input-form-extra-grid">
-              <label className="input-form-span-full">Notiz<textarea name="notes" rows={2} /></label>
-            </div>
-          </details>
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Bestellen</button>
-          </div>
-        </form>
-      </section>
+      {tabs.length > 1 && (
+        <OrderTabs tabs={tabs} activeTab={activeTab} />
+      )}
 
-      <section className="panel" style={{ marginTop: 16 }}>
-        <h2>Meine Bestellungen</h2>
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Datum</th><th>Artikel</th><th className="data-table-col--optional">Größe</th><th className="data-table-col--optional">Menge</th><th>Status</th></tr></thead>
-            <tbody>
-              {(orders ?? []).map((order) => (
-                <tr key={order.id}>
-                  <td>{new Date(order.created_at).toLocaleDateString('de-DE')}</td>
-                  <td>{order.item_type}</td>
-                  <td className="data-table-col--optional">{order.size}</td>
-                  <td className="data-table-col--optional">{order.quantity}</td>
-                  <td>{order.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {activeTab === 'bestellen' && (
+        <div style={{ marginTop: tabs.length > 1 ? 16 : 0 }}>
+          <OrderBudgetMetrics breakdown={budgetBreakdown} />
+          <div style={{ marginTop: 16 }}>
+            <OrderCartForm
+              categories={categories}
+              items={catalogItemsForOrder}
+              budget={budgetBreakdown}
+              sizePresets={sizePresets}
+            />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <MyCatalogOrders orders={myCatalogOrders} legacyOrders={legacyOrders} />
+          </div>
         </div>
-      </section>
+      )}
+
+      {activeTab === 'alle' && canAccess(ctx, 'orders.manage') && (
+        <div style={{ marginTop: tabs.length > 1 ? 16 : 0 }}>
+          <OrderAdminPanel orders={adminOrders} />
+        </div>
+      )}
+
+      {activeTab === 'katalog' && canAccess(ctx, 'orders.manage_catalog') && (
+        <div style={{ marginTop: tabs.length > 1 ? 16 : 0 }}>
+          <OrderCatalogManager
+            categories={categories}
+            items={catalogItemsAdmin}
+            activeSubTab={catalogSubTab}
+            sizePresets={sizePresets}
+            sizeOptionRows={sizeOptionRows}
+          />
+        </div>
+      )}
     </>
   );
+}
+
+async function loadCatalogCategories(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+) {
+  const { data } = await supabase
+    .from('order_catalog_categories')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('sort_order')
+    .order('name');
+  return data ?? [];
+}
+
+async function loadCatalogItemsAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+) {
+  const { data } = await supabase
+    .from('order_catalog_items')
+    .select('*, order_catalog_categories(id, name, size_kind)')
+    .eq('tenant_id', tenantId)
+    .order('clothing_style');
+  return data ?? [];
 }

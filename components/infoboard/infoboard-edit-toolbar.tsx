@@ -9,6 +9,7 @@ type Props = {
   onStartEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
+  variant?: 'inline' | 'sticky';
 };
 
 export function InfoboardEditToolbar({
@@ -18,27 +19,39 @@ export function InfoboardEditToolbar({
   onStartEdit,
   onCancel,
   onSave,
+  variant = 'inline',
 }: Props) {
   if (!isEditing) {
     return (
-      <button type="button" className="secondary-button" onClick={onStartEdit}>
+      <button
+        type="button"
+        className={`secondary-button infoboard-customize-button${variant === 'sticky' ? ' infoboard-customize-button--full' : ''}`}
+        onClick={onStartEdit}
+      >
         <LayoutGrid size={16} />
         Anpassen
       </button>
     );
   }
 
+  const className =
+    variant === 'sticky'
+      ? 'infoboard-edit-actions infoboard-edit-actions--sticky'
+      : 'infoboard-edit-actions';
+
   return (
-    <div className="infoboard-edit-actions">
+    <div className={className}>
       {saveMessage && <span className="infoboard-save-message">{saveMessage}</span>}
-      <button type="button" className="secondary-button" onClick={onCancel} disabled={isSaving}>
-        <X size={16} />
-        Abbrechen
-      </button>
-      <button type="button" className="primary-button" onClick={onSave} disabled={isSaving}>
-        <Save size={16} />
-        {isSaving ? 'Speichern…' : 'Speichern'}
-      </button>
+      <div className="infoboard-edit-actions-buttons">
+        <button type="button" className="secondary-button" onClick={onCancel} disabled={isSaving}>
+          <X size={16} />
+          Abbrechen
+        </button>
+        <button type="button" className="primary-button" onClick={onSave} disabled={isSaving}>
+          <Save size={16} />
+          {isSaving ? 'Speichern…' : 'Speichern'}
+        </button>
+      </div>
     </div>
   );
 }

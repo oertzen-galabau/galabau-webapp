@@ -5,7 +5,7 @@ export default function NachrichtenIndexPage() {
     <div className="chat-empty">
       <MessageSquare size={56} strokeWidth={1.25} aria-hidden />
       <h2>Wähle eine Unterhaltung</h2>
-      <p className="muted">
+      <p className="muted chat-empty-hint-desktop">
         Wähle links einen Kontakt aus, um eine Nachricht zu senden oder den Verlauf zu lesen.
       </p>
     </div>

@@ -14,6 +14,7 @@ import {
   mergeGridLayoutChange,
   setWidgetVisibility,
 } from '@/lib/infoboard/layout';
+import { useInfoboardMobile } from '@/lib/infoboard/use-infoboard-mobile';
 import type {
   DashboardLayout,
   InfoboardWidgetData,
@@ -35,7 +36,8 @@ export function InfoboardDashboard({
   allowedWidgetIds,
   canCustomize,
 }: Props) {
-  const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1280 });
+  const isMobile = useInfoboardMobile();
+  const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
   const [savedLayout, setSavedLayout] = useState(initialLayout);
   const [draftLayout, setDraftLayout] = useState(initialLayout);
   const [isEditing, setIsEditing] = useState(false);
@@ -49,7 +51,15 @@ export function InfoboardDashboard({
     [activeLayout],
   );
 
-  const isMobile = mounted && width < 760;
+  const stackItems = useMemo(
+    () =>
+      activeLayout.items
+        .filter((item) => item.visible)
+        .sort((a, b) => a.y - b.y || a.x - b.x),
+    [activeLayout],
+  );
+
+  const showEditChrome = isEditing && !isMobile;
 
   const applyGridLayout = useCallback(
     (nextLayout: Layout, compact: boolean) => {
@@ -72,18 +82,18 @@ export function InfoboardDashboard({
 
   const handleLayoutChange = useCallback(
     (nextLayout: Layout) => {
-      if (!isEditing) return;
+      if (!isEditing || isMobile) return;
       applyGridLayout(nextLayout, false);
     },
-    [isEditing, applyGridLayout],
+    [isEditing, isMobile, applyGridLayout],
   );
 
   const handleInteractionStop = useCallback(
     (nextLayout: Layout) => {
-      if (!isEditing) return;
+      if (!isEditing || isMobile) return;
       applyGridLayout(nextLayout, true);
     },
-    [isEditing, applyGridLayout],
+    [isEditing, isMobile, applyGridLayout],
   );
 
   const handleToggleWidget = useCallback((widgetId: InfoboardWidgetId, visible: boolean) => {
@@ -120,15 +130,24 @@ export function InfoboardDashboard({
     });
   };
 
+  const emptyHint =
+    stackItems.length === 0
+      ? isEditing
+        ? isMobile
+          ? 'Wähle oben Widgets aus, um sie auf dem Infoboard anzuzeigen.'
+          : 'Wähle links Widgets aus, um sie auf dem Infoboard anzuzeigen.'
+        : 'Keine Widgets sichtbar. Passe dein Infoboard an, um Inhalte hinzuzufügen.'
+      : null;
+
   return (
     <>
-      <div className="page-heading">
+      <div className={`page-heading${isMobile ? ' page-heading--stack' : ''}`}>
         <div>
           <span className="eyebrow">Büro · Live-Status</span>
           <h1>{widgetData.greeting}, {widgetData.firstName}.</h1>
           <p>{widgetData.subtitle}</p>
         </div>
-        {canCustomize && (
+        {canCustomize && !isMobile && (
           <InfoboardEditToolbar
             isEditing={isEditing}
             isSaving={isSaving}
@@ -136,11 +155,25 @@ export function InfoboardDashboard({
             onStartEdit={handleStartEdit}
             onCancel={handleCancel}
             onSave={handleSave}
+            variant="inline"
+          />
+        )}
+        {canCustomize && isMobile && !isEditing && (
+          <InfoboardEditToolbar
+            isEditing={false}
+            isSaving={isSaving}
+            saveMessage={saveMessage}
+            onStartEdit={handleStartEdit}
+            onCancel={handleCancel}
+            onSave={handleSave}
+            variant="inline"
           />
         )}
       </div>
 
-      <div className={`infoboard-shell${isEditing ? ' infoboard-shell-editing' : ''}`}>
+      <div
+        className={`infoboard-shell${isEditing ? ' infoboard-shell-editing' : ''}${isMobile ? ' infoboard-shell-mobile' : ''}${isEditing && isMobile ? ' infoboard-shell-mobile-editing' : ''}`}
+      >
         {isEditing && (
           <InfoboardWidgetPicker
             layout={draftLayout}
@@ -150,14 +183,29 @@ export function InfoboardDashboard({
         )}
 
         <div className="infoboard-grid-wrap" ref={containerRef}>
-          {mounted && gridLayout.length > 0 && (
+          {isMobile && stackItems.length > 0 && (
+            <div className="infoboard-stack">
+              {stackItems.map((item) => (
+                <InfoboardWidgetFrame
+                  key={item.id}
+                  widgetId={item.id}
+                  showEditChrome={showEditChrome}
+                  onRemove={() => handleRemoveWidget(item.id)}
+                >
+                  <RenderWidget widgetId={item.id} data={widgetData} />
+                </InfoboardWidgetFrame>
+              ))}
+            </div>
+          )}
+
+          {!isMobile && gridLayout.length > 0 && (
             <GridLayout
               className="infoboard-grid"
               width={width}
               layout={gridLayout}
               compactor={verticalCompactor}
               gridConfig={{
-                cols: isMobile ? 1 : INFOBOARD_GRID_COLS,
+                cols: INFOBOARD_GRID_COLS,
                 rowHeight: INFOBOARD_ROW_HEIGHT,
                 margin: [12, 12] as const,
                 containerPadding: [0, 0] as const,
@@ -169,7 +217,7 @@ export function InfoboardDashboard({
                 bounded: true,
               }}
               resizeConfig={{
-                enabled: isEditing && !isMobile,
+                enabled: isEditing,
                 handles: ['se'] as const,
               }}
               onLayoutChange={handleLayoutChange}
@@ -180,7 +228,7 @@ export function InfoboardDashboard({
                 <div key={item.i}>
                   <InfoboardWidgetFrame
                     widgetId={item.i as InfoboardWidgetId}
-                    isEditing={isEditing}
+                    showEditChrome={showEditChrome}
                     onRemove={() => handleRemoveWidget(item.i as InfoboardWidgetId)}
                   >
                     <RenderWidget
@@ -193,17 +241,25 @@ export function InfoboardDashboard({
             </GridLayout>
           )}
 
-          {mounted && gridLayout.length === 0 && (
+          {emptyHint && (
             <div className="panel infoboard-empty-state">
-              <p className="muted">
-                {isEditing
-                  ? 'Wähle links Widgets aus, um sie auf dem Infoboard anzuzeigen.'
-                  : 'Keine Widgets sichtbar. Passe dein Infoboard an, um Inhalte hinzuzufügen.'}
-              </p>
+              <p className="muted">{emptyHint}</p>
             </div>
           )}
         </div>
       </div>
+
+      {canCustomize && isMobile && isEditing && (
+        <InfoboardEditToolbar
+          isEditing
+          isSaving={isSaving}
+          saveMessage={saveMessage}
+          onStartEdit={handleStartEdit}
+          onCancel={handleCancel}
+          onSave={handleSave}
+          variant="sticky"
+        />
+      )}
     </>
   );
 }

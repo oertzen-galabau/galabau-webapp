@@ -731,25 +731,38 @@ export async function sendChatMessage(recipientId: string, body: string) {
   if (recipientId === userId) throw new Error('Du kannst dir selbst keine Nachricht senden.');
 
   const supabase = await createClient();
+  const { data: senderProfile } = await supabase
+    .from('profiles')
+    .select('tenant_id')
+    .eq('id', userId)
+    .maybeSingle();
+  const messageTenantId = senderProfile?.tenant_id ?? tenantId;
+
   const { data: recipient } = await supabase
     .from('profiles')
     .select('id')
     .eq('id', recipientId)
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', messageTenantId)
     .eq('is_active', true)
     .maybeSingle();
   if (!recipient) throw new Error('Empfänger nicht gefunden.');
 
-  const { error } = await supabase.from('messages').insert({
-    tenant_id: tenantId,
-    sender_id: userId,
-    recipient_id: recipientId,
-    body: trimmed,
-  });
+  const { data: message, error } = await supabase
+    .from('messages')
+    .insert({
+      tenant_id: messageTenantId,
+      sender_id: userId,
+      recipient_id: recipientId,
+      body: trimmed,
+    })
+    .select('*')
+    .single();
   if (error) throw new Error(error.message);
 
   revalidatePath('/app/nachrichten');
   revalidatePath(`/app/nachrichten/${recipientId}`);
+
+  return message;
 }
 
 export async function markConversationRead(otherUserId: string) {
@@ -758,14 +771,12 @@ export async function markConversationRead(otherUserId: string) {
   const { userId } = ctx;
 
   const supabase = await createClient();
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('messages')
-    .update({ delivered_at: now, read_at: now })
-    .eq('sender_id', otherUserId)
-    .eq('recipient_id', userId)
-    .is('read_at', null);
-  if (error) throw new Error(error.message);
+  const { markIncomingMessagesRead } = await import('@/lib/messages/read-state');
+  const errorMessage = await markIncomingMessagesRead(supabase, {
+    recipientUserId: userId,
+    senderUserId: otherUserId,
+  });
+  if (errorMessage) throw new Error(errorMessage);
 
   revalidatePath('/app/nachrichten');
   revalidatePath(`/app/nachrichten/${otherUserId}`);
@@ -777,13 +788,9 @@ export async function markInboxDelivered() {
   const { userId } = ctx;
 
   const supabase = await createClient();
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('messages')
-    .update({ delivered_at: now })
-    .eq('recipient_id', userId)
-    .is('delivered_at', null);
-  if (error) throw new Error(error.message);
+  const { markInboxDeliveredForUser } = await import('@/lib/messages/read-state');
+  const errorMessage = await markInboxDeliveredForUser(supabase, userId);
+  if (errorMessage) throw new Error(errorMessage);
 }
 
 export async function getUnreadMessageCount(): Promise<number> {
@@ -827,24 +834,6 @@ export async function markConversationUnread(otherUserId: string) {
 
   revalidatePath('/app/nachrichten');
   revalidatePath(`/app/nachrichten/${otherUserId}`);
-}
-
-export async function saveClothingOrder(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'orders.create');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const { error } = await supabase.from('clothing_orders').insert({
-    tenant_id: tenantId,
-    user_id: userId,
-    item_type: formData.get('item_type') as string,
-    size: formData.get('size') as string,
-    quantity: Number(formData.get('quantity') ?? 1),
-    notes: (formData.get('notes') as string) || null,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath('/app/bestellungen');
 }
 
 export async function updateTenantBranding(formData: FormData) {

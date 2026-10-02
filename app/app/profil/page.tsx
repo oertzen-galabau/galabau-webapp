@@ -15,10 +15,16 @@ export default async function ProfilPage() {
   const canChangePassword = canAccess(ctx, 'profile.change_password');
 
   const supabase = await createClient();
-  const [{ data: leaveRequests }, { data: clothingOrders }] = await Promise.all([
+  const [{ data: leaveRequests }, { data: catalogOrders }, { data: clothingOrders }] = await Promise.all([
     supabase
       .from('leave_requests')
       .select('id, leave_type, start_date, end_date, status, notes')
+      .eq('user_id', ctx.userId)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('catalog_orders')
+      .select('id, created_at, total_eur, own_share_eur, status')
       .eq('user_id', ctx.userId)
       .order('created_at', { ascending: false })
       .limit(5),
@@ -37,6 +43,7 @@ export default async function ProfilPage() {
       <div className="profile-sections">
         <ProfileRequestsOverview
           leaveRequests={leaveRequests ?? []}
+          catalogOrders={catalogOrders ?? []}
           clothingOrders={clothingOrders ?? []}
         />
         <ProfilePersonalForm profile={ctx.profile} editable={canEditSelf} />

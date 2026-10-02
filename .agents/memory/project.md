@@ -26,6 +26,7 @@ Cloud-SaaS für GaLaBau-/Bau-Betriebe: mandantenfähige Web-App für Arbeitszeit
 - **Mandanten-Startpasswort**: `tenants.default_start_password`; Tab `/app/einstellungen?tab=startpasswort`; bei Anlage neuer Mitarbeiter und bei Änderung für alle Mandanten-User; Permission `settings.start_password`; Lesen nur über Admin-Client (Spalten-Privileg).
 - **Mitarbeiter-Stammdaten**: `profiles.job_title` (Berufbezeichnung); Anlage unter `/app/team`, Pflege in Stammdaten; Übernahme in Tagesrapport/PDF.
 - **Baustellendokumentation**: `daily_logs` mit `report_type` (Tagesbericht vs. Std.-Lohn-Rapport) und optionalem `custom_title`; Unique pro Mandant/Baustelle/Datum/**Art**; schlankes Formular für Tagesbericht (ohne Stunden/Unterschriften); PDF/Labels über `lib/documentation/report-labels.ts`.
+- **Bestellkatalog**: Mandantenweit `order_catalog_categories` + `order_catalog_items`; Pflege unter `/app/bestellungen?tab=katalog` via `orders.manage_catalog`; Shop-Datenimport in `lib/catalog/*` + `POST /api/catalog/fetch-product`; Bestell-UI (`clothing_orders`) noch Legacy-Formular.
 
 ## Entscheidungen & Constraints
 - **Pflicht bei jeder neuen Funktion**: Neue Features müssen immer in Rollen & Berechtigungen hinterlegt werden — Permission-Key in `lib/auth/permissions.ts` (Katalog + ggf. Default-Sets), Guards via `canAccess()` auf Seiten/Actions/APIs, optional Nav-Eintrag mit eigenem Key. Ohne Permission-Integration gilt ein Feature als nicht fertig.
