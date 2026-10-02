@@ -352,7 +352,12 @@ export function OrderCatalogItemDialog({
   sizePresets,
 }: Props) {
   return (
-    <AppDialog open={open} onClose={onClose} title={item ? 'Artikel bearbeiten' : 'Artikel anlegen'}>
+    <AppDialog
+      open={open}
+      onClose={onClose}
+      title={item ? 'Artikel bearbeiten' : 'Artikel anlegen'}
+      panelClassName="dialog-panel--wide"
+    >
       {open && (
         <OrderCatalogItemForm
           key={item?.id ?? 'new'}

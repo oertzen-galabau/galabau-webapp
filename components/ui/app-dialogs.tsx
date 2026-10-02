@@ -9,9 +9,10 @@ type AppDialogProps = {
   title: string;
   children: React.ReactNode;
   titleId?: string;
+  panelClassName?: string;
 };
 
-export function AppDialog({ open, onClose, title, children, titleId }: AppDialogProps) {
+export function AppDialog({ open, onClose, title, children, titleId, panelClassName }: AppDialogProps) {
   const autoId = useId();
   const headingId = titleId ?? autoId;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -35,7 +36,7 @@ export function AppDialog({ open, onClose, title, children, titleId }: AppDialog
     <div className="dialog-backdrop" role="presentation" onClick={onClose}>
       <div
         ref={panelRef}
-        className="dialog-panel"
+        className={panelClassName ? `dialog-panel ${panelClassName}` : 'dialog-panel'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
@@ -43,7 +44,7 @@ export function AppDialog({ open, onClose, title, children, titleId }: AppDialog
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={headingId}>{title}</h2>
-        {children}
+        <div className="dialog-panel-body">{children}</div>
       </div>
     </div>,
     document.body,

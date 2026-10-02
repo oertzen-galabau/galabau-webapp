@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { MoreVertical, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +14,7 @@ import {
 import { markConversationUnread } from '@/lib/actions/employee';
 import { displayName, initials } from '@/lib/auth/roles';
 import {
-  conversationPreview,
+  conversationListPreview,
   type ChatContact,
   type ConversationSummary,
 } from '@/lib/messages/conversations';
@@ -47,6 +48,113 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
     });
   }, [contacts, query]);
 
+  const { unreadContacts, otherContacts } = useMemo(() => {
+    const unread: ContactWithSummary[] = [];
+    const other: ContactWithSummary[] = [];
+    for (const contact of filteredContacts) {
+      if ((contact.unreadCount ?? 0) > 0) unread.push(contact);
+      else other.push(contact);
+    }
+    return { unreadContacts: unread, otherContacts: other };
+  }, [filteredContacts]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const refreshList = () => {
+      router.refresh();
+    };
+    const channel = supabase
+      .channel(`chat-sidebar:${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq.${currentUserId}`,
+        },
+        refreshList,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `sender_id=eq.${currentUserId}`,
+        },
+        refreshList,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUserId, router]);
+
+  function renderContactRow(contact: ContactWithSummary) {
+    const isActive = activeContactId === contact.id;
+    const hasConversation = Boolean(contact.lastMessageAt);
+    const unreadCount = contact.unreadCount ?? 0;
+    const preview = hasConversation
+      ? conversationListPreview(contact, currentUserId)
+      : 'Neuer Chat';
+    const timeLabel = contact.lastMessageAt
+      ? formatChatListTime(
+          unreadCount > 0 && contact.latestUnreadAt
+            ? contact.latestUnreadAt
+            : contact.lastMessageAt,
+        )
+      : '';
+
+    return (
+      <div
+        key={contact.id}
+        className={`chat-sidebar-row${isActive ? ' chat-sidebar-row--active' : ''}${unreadCount > 0 ? ' chat-sidebar-row--unread' : ''}`}
+      >
+        <Link
+          href={`/app/nachrichten/${contact.id}`}
+          className={`chat-sidebar-item${isActive ? ' chat-sidebar-item--active' : ''}${unreadCount > 0 ? ' chat-sidebar-item--unread' : ''}`}
+        >
+          <span className="chat-avatar">{initials(contact)}</span>
+          <span className="chat-sidebar-item-body">
+            <span className="chat-sidebar-item-top">
+              <strong>{displayName(contact)}</strong>
+              {timeLabel && <small>{timeLabel}</small>}
+            </span>
+            <span className="chat-sidebar-item-bottom">
+              <span className="chat-sidebar-preview">{preview}</span>
+              {unreadCount > 0 && (
+                <span className="chat-unread-badge" aria-label={`${unreadCount} ungelesen`}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </span>
+          </span>
+        </Link>
+        {hasConversation && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger
+              className="chat-sidebar-item-menu-trigger"
+              aria-label={`Aktionen für ${displayName(contact)}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreVertical size={16} aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={markingUnreadId === contact.id}
+                onClick={() => void handleMarkUnread(contact.id)}
+              >
+                Als ungelesen markieren
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    );
+  }
+
   async function handleMarkUnread(contactId: string) {
     setMarkingUnreadId(contactId);
     try {
@@ -77,67 +185,23 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
           {filteredContacts.length === 0 && (
             <p className="chat-sidebar-empty muted">Keine Kontakte gefunden.</p>
           )}
-          {filteredContacts.map((contact) => {
-            const isActive = activeContactId === contact.id;
-            const hasConversation = Boolean(contact.lastMessageAt);
-            const preview = hasConversation
-              ? conversationPreview(
-                  {
-                    lastMessage: contact.lastMessage ?? '',
-                    lastMessageSenderId: contact.lastMessageSenderId ?? '',
-                  },
-                  currentUserId,
-                )
-              : 'Neuer Chat';
-            const timeLabel = contact.lastMessageAt
-              ? formatChatListTime(contact.lastMessageAt)
-              : '';
-
-            return (
-              <div
-                key={contact.id}
-                className={`chat-sidebar-row${isActive ? ' chat-sidebar-row--active' : ''}${(contact.unreadCount ?? 0) > 0 ? ' chat-sidebar-row--unread' : ''}`}
-              >
-                <Link
-                  href={`/app/nachrichten/${contact.id}`}
-                  className={`chat-sidebar-item${isActive ? ' chat-sidebar-item--active' : ''}${(contact.unreadCount ?? 0) > 0 ? ' chat-sidebar-item--unread' : ''}`}
-                >
-                  <span className="chat-avatar">{initials(contact)}</span>
-                  <span className="chat-sidebar-item-body">
-                    <span className="chat-sidebar-item-top">
-                      <strong>{displayName(contact)}</strong>
-                      {timeLabel && <small>{timeLabel}</small>}
-                    </span>
-                    <span className="chat-sidebar-item-bottom">
-                      <span className="chat-sidebar-preview">{preview}</span>
-                      {(contact.unreadCount ?? 0) > 0 && (
-                        <span className="chat-unread-badge">{contact.unreadCount}</span>
-                      )}
-                    </span>
-                  </span>
-                </Link>
-                {hasConversation && (
-                  <DropdownMenu modal={false}>
-                    <DropdownMenuTrigger
-                      className="chat-sidebar-item-menu-trigger"
-                      aria-label={`Aktionen für ${displayName(contact)}`}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <MoreVertical size={16} aria-hidden />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={markingUnreadId === contact.id}
-                        onClick={() => void handleMarkUnread(contact.id)}
-                      >
-                        Als ungelesen markieren
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            );
-          })}
+          {unreadContacts.length > 0 && (
+            <div className="chat-sidebar-section">
+              <p className="chat-sidebar-section-label">
+                Ungelesen
+                <span className="chat-sidebar-section-count">{unreadContacts.length}</span>
+              </p>
+              {unreadContacts.map(renderContactRow)}
+            </div>
+          )}
+          {otherContacts.length > 0 && (
+            <div className="chat-sidebar-section">
+              {unreadContacts.length > 0 && (
+                <p className="chat-sidebar-section-label">Alle Chats</p>
+              )}
+              {otherContacts.map(renderContactRow)}
+            </div>
+          )}
         </div>
       </aside>
 

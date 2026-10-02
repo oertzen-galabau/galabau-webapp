@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
-import { getUnreadMessageCount } from '@/lib/actions/employee';
+import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { getTenantBySlug, tenantThemeStyle } from '@/lib/tenant/resolve';
 import { getTenantRoles } from '@/lib/tenant/roles';
@@ -49,7 +49,9 @@ export default async function TenantAppLayout({ children }: { children: React.Re
   }
 
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
-  const initialUnreadCount = canViewMessages ? await getUnreadMessageCount() : 0;
+  const [initialUnreadCount, initialUnreadSummaries] = canViewMessages
+    ? await Promise.all([getUnreadMessageCount(), getUnreadInboxSummaries()])
+    : [0, [] as Awaited<ReturnType<typeof getUnreadInboxSummaries>>];
 
   return (
     <div style={tenantThemeStyle(tenant)}>
@@ -66,6 +68,7 @@ export default async function TenantAppLayout({ children }: { children: React.Re
         todayEntry={todayEntry}
         canRecordTime={canRecordTime}
         initialUnreadCount={initialUnreadCount}
+        initialUnreadSummaries={initialUnreadSummaries}
       >
         {children}
       </TenantShell>

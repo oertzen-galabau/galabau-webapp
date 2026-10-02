@@ -808,6 +808,31 @@ export async function getUnreadMessageCount(): Promise<number> {
   return count ?? 0;
 }
 
+export async function getUnreadInboxSummaries() {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'nav.nachrichten')) return [];
+
+  const { buildUnreadInboxSummaries } = await import('@/lib/messages/unread-inbox');
+  const supabase = await createClient();
+  const { data: messages, error } = await supabase
+    .from('messages')
+    .select('sender_id, body, created_at')
+    .eq('recipient_id', ctx.userId)
+    .is('read_at', null)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  if (!messages?.length) return [];
+
+  const senderIds = [...new Set(messages.map((m) => m.sender_id))];
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, first_name, last_name')
+    .in('id', senderIds);
+  if (profileError) throw new Error(profileError.message);
+
+  return buildUnreadInboxSummaries(messages, profiles ?? []);
+}
+
 export async function markConversationUnread(otherUserId: string) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'messages.send');

@@ -16,6 +16,9 @@ export type ConversationSummary = {
   lastMessageAt: string;
   lastMessageSenderId: string;
   unreadCount: number;
+  /** Neueste ungelesene eingehende Nachricht (für Listen-Vorschau). */
+  latestUnreadMessage?: string;
+  latestUnreadAt?: string;
 };
 
 export function buildConversationSummaries(
@@ -37,11 +40,20 @@ export function buildConversationSummaries(
         lastMessageAt: msg.created_at,
         lastMessageSenderId: msg.sender_id,
         unreadCount: isUnread ? 1 : 0,
+        ...(isUnread
+          ? { latestUnreadMessage: msg.body, latestUnreadAt: msg.created_at }
+          : {}),
       });
       continue;
     }
 
-    if (isUnread) existing.unreadCount += 1;
+    if (isUnread) {
+      existing.unreadCount += 1;
+      if (!existing.latestUnreadMessage) {
+        existing.latestUnreadMessage = msg.body;
+        existing.latestUnreadAt = msg.created_at;
+      }
+    }
   }
 
   return [...byContact.values()].sort(
@@ -62,6 +74,13 @@ export function mergeContactsWithConversations(
       return { ...member, ...summary };
     })
     .filter(Boolean) as Array<ChatContact & ConversationSummary>;
+
+  withConversation.sort((a, b) => {
+    const aUnread = a.unreadCount > 0 ? 1 : 0;
+    const bUnread = b.unreadCount > 0 ? 1 : 0;
+    if (bUnread !== aUnread) return bUnread - aUnread;
+    return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+  });
 
   const withoutConversation = members
     .filter((m) => m.id !== currentUserId && !summaryByContact.has(m.id))
@@ -97,4 +116,25 @@ export function conversationPreview(
   if (!summary.lastMessage) return 'Noch keine Nachrichten';
   const prefix = summary.lastMessageSenderId === currentUserId ? 'Du: ' : '';
   return `${prefix}${truncatePreview(summary.lastMessage)}`;
+}
+
+export function conversationListPreview(
+  contact: {
+    unreadCount?: number;
+    latestUnreadMessage?: string;
+    lastMessage?: string;
+    lastMessageSenderId?: string;
+  },
+  currentUserId: string,
+) {
+  if ((contact.unreadCount ?? 0) > 0 && contact.latestUnreadMessage) {
+    return truncatePreview(contact.latestUnreadMessage);
+  }
+  return conversationPreview(
+    {
+      lastMessage: contact.lastMessage ?? '',
+      lastMessageSenderId: contact.lastMessageSenderId ?? '',
+    },
+    currentUserId,
+  );
 }

@@ -10,8 +10,10 @@ import {
   BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
   Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { getUnreadMessageCount } from '@/lib/actions/employee';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { SidebarUnreadNotifications } from '@/components/messages/sidebar-unread-notifications';
+import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
+import type { UnreadInboxSummary } from '@/lib/messages/unread-inbox';
 import { createClient } from '@/lib/supabase/client';
 import { LogoutButton } from '@/components/auth/logout-button';
 import { RoleSwitcher } from '@/components/dev/role-switcher';
@@ -89,6 +91,7 @@ export function TenantShell({
   todayEntry = null,
   canRecordTime = false,
   initialUnreadCount = 0,
+  initialUnreadSummaries = [],
   children,
 }: {
   theme: TenantTheme;
@@ -103,12 +106,15 @@ export function TenantShell({
   todayEntry?: TimeEntry | null;
   canRecordTime?: boolean;
   initialUnreadCount?: number;
+  initialUnreadSummaries?: UnreadInboxSummary[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileMenu, setMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  const [unreadSummaries, setUnreadSummaries] = useState(initialUnreadSummaries);
   const [prevInitialUnreadCount, setPrevInitialUnreadCount] = useState(initialUnreadCount);
+  const [prevInitialUnreadSummaries, setPrevInitialUnreadSummaries] = useState(initialUnreadSummaries);
   const permSet = useMemo(() => new Set(permissions), [permissions]);
   const canViewMessages = isSuperadminBypass || permSet.has('nav.nachrichten');
 
@@ -116,14 +122,21 @@ export function TenantShell({
     setPrevInitialUnreadCount(initialUnreadCount);
     setUnreadCount(initialUnreadCount);
   }
+  if (initialUnreadSummaries !== prevInitialUnreadSummaries) {
+    setPrevInitialUnreadSummaries(initialUnreadSummaries);
+    setUnreadSummaries(initialUnreadSummaries);
+  }
 
   useEffect(() => {
     if (!canViewMessages) return;
 
     const supabase = createClient();
-    const refreshUnreadCount = () => {
+    const refreshInbox = () => {
       void getUnreadMessageCount()
         .then(setUnreadCount)
+        .catch(() => undefined);
+      void getUnreadInboxSummaries()
+        .then(setUnreadSummaries)
         .catch(() => undefined);
     };
 
@@ -137,7 +150,7 @@ export function TenantShell({
           table: 'messages',
           filter: `recipient_id=eq.${profile.id}`,
         },
-        refreshUnreadCount,
+        refreshInbox,
       )
       .on(
         'postgres_changes',
@@ -147,7 +160,7 @@ export function TenantShell({
           table: 'messages',
           filter: `recipient_id=eq.${profile.id}`,
         },
-        refreshUnreadCount,
+        refreshInbox,
       )
       .subscribe();
 
@@ -211,11 +224,16 @@ export function TenantShell({
               const Icon = item.icon;
               const active = pathname === item.href || (item.href !== '/app' && pathname.startsWith(item.href));
               return (
-                <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
-                  <Icon size={19} />
-                  <span>{item.label}</span>
-                  {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
-                </Link>
+                <Fragment key={item.href}>
+                  <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
+                    <Icon size={19} />
+                    <span>{item.label}</span>
+                    {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
+                  </Link>
+                  {item.href === '/app/nachrichten' && canViewMessages && (
+                    <SidebarUnreadNotifications summaries={unreadSummaries} />
+                  )}
+                </Fragment>
               );
             })}
           </nav>
@@ -286,11 +304,19 @@ export function TenantShell({
                 const Icon = item.icon;
                 const active = pathname === item.href;
                 return (
-                  <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
-                    <Icon size={20} />
-                    {item.label}
-                    {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
-                  </Link>
+                  <Fragment key={item.href}>
+                    <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
+                      <Icon size={20} />
+                      {item.label}
+                      {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
+                    </Link>
+                    {item.href === '/app/nachrichten' && canViewMessages && (
+                      <SidebarUnreadNotifications
+                        summaries={unreadSummaries}
+                        className="sidebar-unread-messages--drawer"
+                      />
+                    )}
+                  </Fragment>
                 );
               })}
               <Link
