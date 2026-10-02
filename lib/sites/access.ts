@@ -18,10 +18,15 @@ function asSiteAccessContext(ctx: SessionContext | ActionContext): SiteAccessCon
 }
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 
-/** Voller Zugriff auf alle Baustellen (Verwaltung/Administrator). */
+/** Alle Baustellen des Mandanten (nicht nur Einteilungen/Team). */
 export function canViewAllSites(ctx: SessionContext | ActionContext): boolean {
   if (ctx.isSuperadminBypass) return true;
-  return canAccess(ctx, 'nav.team') || canAccess(ctx, 'urlaub.view_all');
+  return (
+    canAccess(ctx, 'nav.team') ||
+    canAccess(ctx, 'urlaub.view_all') ||
+    canAccess(ctx, 'sites.assign_team') ||
+    canAccess(ctx, 'sites.view')
+  );
 }
 
 /** Site-IDs, die der Nutzer sehen darf (Einteilungen ab heute + ggf. VA-Zuständigkeit). */
