@@ -14,6 +14,19 @@ function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: Per
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
 }
 
+export type SiteFormState = { ok?: boolean; error?: string | null };
+
+function siteFormError(e: unknown): SiteFormState {
+  const message = e instanceof Error ? e.message : 'Speichern fehlgeschlagen';
+  if (message.includes('Failed to find Server Action')) {
+    return {
+      error:
+        'Die App wurde gerade aktualisiert. Bitte Seite neu laden (Strg/Cmd+R) und erneut speichern.',
+    };
+  }
+  return { error: message };
+}
+
 export async function saveSite(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'sites.manage');
@@ -49,6 +62,18 @@ export async function saveSite(formData: FormData) {
 
   await syncSiteGeocoding(supabase, site.id, tenantId, siteAddress.address);
   revalidatePath('/app/baustellen');
+}
+
+export async function saveSiteAction(
+  _prev: SiteFormState | null,
+  formData: FormData,
+): Promise<SiteFormState> {
+  try {
+    await saveSite(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    return siteFormError(e);
+  }
 }
 
 export async function saveDailyLog(formData: FormData) {
@@ -343,6 +368,18 @@ export async function updateSite(formData: FormData) {
 
   revalidatePath(`/app/baustellen/${siteId}`);
   revalidatePath('/app/baustellen');
+}
+
+export async function updateSiteAction(
+  _prev: SiteFormState | null,
+  formData: FormData,
+): Promise<SiteFormState> {
+  try {
+    await updateSite(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    return siteFormError(e);
+  }
 }
 
 async function countSiteRows(
@@ -716,6 +753,18 @@ export async function uploadSiteDocument(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/app/baustellen/${siteId}`);
+}
+
+export async function uploadSiteDocumentAction(
+  _prev: SiteFormState | null,
+  formData: FormData,
+): Promise<SiteFormState> {
+  try {
+    await uploadSiteDocument(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    return siteFormError(e);
+  }
 }
 
 export async function saveCompanyHoliday(formData: FormData) {

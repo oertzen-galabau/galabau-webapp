@@ -2,9 +2,8 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { saveSite } from '@/lib/actions/admin';
+import { SiteCreateForm } from '@/components/sites/site-create-form';
 import { SitesArchivedToggle } from '@/components/sites/sites-archived-toggle';
-import { AppSelect } from '@/components/ui/app-select';
 import { resolveAccessibleSiteIds } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
 import { loadForemanOptions } from '@/lib/sites/foremen-options';
@@ -70,34 +69,7 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
       {canManage && (
         <section className="panel form-panel">
           <h2>Neue Baustelle</h2>
-          <form action={saveSite} className="input-form">
-            <div className="input-form-core">
-              <label>Name<input name="name" required /></label>
-              <label>Kunde<input name="client_name" /></label>
-              <label className="input-form-span-full">
-                Verantwortlicher Vorarbeiter
-                <AppSelect
-                  name="responsible_user_id"
-                  allowEmpty
-                  placeholder="— optional —"
-                  options={foremanOptions}
-                />
-              </label>
-              <label>Straße mit Nr.<input name="street" /></label>
-              <label>PLZ<input name="zip_code" /></label>
-              <label>Ort<input name="city" /></label>
-            </div>
-            <details className="input-form-extra">
-              <summary>Anfahrt & Notizen</summary>
-              <div className="input-form-extra-grid">
-                <label className="input-form-span-2">Anfahrt<textarea name="directions" rows={2} /></label>
-                <label className="input-form-span-2">Notizen<textarea name="notes" rows={2} /></label>
-              </div>
-            </details>
-            <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Anlegen</button>
-            </div>
-          </form>
+          <SiteCreateForm foremanOptions={foremanOptions} />
         </section>
       )}
 

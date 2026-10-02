@@ -1,7 +1,6 @@
-import { deleteSiteDocument, uploadSiteDocument } from '@/lib/actions/admin';
-import { FileInputField } from '@/components/ui/file-input-field';
+import { deleteSiteDocument } from '@/lib/actions/admin';
 import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
-import { AppSelect } from '@/components/ui/app-select';
+import { SiteDocumentUploadForm } from '@/components/sites/site-document-upload-form';
 
 type Document = {
   id: string;
@@ -70,18 +69,6 @@ function DocumentGroup({
   );
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  plan: 'Plan',
-  leistungsverzeichnis: 'Leistungsverzeichnis',
-  sonstiges: 'Sonstiges',
-};
-
-const CATEGORY_OPTIONS = [
-  { value: 'plan', label: CATEGORY_LABELS.plan },
-  { value: 'leistungsverzeichnis', label: CATEGORY_LABELS.leistungsverzeichnis },
-  { value: 'sonstiges', label: CATEGORY_LABELS.sonstiges },
-];
-
 export function SiteDocumentsSection({
   siteId,
   plans,
@@ -97,32 +84,7 @@ export function SiteDocumentsSection({
       <DocumentGroup title="Pläne" documents={plans} signedUrls={signedUrls} canEdit={canEdit} />
       <DocumentGroup title="Weitere Dokumente" documents={other} signedUrls={signedUrls} canEdit={canEdit} />
 
-      {canEdit && (
-        <form action={uploadSiteDocument} className="input-form" style={{ marginTop: 16 }}>
-          <input type="hidden" name="site_id" value={siteId} />
-          <div className="input-form-core">
-            <label>Titel<input name="title" placeholder="z.B. Lageplan Süd" /></label>
-            <label>Kategorie
-              <AppSelect
-                name="category"
-                defaultValue="sonstiges"
-                allowEmpty={false}
-                options={CATEGORY_OPTIONS}
-              />
-            </label>
-            <FileInputField
-              label="Datei"
-              name="file"
-              accept="application/pdf,image/*"
-              required
-              hint="PDF oder Bild"
-            />
-          </div>
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Dokument hochladen</button>
-          </div>
-        </form>
-      )}
+      {canEdit && <SiteDocumentUploadForm siteId={siteId} />}
     </section>
   );
 }

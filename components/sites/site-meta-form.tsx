@@ -1,7 +1,12 @@
-import { updateSite } from '@/lib/actions/admin';
+'use client';
+
+import { useActionState } from 'react';
+import { updateSiteAction, type SiteFormState } from '@/lib/actions/admin';
 import { AppSelect } from '@/components/ui/app-select';
 import type { ForemanOption } from '@/lib/sites/foremen-options';
 import type { Site } from '@/lib/types/database';
+
+const initialState: SiteFormState = { error: null };
 
 type Props = {
   site: Site;
@@ -10,9 +15,15 @@ type Props = {
 };
 
 export function SiteMetaForm({ site, canEdit, foremanOptions }: Props) {
+  const [state, action, pending] = useActionState(updateSiteAction, initialState);
+
   return (
-    <form action={canEdit ? updateSite : undefined} className="site-meta-form input-form">
+    <form action={canEdit ? action : undefined} className="site-meta-form input-form">
       <input type="hidden" name="site_id" value={site.id} />
+      {canEdit && state.error && <p className="form-error">{state.error}</p>}
+      {canEdit && state.ok && !state.error && (
+        <p className="form-feedback form-feedback--success">Stammdaten gespeichert.</p>
+      )}
       <div className="site-meta-form-grid">
         <label className="input-form-span-full">
           Straße mit Nr.
@@ -71,7 +82,13 @@ export function SiteMetaForm({ site, canEdit, foremanOptions }: Props) {
       </div>
       {canEdit && (
         <div className="input-form-actions">
-          <button type="submit" className="primary-button primary-button--compact">Stammdaten speichern</button>
+          <button
+            type="submit"
+            className="primary-button primary-button--compact"
+            disabled={pending}
+          >
+            {pending ? 'Speichern…' : 'Stammdaten speichern'}
+          </button>
         </div>
       )}
     </form>
