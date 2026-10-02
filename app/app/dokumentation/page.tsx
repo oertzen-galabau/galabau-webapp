@@ -2,13 +2,18 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { requireTenantMember } from '@/lib/auth/session';
 import { saveDeliveryNote, saveSubcontractorEntry } from '@/lib/actions/admin';
+import { SubcontractorEntryForm } from '@/components/documentation/subcontractor-entry-form';
 import { canAccess } from '@/lib/auth/session';
 import { DailyLogEntriesList } from '@/components/documentation/daily-log-entries-list';
 import { DailyReportForm, type DailyReportFormInitial } from '@/components/documentation/daily-report-form';
 import { DeliveryNoteScanForm } from '@/components/documentation/delivery-note-scan-form';
 import { isDictationConfigured } from '@/lib/ai/daily-log-dictation';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
-import { fetchAccessibleSites } from '@/lib/sites/access';
+import {
+  applyAccessibleSiteIdFilter,
+  fetchAccessibleSites,
+  resolveAccessibleSiteIds,
+} from '@/lib/sites/access';
 import {
   isDailyLogReportType,
   parseDailyLogReportType,
@@ -36,10 +41,24 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   const dictationConfigured = isDictationConfigured();
 
   const supabase = await createClient();
-  const [sitesRaw, { data: employees }] = await Promise.all([
+  const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
+  const [sitesRaw, { data: employees }, { data: businessPartners }] = await Promise.all([
     fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, latitude, longitude'),
     supabase.from('profiles').select('id, first_name, last_name, job_title').eq('tenant_id', ctx.tenant!.id).eq('is_active', true).order('last_name'),
+    supabase
+      .from('tenant_business_partners')
+      .select('id, name, contact_person, kind')
+      .eq('tenant_id', ctx.tenant!.id)
+      .eq('is_active', true)
+      .order('name'),
   ]);
+
+  const supplierOptions = (businessPartners ?? [])
+    .filter((p) => p.kind === 'supplier')
+    .map((p) => ({ id: p.id, name: p.name, contact_person: p.contact_person }));
+  const subcontractorOptions = (businessPartners ?? [])
+    .filter((p) => p.kind === 'subcontractor')
+    .map((p) => ({ id: p.id, name: p.name, contact_person: p.contact_person }));
 
   const sites = sitesRaw as Array<{
     id: string;
@@ -50,11 +69,13 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     longitude: number | null;
   }>;
 
-  const { data: logs } = await supabase
+  let logsQuery = supabase
     .from('daily_logs')
     .select('*, sites(name, client_name, address)')
     .order('log_date', { ascending: false })
     .limit(20);
+  logsQuery = applyAccessibleSiteIdFilter(logsQuery, 'site_id', accessibleSiteIds);
+  const { data: logs } = await logsQuery;
 
   const logIds = (logs ?? []).map((log) => log.id);
 
@@ -316,7 +337,11 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
       <section className="panel form-panel" style={{ marginTop: 16 }}>
         <h2>Lieferung erfassen</h2>
         {dailyLogOptions.length > 0 ? (
-          <DeliveryNoteScanForm logs={dailyLogOptions} saveAction={saveDeliveryNote} />
+          <DeliveryNoteScanForm
+            logs={dailyLogOptions}
+            suppliers={supplierOptions}
+            saveAction={saveDeliveryNote}
+          />
         ) : (
           <p className="muted">Bitte zuerst einen Bericht anlegen, bevor Lieferungen erfasst werden können.</p>
         )}
@@ -324,27 +349,11 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
 
       <section className="panel form-panel" style={{ marginTop: 16 }}>
         <h2>Subunternehmer erfassen</h2>
-        <form action={saveSubcontractorEntry} className="input-form">
-          <div className="input-form-core">
-            <label>
-              Tageseintrag
-              <select name="daily_log_id" required defaultValue="">
-                <option value="" disabled>—</option>
-                {(logs ?? []).map((log) => (
-                  <option key={log.id} value={log.id}>
-                    {log.log_date} · {(log.sites as { name: string }[] | null)?.[0]?.name ?? ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>Firma<input name="company_name" placeholder="Subunternehmer" required /></label>
-            <label>Gewerk / Beschreibung<input name="work_description" placeholder="z.B. Pflasterarbeiten" /></label>
-            <label>Stunden<input type="number" step="0.25" name="hours" min={0} /></label>
-          </div>
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Subunternehmer speichern</button>
-          </div>
-        </form>
+        <SubcontractorEntryForm
+          logs={dailyLogOptions}
+          partners={subcontractorOptions}
+          saveAction={saveSubcontractorEntry}
+        />
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>

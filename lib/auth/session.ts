@@ -27,6 +27,7 @@ export type ActionContext = {
   userId: string;
   tenantId: string;
   tenantRoleId: string | null;
+  profileRole: UserRole;
   permissions: Set<PermissionKey>;
   isSuperadminBypass: boolean;
   devRoleOverrideId: string | null;
@@ -202,6 +203,7 @@ export async function getActionContext(): Promise<ActionContext> {
     tenantId,
     devRoleOverrideId,
     tenantRoleId: access.tenantRoleId,
+    profileRole: profile.role as UserRole,
     permissions: access.permissions,
     isSuperadminBypass: access.isSuperadminBypass,
   };

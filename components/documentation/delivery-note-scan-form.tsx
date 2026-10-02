@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from 'react';
 import { extractDeliveryNoteData } from '@/lib/actions/delivery-notes';
 import { FileInputField } from '@/components/ui/file-input-field';
 import { AppSelect } from '@/components/ui/app-select';
+import { BusinessPartnerField, type BusinessPartnerFieldOption } from '@/components/documentation/business-partner-field';
 
 type DailyLogOption = {
   id: string;
@@ -20,6 +21,7 @@ type ItemRow = {
 
 type Props = {
   logs: DailyLogOption[];
+  suppliers: BusinessPartnerFieldOption[];
   saveAction: (formData: FormData) => void | Promise<void>;
 };
 
@@ -34,7 +36,7 @@ function createRow(partial?: Partial<Omit<ItemRow, 'id'>>): ItemRow {
   };
 }
 
-export function DeliveryNoteScanForm({ logs, saveAction }: Props) {
+export function DeliveryNoteScanForm({ logs, suppliers, saveAction }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExtracting, startExtractTransition] = useTransition();
 
@@ -152,15 +154,15 @@ export function DeliveryNoteScanForm({ logs, saveAction }: Props) {
           {scanError && <p className="form-error delivery-note-upload-block__message">{scanError}</p>}
         </div>
 
-        <label>
-          Lieferant
-          <input
-            name="supplier_name"
-            placeholder="Firma"
-            value={supplierName}
-            onChange={(event) => setSupplierName(event.target.value)}
-          />
-        </label>
+        <BusinessPartnerField
+          partners={suppliers}
+          freeTextFieldName="supplier_name"
+          freeTextLabel="Lieferant (Freitext)"
+          freeTextPlaceholder="Firma"
+          selectLabel="Lieferant"
+          freeTextValue={supplierName}
+          onFreeTextChange={setSupplierName}
+        />
         <label>
           Lieferschein-Nr.
           <input

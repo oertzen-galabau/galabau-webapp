@@ -62,6 +62,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     segmentCount,
     foremanOptions,
     { data: teamRows },
+    { data: masterSuppliers },
   ] = await Promise.all([
     supabase.from('sites').select('*').eq('id', id).single(),
     supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
@@ -90,6 +91,13 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       .select('id, user_id, profiles(first_name, last_name, tenant_roles(name, slug))')
       .eq('site_id', id)
       .order('created_at'),
+    supabase
+      .from('tenant_business_partners')
+      .select('id, name, contact_person')
+      .eq('tenant_id', ctx.tenant!.id)
+      .eq('kind', 'supplier')
+      .eq('is_active', true)
+      .order('name'),
   ]);
 
   const teamMembers: SiteTeamMemberRow[] = (teamRows ?? []).map((row) => {
@@ -262,7 +270,13 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
             canEdit={canManageTeam && site.is_active}
           />
           <SiteContactsSection siteId={id} contacts={contacts ?? []} canEdit={canEdit} />
-          <SiteSuppliersSection siteId={id} suppliers={suppliers ?? []} canEdit={canEdit} />
+          <SiteSuppliersSection
+            siteId={id}
+            suppliers={suppliers ?? []}
+            masterSuppliers={masterSuppliers ?? []}
+            canEdit={canEdit}
+            canManagePartners={canAccess(ctx, 'partners.manage')}
+          />
           <SiteReportsSection
             siteId={id}
             entries={reportEntries}

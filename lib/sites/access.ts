@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActionContext, SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
+import type { UserRole } from '@/lib/types/database';
 
 export type SiteAccessContext = Pick<
   SessionContext | ActionContext,
@@ -16,20 +17,24 @@ function asSiteAccessContext(ctx: SessionContext | ActionContext): SiteAccessCon
     tenantId,
   };
 }
-import { todayWorkDate } from '@/lib/time-tracking/work-day';
 
-/** Alle Baustellen des Mandanten (nicht nur Einteilungen/Team). */
-export function canViewAllSites(ctx: SessionContext | ActionContext): boolean {
-  if (ctx.isSuperadminBypass) return true;
-  return (
-    canAccess(ctx, 'nav.team') ||
-    canAccess(ctx, 'urlaub.view_all') ||
-    canAccess(ctx, 'sites.assign_team') ||
-    canAccess(ctx, 'sites.view')
-  );
+function profileRoleOf(ctx: SessionContext | ActionContext): UserRole {
+  if ('profile' in ctx) return ctx.profile.role;
+  return ctx.profileRole;
 }
 
-/** Site-IDs, die der Nutzer sehen darf (Einteilungen ab heute + ggf. VA-Zuständigkeit). */
+const TENANT_WIDE_SITE_ROLES: UserRole[] = ['verwaltung', 'administrator'];
+
+/** Mandantenweite Baustellenliste (Verwaltung, Team-Zuweisung, Superadmin). */
+export function canViewAllSites(ctx: SessionContext | ActionContext): boolean {
+  if (ctx.isSuperadminBypass) return true;
+  if (canAccess(ctx, 'sites.assign_team')) return true;
+  return TENANT_WIDE_SITE_ROLES.includes(profileRoleOf(ctx));
+}
+
+const EMPTY_SITE_ID_FILTER = ['00000000-0000-0000-0000-000000000000'];
+
+/** Site-IDs, die der Nutzer sehen darf (Baustellen-Team + optional Verantwortlicher). */
 export async function resolveAccessibleSiteIds(
   supabase: SupabaseClient,
   ctx: SessionContext | ActionContext,
@@ -37,18 +42,7 @@ export async function resolveAccessibleSiteIds(
   if (canViewAllSites(ctx)) return null;
 
   const access = asSiteAccessContext(ctx);
-  const today = todayWorkDate();
   const ids = new Set<string>();
-
-  const { data: assignments } = await supabase
-    .from('daily_assignments')
-    .select('site_id')
-    .eq('user_id', access.userId)
-    .gte('assignment_date', today);
-
-  for (const row of assignments ?? []) {
-    if (row.site_id) ids.add(row.site_id);
-  }
 
   const { data: responsibleSites } = await supabase
     .from('sites')
@@ -82,6 +76,16 @@ export async function userCanAccessSite(
   return allowed?.includes(siteId) ?? false;
 }
 
+export async function requireSiteAccess(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  siteId: string,
+): Promise<void> {
+  if (!(await userCanAccessSite(supabase, ctx, siteId))) {
+    throw new Error('Keine Berechtigung für diese Baustelle');
+  }
+}
+
 export type SiteListFilter = {
   ids: string[] | null;
 };
@@ -92,9 +96,21 @@ export function applySiteListFilter<T extends { in: (col: string, vals: string[]
 ): T {
   if (filter.ids === null) return query;
   if (filter.ids.length === 0) {
-    return query.in('id', ['00000000-0000-0000-0000-000000000000']);
+    return query.in('id', EMPTY_SITE_ID_FILTER);
   }
   return query.in('id', filter.ids);
+}
+
+export function applyAccessibleSiteIdFilter<T extends { in: (col: string, vals: string[]) => T }>(
+  query: T,
+  column: 'id' | 'site_id',
+  accessibleIds: string[] | null,
+): T {
+  if (accessibleIds === null) return query;
+  if (accessibleIds.length === 0) {
+    return query.in(column, EMPTY_SITE_ID_FILTER);
+  }
+  return query.in(column, accessibleIds);
 }
 
 export type AccessibleSiteRow = {
@@ -110,10 +126,7 @@ export async function fetchAccessibleSites(
 ): Promise<AccessibleSiteRow[]> {
   const ids = await resolveAccessibleSiteIds(supabase, ctx);
   let query = supabase.from('sites').select(columns).eq('is_active', true).order('name');
-  if (ids !== null) {
-    if (ids.length === 0) return [];
-    query = query.in('id', ids);
-  }
+  query = applySiteListFilter(query, { ids });
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as AccessibleSiteRow[];

@@ -1,4 +1,6 @@
-import { deleteSiteSupplier, updateSiteSupplier } from '@/lib/actions/admin';
+import Link from 'next/link';
+import { deleteSiteSupplier } from '@/lib/actions/admin';
+import { updateSiteSupplierNotes } from '@/lib/actions/partners';
 import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
 
 type Supplier = {
@@ -8,6 +10,7 @@ type Supplier = {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  partner_id: string | null;
 };
 
 type Props = {
@@ -21,6 +24,15 @@ export function SiteSupplierRow({ siteId, supplier, canEdit }: Props) {
     <li className="site-entity-row">
       <div className="site-entity-row-body">
         <strong>{supplier.name}</strong>
+        {supplier.partner_id && (
+          <span className="muted">
+            {' '}
+            ·{' '}
+            <Link href="/app/geschaeftspartner?tab=lieferanten" className="table-action-link">
+              Stammdaten
+            </Link>
+          </span>
+        )}
         {supplier.contact_person && <span>{supplier.contact_person}</span>}
         {supplier.notes && <p className="muted site-entity-notes">{supplier.notes}</p>}
         <div className="site-entity-row-meta">
@@ -29,16 +41,12 @@ export function SiteSupplierRow({ siteId, supplier, canEdit }: Props) {
         </div>
         {canEdit && (
           <details className="site-entity-edit">
-            <summary>Bearbeiten</summary>
-            <form action={updateSiteSupplier} className="input-form site-entity-edit-form">
+            <summary>Baustellen-Bemerkung</summary>
+            <form action={updateSiteSupplierNotes} className="input-form site-entity-edit-form">
               <input type="hidden" name="id" value={supplier.id} />
               <input type="hidden" name="site_id" value={siteId} />
-              <label>Firma<input name="name" defaultValue={supplier.name} required /></label>
-              <label>Ansprechpartner<input name="contact_person" defaultValue={supplier.contact_person ?? ''} /></label>
-              <label>Telefon<input name="phone" type="tel" defaultValue={supplier.phone ?? ''} /></label>
-              <label>E-Mail<input name="email" type="email" defaultValue={supplier.email ?? ''} /></label>
               <label className="input-form-span-full">
-                Bemerkung
+                Bemerkung (nur diese Baustelle)
                 <textarea name="notes" rows={4} defaultValue={supplier.notes ?? ''} />
               </label>
               <button type="submit" className="primary-button primary-button--compact">Speichern</button>

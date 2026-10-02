@@ -313,10 +313,27 @@ export const MAX_REPORT_PHOTOS = 10;
 
 export type DeliveryNoteExtractionStatus = 'pending' | 'success' | 'failed' | 'manual';
 
+export type BusinessPartnerKind = 'supplier' | 'subcontractor';
+
+export type TenantBusinessPartner = {
+  id: string;
+  tenant_id: string;
+  kind: BusinessPartnerKind;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DeliveryNote = {
   id: string;
   tenant_id: string;
   daily_log_id: string;
+  partner_id: string | null;
   supplier_name: string | null;
   description: string | null;
   file_url: string | null;
@@ -345,6 +362,7 @@ export type SubcontractorEntry = {
   id: string;
   tenant_id: string;
   daily_log_id: string;
+  partner_id: string | null;
   company_name: string;
   work_description: string | null;
   hours: number | null;

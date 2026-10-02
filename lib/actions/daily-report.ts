@@ -19,6 +19,7 @@ import {
   parseDailyLogReportType,
   type DailyLogReportType,
 } from '@/lib/documentation/report-labels';
+import { requireSiteAccess } from '@/lib/sites/access';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -173,6 +174,8 @@ export async function saveDailyReport(formData: FormData) {
 
   if (!siteId || !logDate) throw new Error('Baustelle und Datum sind erforderlich');
 
+  await requireSiteAccess(supabase, ctx, siteId);
+
   const customTitle = String(formData.get('custom_title') ?? '').trim() || null;
   let reportType = parseDailyLogReportType(String(formData.get('report_type') ?? ''));
 
@@ -191,6 +194,7 @@ export async function saveDailyReport(formData: FormData) {
       .single();
     if (loadError || !existingLog) throw new Error('Tageseintrag nicht gefunden');
     if (existingLog.tenant_id !== tenantId) throw new Error('Keine Berechtigung');
+    await requireSiteAccess(supabase, ctx, existingLog.site_id);
     reportType = parseDailyLogReportType(existingLog.report_type as string);
 
     const { data: activePhotos } = await supabase

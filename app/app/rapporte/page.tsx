@@ -8,23 +8,29 @@ import {
   parseDailyLogReportType,
   shortLabelForReportType,
 } from '@/lib/documentation/report-labels';
+import { applyAccessibleSiteIdFilter, resolveAccessibleSiteIds } from '@/lib/sites/access';
 
 export default async function RapportePage() {
   const ctx = await requireTenantMember();
   if (!canAccess(ctx, 'nav.rapporte')) return <p className="muted">Keine Berechtigung.</p>;
 
   const supabase = await createClient();
+  const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
 
-  const { data: reports } = await supabase
+  let reportsQuery = supabase
     .from('reports')
     .select('*, sites(name)')
     .order('report_date', { ascending: false });
+  reportsQuery = applyAccessibleSiteIdFilter(reportsQuery, 'site_id', accessibleSiteIds);
+  const { data: reports } = await reportsQuery;
 
-  const { data: logs } = await supabase
+  let logsQuery = supabase
     .from('daily_logs')
     .select('id, log_date, site_id, report_type, custom_title, sites(name)')
     .order('log_date', { ascending: false })
     .limit(30);
+  logsQuery = applyAccessibleSiteIdFilter(logsQuery, 'site_id', accessibleSiteIds);
+  const { data: logs } = await logsQuery;
 
   const pdfPaths = (reports ?? []).map((r) => r.pdf_url).filter(Boolean) as string[];
   const signedUrls = await getSignedFileUrls('reports', pdfPaths);

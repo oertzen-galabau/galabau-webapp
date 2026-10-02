@@ -1,31 +1,44 @@
-import { saveSiteSuppliers } from '@/lib/actions/admin';
+import Link from 'next/link';
+import { linkSiteSupplier } from '@/lib/actions/partners';
 import { SiteSupplierRow } from '@/components/sites/site-supplier-row';
-import { DynamicFormRows } from '@/components/ui/dynamic-form-rows';
+import { partnerOptionLabel } from '@/lib/partners/kind';
 
-type Supplier = {
+type SiteSupplier = {
   id: string;
   name: string;
   contact_person: string | null;
   phone: string | null;
   email: string | null;
   notes: string | null;
+  partner_id: string | null;
+};
+
+type MasterSupplier = {
+  id: string;
+  name: string;
+  contact_person: string | null;
 };
 
 type Props = {
   siteId: string;
-  suppliers: Supplier[];
+  suppliers: SiteSupplier[];
+  masterSuppliers: MasterSupplier[];
   canEdit: boolean;
+  canManagePartners: boolean;
 };
 
-const SUPPLIER_FIELDS = [
-  { name: 'name[]', label: 'Firma', required: true },
-  { name: 'contact_person[]', label: 'Ansprechpartner' },
-  { name: 'phone[]', label: 'Telefon', type: 'tel' },
-  { name: 'email[]', label: 'E-Mail', type: 'email' },
-  { name: 'notes[]', label: 'Bemerkung', className: 'input-form-span-full' },
-];
+export function SiteSuppliersSection({
+  siteId,
+  suppliers,
+  masterSuppliers,
+  canEdit,
+  canManagePartners,
+}: Props) {
+  const linkedPartnerIds = new Set(
+    suppliers.map((s) => s.partner_id).filter((id): id is string => Boolean(id)),
+  );
+  const availableToLink = masterSuppliers.filter((p) => !linkedPartnerIds.has(p.id));
 
-export function SiteSuppliersSection({ siteId, suppliers, canEdit }: Props) {
   return (
     <section className="site-detail-section">
       <h2>Lieferanten</h2>
@@ -37,17 +50,40 @@ export function SiteSuppliersSection({ siteId, suppliers, canEdit }: Props) {
           ))}
         </ul>
       ) : (
-        <p className="muted">Noch keine Lieferanten erfasst.</p>
+        <p className="muted">Noch keine Lieferanten dieser Baustelle zugeordnet.</p>
       )}
 
-      {canEdit && (
-        <form action={saveSiteSuppliers} className="input-form">
+      {canEdit && availableToLink.length > 0 && (
+        <form action={linkSiteSupplier} className="input-form">
           <input type="hidden" name="site_id" value={siteId} />
-          <DynamicFormRows fields={SUPPLIER_FIELDS} />
+          <label>
+            Lieferant aus Stammliste
+            <select name="partner_id" required defaultValue="">
+              <option value="" disabled>— wählen —</option>
+              {availableToLink.map((partner) => (
+                <option key={partner.id} value={partner.id}>
+                  {partnerOptionLabel(partner)}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Lieferant speichern</button>
+            <button type="submit" className="primary-button primary-button--compact">Lieferant zuordnen</button>
           </div>
         </form>
+      )}
+
+      {canEdit && availableToLink.length === 0 && masterSuppliers.length === 0 && (
+        <p className="muted">
+          {canManagePartners ? (
+            <>
+              Zuerst Lieferanten in der{' '}
+              <Link href="/app/geschaeftspartner?tab=lieferanten">Stammdatenliste</Link> anlegen.
+            </>
+          ) : (
+            'Bitte die Verwaltung, Lieferanten in den Stammdaten anzulegen.'
+          )}
+        </p>
       )}
     </section>
   );

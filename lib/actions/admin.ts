@@ -6,9 +6,10 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
 import { enumRoleFromTenantRoleId } from '@/lib/tenant/roles';
-import { canViewAllSites } from '@/lib/sites/access';
+import { canViewAllSites, requireSiteAccess } from '@/lib/sites/access';
 import { readSiteAddressFromForm } from '@/lib/sites/format-address';
 import { syncSiteGeocoding } from '@/lib/weather/sync-site-geocoding';
+import { resolvePartnerName } from '@/lib/actions/partners';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -85,6 +86,8 @@ export async function saveDailyLog(formData: FormData) {
   const siteId = formData.get('site_id') as string;
   const logDate = formData.get('log_date') as string;
 
+  await requireSiteAccess(supabase, ctx, siteId);
+
   const { data: log, error } = await supabase.from('daily_logs').upsert({
     tenant_id: tenantId,
     site_id: siteId,
@@ -156,7 +159,16 @@ export async function saveDeliveryNote(formData: FormData) {
   const dailyLogId = formData.get('daily_log_id') as string;
   if (!dailyLogId) throw new Error('Kein Tageseintrag ausgewählt');
 
-  const supplierName = (formData.get('supplier_name') as string) || null;
+  const partnerIdRaw = (formData.get('partner_id') as string)?.trim() || null;
+  const partnerId = partnerIdRaw && partnerIdRaw !== '__custom__' ? partnerIdRaw : null;
+  const supplierFreeText = (formData.get('supplier_name') as string) || null;
+  let resolvedPartnerId: string | null = null;
+  let supplierName: string | null = null;
+  if (partnerId || String(supplierFreeText ?? '').trim()) {
+    const resolved = await resolvePartnerName(tenantId, partnerId, supplierFreeText, 'supplier');
+    resolvedPartnerId = resolved.partnerId;
+    supplierName = resolved.displayName;
+  }
   const deliveryNoteNumber = (formData.get('delivery_note_number') as string) || null;
   const deliveryDate = (formData.get('delivery_date') as string) || null;
   const description = (formData.get('description') as string) || null;
@@ -187,6 +199,7 @@ export async function saveDeliveryNote(formData: FormData) {
     .insert({
       tenant_id: tenantId,
       daily_log_id: dailyLogId,
+      partner_id: resolvedPartnerId,
       supplier_name: supplierName,
       delivery_note_number: deliveryNoteNumber,
       delivery_date: deliveryDate || null,
@@ -238,12 +251,19 @@ export async function saveSubcontractorEntry(formData: FormData) {
   const dailyLogId = formData.get('daily_log_id') as string;
   if (!dailyLogId) throw new Error('Kein Tageseintrag ausgewählt');
 
-  const companyName = formData.get('company_name') as string;
-  if (!companyName) throw new Error('Firma ist erforderlich');
+  const partnerIdRaw = (formData.get('partner_id') as string)?.trim() || null;
+  const partnerId = partnerIdRaw && partnerIdRaw !== '__custom__' ? partnerIdRaw : null;
+  const { partnerId: resolvedPartnerId, displayName: companyName } = await resolvePartnerName(
+    tenantId,
+    partnerId,
+    formData.get('company_name') as string,
+    'subcontractor',
+  );
 
   const { error } = await supabase.from('subcontractor_entries').insert({
     tenant_id: tenantId,
     daily_log_id: dailyLogId,
+    partner_id: resolvedPartnerId,
     company_name: companyName,
     work_description: (formData.get('work_description') as string) || null,
     hours: Number(formData.get('hours') ?? 0),
@@ -533,38 +553,6 @@ export async function saveSiteContacts(formData: FormData) {
   revalidatePath(`/app/baustellen/${siteId}`);
 }
 
-export async function saveSiteSuppliers(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'sites.manage');
-  const { tenantId } = ctx;
-
-  const supabase = await createClient();
-  const siteId = formData.get('site_id') as string;
-  const names = formData.getAll('name[]');
-  const contactPersons = formData.getAll('contact_person[]');
-  const phones = formData.getAll('phone[]');
-  const emails = formData.getAll('email[]');
-  const notesList = formData.getAll('notes[]');
-  const rowCount = names.length;
-
-  for (let i = 0; i < rowCount; i++) {
-    const name = String(names[i] ?? '').trim();
-    if (!name) continue;
-    const { error } = await supabase.from('site_suppliers').insert({
-      tenant_id: tenantId,
-      site_id: siteId,
-      name,
-      contact_person: String(contactPersons[i] ?? '').trim() || null,
-      phone: String(phones[i] ?? '').trim() || null,
-      email: String(emails[i] ?? '').trim() || null,
-      notes: String(notesList[i] ?? '').trim() || null,
-    });
-    if (error) throw new Error(error.message);
-  }
-
-  revalidatePath(`/app/baustellen/${siteId}`);
-}
-
 export async function saveSiteAppointments(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'sites.manage');
@@ -656,33 +644,6 @@ export async function updateSiteContact(formData: FormData) {
       role: String(formData.get('role') ?? '').trim() || null,
       phone: String(formData.get('phone') ?? '').trim() || null,
       email: String(formData.get('email') ?? '').trim() || null,
-    })
-    .eq('id', id)
-    .eq('site_id', siteId)
-    .eq('tenant_id', tenantId);
-  if (error) throw new Error(error.message);
-  revalidatePath(`/app/baustellen/${siteId}`);
-}
-
-export async function updateSiteSupplier(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'sites.manage');
-  const { tenantId } = ctx;
-
-  const id = formData.get('id') as string;
-  const siteId = formData.get('site_id') as string;
-  const name = String(formData.get('name') ?? '').trim();
-  if (!id || !siteId || !name) throw new Error('Pflichtfelder fehlen.');
-
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from('site_suppliers')
-    .update({
-      name,
-      contact_person: String(formData.get('contact_person') ?? '').trim() || null,
-      phone: String(formData.get('phone') ?? '').trim() || null,
-      email: String(formData.get('email') ?? '').trim() || null,
-      notes: String(formData.get('notes') ?? '').trim() || null,
     })
     .eq('id', id)
     .eq('site_id', siteId)

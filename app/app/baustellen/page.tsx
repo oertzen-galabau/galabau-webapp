@@ -42,14 +42,22 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
       ? activeQuery.in('id', accessibleIds)
       : activeQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
   }
-  const archivedQuery = showArchived
+  let archivedQuery = showArchived
     ? supabase.from('sites').select('*').eq('is_active', false).order('name')
+    : null;
+  if (archivedQuery && accessibleIds !== null) {
+    archivedQuery = accessibleIds.length
+      ? archivedQuery.in('id', accessibleIds)
+      : archivedQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
+  }
+  const archivedPromise = archivedQuery
+    ? archivedQuery
     : Promise.resolve({ data: [] as Site[] });
 
   const canManage = canAccess(ctx, 'sites.manage');
   const [{ data: activeSites }, { data: archivedSites }, foremanOptions] = await Promise.all([
     activeQuery,
-    archivedQuery,
+    archivedPromise,
     canManage ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
   ]);
 

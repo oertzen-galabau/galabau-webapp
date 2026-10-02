@@ -7,6 +7,7 @@ export const PERMISSION_KEYS = [
   'nav.rapporte',
   'nav.nachrichten',
   'nav.bestellungen',
+  'nav.partners',
   'nav.team',
   'nav.einstellungen',
   'nav.rollen',
@@ -33,6 +34,8 @@ export const PERMISSION_KEYS = [
   'orders.manage_catalog',
   'orders.manage',
   'orders.manage_budget',
+  'partners.view',
+  'partners.manage',
   'team.view',
   'team.invite',
   'team.assign_role',
@@ -72,6 +75,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'nav.rapporte', label: 'Rapporte', group: 'Navigation' },
   { key: 'nav.nachrichten', label: 'Nachrichten', group: 'Navigation' },
   { key: 'nav.bestellungen', label: 'Bestellungen', group: 'Navigation' },
+  { key: 'nav.partners', label: 'Subunternehmer & Lieferanten', group: 'Navigation' },
   { key: 'nav.team', label: 'Team', group: 'Navigation' },
   { key: 'nav.einstellungen', label: 'Einstellungen', group: 'Navigation' },
   { key: 'nav.rollen', label: 'Rollen & Berechtigungen', group: 'Navigation' },
@@ -86,7 +90,11 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'urlaub.request', label: 'Urlaub beantragen', group: 'Urlaub' },
   { key: 'urlaub.approve', label: 'Urlaub genehmigen', group: 'Urlaub', implies: ['urlaub.view_all'] },
   { key: 'urlaub.view_all', label: 'Alle Anträge einsehen', group: 'Urlaub' },
-  { key: 'sites.view', label: 'Baustellen einsehen', group: 'Baustellen' },
+  {
+    key: 'sites.view',
+    label: 'Baustellen einsehen (Navigation)',
+    group: 'Baustellen',
+  },
   { key: 'sites.manage', label: 'Baustellen bearbeiten', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'sites.assign_team', label: 'Baustellen-Team zuweisen', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'documentation.manage', label: 'Tagesdokumentation', group: 'Dokumentation', implies: ['sites.view'] },
@@ -112,6 +120,18 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     label: 'Bestellbudget verwalten',
     group: 'Bestellungen',
     implies: ['nav.bestellungen'],
+  },
+  {
+    key: 'partners.view',
+    label: 'Subunternehmer & Lieferanten einsehen',
+    group: 'Geschäftspartner',
+    implies: ['nav.partners'],
+  },
+  {
+    key: 'partners.manage',
+    label: 'Subunternehmer & Lieferanten verwalten',
+    group: 'Geschäftspartner',
+    implies: ['partners.view'],
   },
   { key: 'team.view', label: 'Team einsehen', group: 'Team', implies: ['nav.team'] },
   { key: 'team.invite', label: 'Mitarbeiter anlegen', group: 'Team', implies: ['team.view'] },
@@ -152,7 +172,7 @@ const BASE_EMPLOYEE: PermissionKey[] = [
 ];
 
 const FOREMAN_EXTRA: PermissionKey[] = [
-  'nav.baustellen', 'nav.dokumentation', 'nav.rapporte',
+  'nav.baustellen', 'nav.dokumentation', 'nav.rapporte', 'nav.partners', 'partners.view',
   'infoboard.assignments', 'sites.view', 'sites.manage', 'documentation.manage', 'documentation.dictate',
   'reports.generate', 'reports.send',
   'zeiten.view_all', 'zeiten.approve', 'zeiten.bookings.edit', 'zeiten.bad_weather.mark',
@@ -168,6 +188,7 @@ const ADMIN_EXTRA: PermissionKey[] = [
   'orders.manage_catalog',
   'orders.manage',
   'orders.manage_budget',
+  'partners.manage',
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleSlug, PermissionKey[]> = {

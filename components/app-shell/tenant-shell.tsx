@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
-  Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
+  Menu, MessageSquare, Settings, Shield, Shirt, Truck, Users, X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { SidebarUnreadNotifications } from '@/components/messages/sidebar-unread-notifications';
@@ -34,6 +34,7 @@ const navItems: NavItem[] = [
   { href: '/app/zeiten', label: 'Zeiten', icon: Clock3, permission: 'nav.zeiten' },
   { href: '/app/urlaub', label: 'Abwesenheit', icon: FileText, permission: 'nav.urlaub' },
   { href: '/app/baustellen', label: 'Baustellen', icon: BriefcaseBusiness, permission: 'nav.baustellen' },
+  { href: '/app/geschaeftspartner', label: 'Subunternehmer & Lieferanten', icon: Truck, permission: 'nav.partners' },
   { href: '/app/dokumentation', label: 'Dokumentation', icon: FileText, permission: 'nav.dokumentation' },
   { href: '/app/rapporte', label: 'Rapporte', icon: FileText, permission: 'nav.rapporte' },
   { href: '/app/nachrichten', label: 'Nachrichten', icon: MessageSquare, permission: 'nav.nachrichten' },
