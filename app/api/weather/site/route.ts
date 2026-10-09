@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getActionContext } from '@/lib/auth/session';
+import { userCanAccessSite } from '@/lib/sites/access';
 import { createClient } from '@/lib/supabase/server';
 import { fetchSiteWeather } from '@/lib/weather/fetch-weather';
 import { formatReportWeather } from '@/lib/weather/format-report-weather';
@@ -7,23 +9,28 @@ import { geocodeAddress } from '@/lib/weather/geocode';
 import { reverseGeocodeLocation } from '@/lib/weather/reverse-geocode';
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  let ctx;
+  try {
+    ctx = await getActionContext();
+  } catch {
     return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
   }
 
+  const supabase = await createClient();
   const siteId = new URL(request.url).searchParams.get('siteId');
   if (!siteId) {
     return NextResponse.json({ error: 'Baustelle fehlt' }, { status: 400 });
+  }
+
+  if (!(await userCanAccessSite(supabase, ctx, siteId))) {
+    return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 });
   }
 
   const { data: site } = await supabase
     .from('sites')
     .select('id, street, zip_code, city, address, latitude, longitude')
     .eq('id', siteId)
+    .eq('tenant_id', ctx.tenantId)
     .maybeSingle();
 
   if (!site) {

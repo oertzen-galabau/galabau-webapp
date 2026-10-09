@@ -8,10 +8,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
-  Menu, MessageSquare, Settings, Shield, Shirt, Truck, Users, X,
+  Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { SidebarUnreadNotifications } from '@/components/messages/sidebar-unread-notifications';
+import { getPendingOrderCount } from '@/lib/actions/orders';
 import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
 import type { UnreadInboxSummary } from '@/lib/messages/unread-inbox';
 import { createClient } from '@/lib/supabase/client';
@@ -34,7 +35,6 @@ const navItems: NavItem[] = [
   { href: '/app/zeiten', label: 'Zeiten', icon: Clock3, permission: 'nav.zeiten' },
   { href: '/app/urlaub', label: 'Abwesenheit', icon: FileText, permission: 'nav.urlaub' },
   { href: '/app/baustellen', label: 'Baustellen', icon: BriefcaseBusiness, permission: 'nav.baustellen' },
-  { href: '/app/geschaeftspartner', label: 'Subunternehmer & Lieferanten', icon: Truck, permission: 'nav.partners' },
   { href: '/app/dokumentation', label: 'Dokumentation', icon: FileText, permission: 'nav.dokumentation' },
   { href: '/app/rapporte', label: 'Rapporte', icon: FileText, permission: 'nav.rapporte' },
   { href: '/app/nachrichten', label: 'Nachrichten', icon: MessageSquare, permission: 'nav.nachrichten' },
@@ -93,6 +93,7 @@ export function TenantShell({
   canRecordTime = false,
   initialUnreadCount = 0,
   initialUnreadSummaries = [],
+  initialPendingOrderCount = 0,
   children,
 }: {
   theme: TenantTheme;
@@ -108,6 +109,7 @@ export function TenantShell({
   canRecordTime?: boolean;
   initialUnreadCount?: number;
   initialUnreadSummaries?: UnreadInboxSummary[];
+  initialPendingOrderCount?: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -116,12 +118,27 @@ export function TenantShell({
   const [unreadSummaries, setUnreadSummaries] = useState(initialUnreadSummaries);
   const [prevInitialUnreadCount, setPrevInitialUnreadCount] = useState(initialUnreadCount);
   const [prevInitialUnreadSummaries, setPrevInitialUnreadSummaries] = useState(initialUnreadSummaries);
+  const [pendingOrderCount, setPendingOrderCount] = useState(initialPendingOrderCount);
+  const [prevInitialPendingOrderCount, setPrevInitialPendingOrderCount] = useState(initialPendingOrderCount);
   const permSet = useMemo(() => new Set(permissions), [permissions]);
   const canViewMessages = isSuperadminBypass || permSet.has('nav.nachrichten');
+  const canSeeOrderBadge =
+    (isSuperadminBypass || permSet.has('nav.bestellungen')) &&
+    (isSuperadminBypass || permSet.has('orders.manage'));
+
+  const navBadgeCount = (href: string) => {
+    if (href === '/app/nachrichten') return unreadCount;
+    if (href === '/app/bestellungen') return pendingOrderCount;
+    return 0;
+  };
 
   if (initialUnreadCount !== prevInitialUnreadCount) {
     setPrevInitialUnreadCount(initialUnreadCount);
     setUnreadCount(initialUnreadCount);
+  }
+  if (initialPendingOrderCount !== prevInitialPendingOrderCount) {
+    setPrevInitialPendingOrderCount(initialPendingOrderCount);
+    setPendingOrderCount(initialPendingOrderCount);
   }
   if (initialUnreadSummaries !== prevInitialUnreadSummaries) {
     setPrevInitialUnreadSummaries(initialUnreadSummaries);
@@ -169,6 +186,28 @@ export function TenantShell({
       void supabase.removeChannel(channel);
     };
   }, [canViewMessages, profile.id]);
+
+  useEffect(() => {
+    if (!canSeeOrderBadge) return;
+
+    const supabase = createClient();
+    const refreshOrders = () => {
+      void getPendingOrderCount()
+        .then(setPendingOrderCount)
+        .catch(() => undefined);
+    };
+
+    refreshOrders();
+
+    const channel = supabase
+      .channel(`orders-badge:${profile.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_orders' }, refreshOrders)
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [canSeeOrderBadge, profile.id, pathname]);
 
   const visibleNav = navItems.filter(
     (item) => isSuperadminBypass || permSet.has(item.permission),
@@ -229,7 +268,7 @@ export function TenantShell({
                   <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
                     <Icon size={19} />
                     <span>{item.label}</span>
-                    {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
+                    <NavUnreadBadge count={navBadgeCount(item.href)} />
                   </Link>
                   {item.href === '/app/nachrichten' && canViewMessages && (
                     <SidebarUnreadNotifications summaries={unreadSummaries} />
@@ -309,7 +348,7 @@ export function TenantShell({
                     <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
                       <Icon size={20} />
                       {item.label}
-                      {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
+                      <NavUnreadBadge count={navBadgeCount(item.href)} />
                     </Link>
                     {item.href === '/app/nachrichten' && canViewMessages && (
                       <SidebarUnreadNotifications
@@ -343,7 +382,7 @@ export function TenantShell({
               <Link key={item.href} href={item.href} className={active ? 'active' : ''}>
                 <Icon size={20} />
                 <span>{item.label}</span>
-                {item.href === '/app/nachrichten' && <NavUnreadBadge count={unreadCount} />}
+                <NavUnreadBadge count={navBadgeCount(item.href)} />
               </Link>
             );
           })}

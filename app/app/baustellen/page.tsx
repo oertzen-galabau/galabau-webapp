@@ -36,14 +36,24 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
   const supabase = await createClient();
   const accessibleIds = await resolveAccessibleSiteIds(supabase, ctx);
 
-  let activeQuery = supabase.from('sites').select('*').eq('is_active', true).order('name');
+  let activeQuery = supabase
+    .from('sites')
+    .select('*')
+    .eq('tenant_id', ctx.tenant!.id)
+    .eq('is_active', true)
+    .order('name');
   if (accessibleIds !== null) {
     activeQuery = accessibleIds.length
       ? activeQuery.in('id', accessibleIds)
       : activeQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
   }
   let archivedQuery = showArchived
-    ? supabase.from('sites').select('*').eq('is_active', false).order('name')
+    ? supabase
+        .from('sites')
+        .select('*')
+        .eq('tenant_id', ctx.tenant!.id)
+        .eq('is_active', false)
+        .order('name')
     : null;
   if (archivedQuery && accessibleIds !== null) {
     archivedQuery = accessibleIds.length

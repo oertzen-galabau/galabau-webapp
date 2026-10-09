@@ -1,9 +1,26 @@
 'use server';
 
+import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireSuperadmin } from '@/lib/auth/session';
+import { getTenantBySlug } from '@/lib/tenant/resolve';
 import { seedTenantRoles } from '@/lib/tenant/roles';
+
+export async function openTenantAsSuperadmin(formData: FormData) {
+  await requireSuperadmin();
+  const slug = (formData.get('slug') as string)?.trim().toLowerCase();
+  if (!slug) throw new Error('Mandant-Slug fehlt');
+
+  const tenant = await getTenantBySlug(slug);
+  if (!tenant) throw new Error('Mandant nicht gefunden');
+
+  const cookieStore = await cookies();
+  cookieStore.set('tenant_slug', slug, { path: '/', maxAge: 60 * 60 * 24 * 365 });
+
+  redirect('/app');
+}
 
 export async function createTenant(formData: FormData) {
   await requireSuperadmin();

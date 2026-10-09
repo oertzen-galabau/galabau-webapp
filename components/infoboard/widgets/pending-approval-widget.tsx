@@ -17,13 +17,13 @@ export function PendingApprovalWidget({ rows, totalPending, emptyQuip }: Props) 
           <span className="eyebrow">Freigabe</span>
           <h2>Zeiten zur Freigabe</h2>
         </div>
-        <Link href="/app/zeiten#freigabe" className="text-button">
+        <Link href="/app/zeiten/freigabe" className="text-button">
           Zur Freigabe-Übersicht <ArrowRight size={16} />
         </Link>
       </div>
       <div className="job-list">
         {rows.map((entry) => (
-          <Link className="job-row" key={entry.id} href="/app/zeiten#freigabe">
+          <Link className="job-row" key={entry.id} href="/app/zeiten/freigabe">
             <time>{entry.workDate}</time>
             <span className="job-marker travel" />
             <span className="job-copy">

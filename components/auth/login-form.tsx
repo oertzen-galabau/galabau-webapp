@@ -29,13 +29,22 @@ export function LoginForm() {
     }
 
     const userId = (await supabase.auth.getUser()).data.user?.id ?? '';
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('role, tenant_id, is_active, must_change_password, tenants(slug)')
+      .select(
+        'role, tenant_id, is_active, must_change_password, tenants!profiles_tenant_id_fkey(slug)',
+      )
       .eq('id', userId)
       .single();
 
-    if (profile && profile.is_active === false) {
+    if (profileError || !profile) {
+      await supabase.auth.signOut();
+      setError('Profil konnte nicht geladen werden. Bitte versuchen Sie es erneut.');
+      setLoading(false);
+      return;
+    }
+
+    if (profile.is_active === false) {
       await supabase.auth.signOut();
       setError('Dieses Konto ist deaktiviert. Bitte wenden Sie sich an die Verwaltung.');
       setLoading(false);

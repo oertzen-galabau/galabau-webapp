@@ -2,11 +2,13 @@ import Link from 'next/link';
 import type { ReportStatus } from '@/lib/types/database';
 import { GenerateReportButton } from '@/components/reports/generate-report-button';
 import { SendReportButton } from '@/components/reports/send-report-button';
+import { ReportPdfActions } from '@/components/reports/report-pdf-actions';
 import { DailyLogReportTypeBadge } from '@/components/documentation/daily-log-report-type-badge';
 import {
   displayTitleForLog,
   isHourlyWageRapport,
   type DailyLogReportType,
+  type TenantReportLabelConfig,
 } from '@/lib/documentation/report-labels';
 
 export type SiteReportEntry = {
@@ -18,6 +20,7 @@ export type SiteReportEntry = {
   notes: string | null;
   workerCount: number;
   totalHours: number;
+  canEdit: boolean;
   report: {
     id: string;
     status: ReportStatus;
@@ -30,13 +33,12 @@ export type SiteReportEntry = {
 type Props = {
   siteId: string;
   entries: SiteReportEntry[];
-  signedPdfUrls: Map<string, string>;
-  canManageDocs: boolean;
   canNavDocs: boolean;
   canGenerate: boolean;
   canSend: boolean;
   canCreate: boolean;
   defaultSendTo?: string | null;
+  reportLabels?: TenantReportLabelConfig;
 };
 
 function formatDate(date: string) {
@@ -66,9 +68,9 @@ function reportStatusLabel(entry: SiteReportEntry): { label: string; badgeClass:
   return { label: 'Entwurf', badgeClass: 'travel' };
 }
 
-function buildSummary(entry: SiteReportEntry) {
+function buildSummary(entry: SiteReportEntry, reportLabels?: TenantReportLabelConfig) {
   const parts: string[] = [];
-  const title = displayTitleForLog(entry.reportType, entry.customTitle);
+  const title = displayTitleForLog(entry.reportType, entry.customTitle, reportLabels);
   if (entry.customTitle?.trim()) parts.push(title);
   if (entry.weather?.trim()) parts.push(entry.weather.trim());
   if (isHourlyWageRapport(entry.reportType) && entry.workerCount > 0) {
@@ -86,13 +88,12 @@ function buildSummary(entry: SiteReportEntry) {
 export function SiteReportsSection({
   siteId,
   entries,
-  signedPdfUrls,
-  canManageDocs,
   canNavDocs,
   canGenerate,
   canSend,
   canCreate,
   defaultSendTo,
+  reportLabels,
 }: Props) {
   return (
     <section className="site-detail-section">
@@ -107,30 +108,30 @@ export function SiteReportsSection({
 
       {entries.length > 0 ? (
         <div className="data-table-wrap">
-          <table className="data-table site-reports-table">
+          <table className="data-table site-reports-table data-table--report-actions">
             <thead>
               <tr>
                 <th>Datum</th>
                 <th>Art</th>
                 <th>Inhalt</th>
                 <th>PDF</th>
-                <th className="data-table-col--optional">Aktionen</th>
+                <th className="data-table-col--actions">Aktionen</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry) => {
                 const { label: statusLabel, badgeClass } = reportStatusLabel(entry);
-                const pdfSignedUrl = entry.report?.pdfUrl
-                  ? signedPdfUrls.get(entry.report.pdfUrl)
-                  : null;
-
                 return (
                   <tr key={entry.id}>
                     <td>{formatDate(entry.logDate)}</td>
                     <td>
-                      <DailyLogReportTypeBadge reportType={entry.reportType} customTitle={entry.customTitle} />
+                      <DailyLogReportTypeBadge
+                        reportType={entry.reportType}
+                        customTitle={entry.customTitle}
+                        reportLabels={reportLabels}
+                      />
                     </td>
-                    <td>{buildSummary(entry)}</td>
+                    <td>{buildSummary(entry, reportLabels)}</td>
                     <td>
                       <span className={`status-badge ${badgeClass}`.trim()}>{statusLabel}</span>
                       {entry.report?.sentAt && entry.report.sentTo && (
@@ -140,9 +141,9 @@ export function SiteReportsSection({
                         </div>
                       )}
                     </td>
-                    <td className="data-table-col--optional">
+                    <td className="data-table-col--actions">
                       <div className="inline-actions site-reports-actions">
-                        {canManageDocs && (
+                        {entry.canEdit && (
                           <Link
                             href={`/app/dokumentation?edit=${entry.id}`}
                             className="table-action-link"
@@ -153,13 +154,15 @@ export function SiteReportsSection({
                         {canGenerate && !entry.report && (
                           <GenerateReportButton dailyLogId={entry.id} label="PDF erzeugen" />
                         )}
-                        {pdfSignedUrl && (
-                          <a href={pdfSignedUrl} target="_blank" rel="noreferrer" className="table-action-link">
-                            Download
-                          </a>
+                        {entry.report?.pdfUrl && entry.report.id && (
+                          <ReportPdfActions reportId={entry.report.id} />
                         )}
                         {canSend && entry.report && !entry.report.sentAt && (
-                          <SendReportButton reportId={entry.report.id} defaultTo={defaultSendTo} />
+                          <SendReportButton
+                            reportId={entry.report.id}
+                            defaultTo={defaultSendTo}
+                            linkStyle
+                          />
                         )}
                       </div>
                     </td>

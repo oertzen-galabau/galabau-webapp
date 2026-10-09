@@ -28,7 +28,7 @@ export function SiteSupplierRow({ siteId, supplier, canEdit }: Props) {
           <span className="muted">
             {' '}
             ·{' '}
-            <Link href="/app/geschaeftspartner?tab=lieferanten" className="table-action-link">
+            <Link href="/app/einstellungen?tab=stammdaten&partners=lieferanten" className="table-action-link">
               Stammdaten
             </Link>
           </span>

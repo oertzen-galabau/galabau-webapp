@@ -2,32 +2,17 @@
 
 import { BusinessPartnerField, type BusinessPartnerFieldOption } from '@/components/documentation/business-partner-field';
 
-type LogOption = {
-  id: string;
-  label: string;
-};
-
 type Props = {
-  logs: LogOption[];
+  dailyLogId: string;
   partners: BusinessPartnerFieldOption[];
   saveAction: (formData: FormData) => void | Promise<void>;
 };
 
-export function SubcontractorEntryForm({ logs, partners, saveAction }: Props) {
+export function SubcontractorEntryForm({ dailyLogId, partners, saveAction }: Props) {
   return (
     <form action={saveAction} className="input-form">
+      <input type="hidden" name="daily_log_id" value={dailyLogId} />
       <div className="input-form-core">
-        <label>
-          Tageseintrag
-          <select name="daily_log_id" required defaultValue="">
-            <option value="" disabled>—</option>
-            {logs.map((log) => (
-              <option key={log.id} value={log.id}>
-                {log.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <BusinessPartnerField
           partners={partners}
           freeTextFieldName="company_name"

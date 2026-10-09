@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { requireTenantMember } from '@/lib/auth/session';
-import { saveDeliveryNote, saveSubcontractorEntry } from '@/lib/actions/admin';
-import { SubcontractorEntryForm } from '@/components/documentation/subcontractor-entry-form';
+import { saveDeliveryNote } from '@/lib/actions/admin';
 import { canAccess } from '@/lib/auth/session';
 import { DailyLogEntriesList } from '@/components/documentation/daily-log-entries-list';
 import { DailyReportForm, type DailyReportFormInitial } from '@/components/documentation/daily-report-form';
@@ -11,14 +10,19 @@ import { isDictationConfigured } from '@/lib/ai/daily-log-dictation';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
 import {
   applyAccessibleSiteIdFilter,
+  canViewAllSites,
   fetchAccessibleSites,
   resolveAccessibleSiteIds,
 } from '@/lib/sites/access';
 import {
   isDailyLogReportType,
   parseDailyLogReportType,
+  shortLabelForReportType,
+  tenantReportLabelsFromTenant,
   type DailyLogReportType,
 } from '@/lib/documentation/report-labels';
+import { buildSubcontractorFormGroups } from '@/lib/documentation/subcontractor-groups';
+import { canViewAllReports, userCanEditDailyLog } from '@/lib/documentation/report-access';
 type PageProps = {
   searchParams: Promise<{ edit?: string; site?: string; type?: string; art?: string }>;
 };
@@ -39,11 +43,15 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   const canManage = canAccess(ctx, 'documentation.manage');
   const canDictate = canAccess(ctx, 'documentation.dictate');
   const dictationConfigured = isDictationConfigured();
+  const reportLabels = tenantReportLabelsFromTenant(ctx.tenant);
 
   const supabase = await createClient();
   const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
   const [sitesRaw, { data: employees }, { data: businessPartners }] = await Promise.all([
-    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, latitude, longitude'),
+    // Formular: nur zugewiesene Baustellen (Verantwortlicher / Baustellen-Team)
+    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, latitude, longitude', {
+      onlyAssigned: !canViewAllSites(ctx),
+    }),
     supabase.from('profiles').select('id, first_name, last_name, job_title').eq('tenant_id', ctx.tenant!.id).eq('is_active', true).order('last_name'),
     supabase
       .from('tenant_business_partners')
@@ -72,9 +80,13 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   let logsQuery = supabase
     .from('daily_logs')
     .select('*, sites(name, client_name, address)')
+    .eq('tenant_id', ctx.tenant!.id)
     .order('log_date', { ascending: false })
     .limit(20);
   logsQuery = applyAccessibleSiteIdFilter(logsQuery, 'site_id', accessibleSiteIds);
+  if (!canViewAllReports(ctx)) {
+    logsQuery = logsQuery.eq('created_by', ctx.userId);
+  }
   const { data: logs } = await logsQuery;
 
   const logIds = (logs ?? []).map((log) => log.id);
@@ -111,7 +123,11 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   ].filter((id): id is string => Boolean(id));
 
   const { data: deleters } = deleterIds.length
-    ? await supabase.from('profiles').select('id, first_name, last_name').in('id', deleterIds)
+    ? await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .eq('tenant_id', ctx.tenant!.id)
+        .in('id', deleterIds)
     : { data: [] };
 
   const deleterById = new Map((deleters ?? []).map((profile) => [profile.id, profile]));
@@ -123,7 +139,11 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     .filter((d) => !d.deleted_at && d.file_url)
     .map((d) => d.file_url) as string[];
   const signaturePaths = (signatures ?? []).map((entry) => entry.file_url).filter(Boolean) as string[];
-  const signedUrlMap = await getSignedFileUrls('daily-photos', [...photoPaths, ...deliveryPaths, ...signaturePaths]);
+  const signedUrlMap = await getSignedFileUrls(ctx.tenant!.id, 'daily-photos', [
+    ...photoPaths,
+    ...deliveryPaths,
+    ...signaturePaths,
+  ]);
   const signedUrls = Object.fromEntries(signedUrlMap);
 
   type DeliveryItemRow = NonNullable<typeof deliveryItems>[number];
@@ -168,9 +188,28 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   }
 
   let editInitial: DailyReportFormInitial | undefined;
+  let formSites = sites;
   if (editLogId && canManage) {
     const editLog = (logs ?? []).find((log) => log.id === editLogId);
-    if (editLog) {
+    if (
+      editLog &&
+      userCanEditDailyLog(ctx, { created_by: editLog.created_by as string | null })
+    ) {
+      // Bestehenden Bericht weiter bearbeitbar halten, auch wenn die Baustelle nicht (mehr) zugewiesen ist
+      if (!sites.some((s) => s.id === editLog.site_id)) {
+        const editSite = editLog.sites as { name: string; client_name: string | null; address: string | null } | null;
+        formSites = [
+          ...sites,
+          {
+            id: editLog.site_id,
+            name: editSite?.name ?? '',
+            client_name: editSite?.client_name ?? null,
+            address: editSite?.address ?? null,
+            latitude: null,
+            longitude: null,
+          },
+        ];
+      }
       editInitial = {
         dailyLogId: editLog.id,
         reportType: parseDailyLogReportType(editLog.report_type as string),
@@ -210,6 +249,19 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
           signedLongitude: entry.signed_longitude,
           signedLocationLabel: entry.signed_location_label,
         })),
+        subcontractorGroups: buildSubcontractorFormGroups(
+          (subcontractors ?? [])
+            .filter((entry) => entry.daily_log_id === editLog.id && !entry.deleted_at)
+            .map((entry) => ({
+              id: entry.id as string,
+              group_key: entry.group_key as string | null,
+              partner_id: entry.partner_id as string | null,
+              company_name: entry.company_name as string,
+              work_description: entry.work_description as string | null,
+              worker_name: entry.worker_name as string | null,
+              hours: entry.hours as number | null,
+            })),
+        ),
       };
     }
   }
@@ -220,6 +272,9 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
 
   const logEntries = filteredLogs.map((log) => ({
     id: log.id,
+    canEdit:
+      canManage &&
+      userCanEditDailyLog(ctx, { created_by: log.created_by as string | null }),
     log_date: log.log_date,
     report_type: parseDailyLogReportType(log.report_type as string),
     custom_title: log.custom_title as string | null,
@@ -275,6 +330,8 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
         id: entry.id,
         company_name: entry.company_name,
         work_description: entry.work_description,
+        worker_name: entry.worker_name as string | null,
+        group_key: entry.group_key as string | null,
         hours: entry.hours,
         deleted_at: entry.deleted_at,
         deleter: entry.deleted_by ? deleterById.get(entry.deleted_by) ?? null : null,
@@ -319,11 +376,14 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
             )}
           </div>
           <DailyReportForm
-            sites={sites}
+            sites={formSites}
             employees={employees ?? []}
             canDictate={canDictate}
             dictationConfigured={dictationConfigured}
             defaultReportType={defaultReportType}
+            reportLabels={reportLabels}
+            subcontractorPartners={subcontractorOptions}
+            supplierPartners={supplierOptions}
             initial={
               editInitial ??
               (preselectedSiteId && sites.some((s) => s.id === preselectedSiteId)
@@ -347,15 +407,6 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
         )}
       </section>
 
-      <section className="panel form-panel" style={{ marginTop: 16 }}>
-        <h2>Subunternehmer erfassen</h2>
-        <SubcontractorEntryForm
-          logs={dailyLogOptions}
-          partners={subcontractorOptions}
-          saveAction={saveSubcontractorEntry}
-        />
-      </section>
-
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="documentation-list-head">
           <h2>Letzte Berichte</h2>
@@ -370,13 +421,13 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
               href="/app/dokumentation?art=daily_report"
               className={`table-action-link${listArtFilter === 'daily_report' ? ' table-action-link--active' : ''}`}
             >
-              Tagesberichte
+              {shortLabelForReportType('daily_report', reportLabels)}
             </Link>
             <Link
               href="/app/dokumentation?art=hourly_wage_rapport"
               className={`table-action-link${listArtFilter === 'hourly_wage_rapport' ? ' table-action-link--active' : ''}`}
             >
-              Rapporte
+              {shortLabelForReportType('hourly_wage_rapport', reportLabels)}
             </Link>
           </nav>
         </div>
@@ -384,7 +435,7 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
           logs={logEntries}
           signedUrls={signedUrls}
           canDelete={canManage}
-          canEdit={canManage}
+          reportLabels={reportLabels}
         />
       </section>
     </>

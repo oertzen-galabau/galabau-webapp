@@ -7,6 +7,7 @@ const SUPERADMIN_PREFIX = '/superadmin';
 
 /** Öffentliche Routen, die auf Mandanten-Subdomains nicht nach /app/* umgeschrieben werden. */
 const TENANT_REWRITE_SKIP = [
+  '/',
   '/login',
   '/register',
   '/forgot-password',

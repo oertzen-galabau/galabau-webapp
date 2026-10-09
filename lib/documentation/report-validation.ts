@@ -22,6 +22,19 @@ export type ResourceInput = {
   hours: number | null;
 };
 
+export type SubcontractorPersonRowInput = {
+  groupKey: string;
+  partnerId: string | null;
+  companyName: string;
+  workDescription: string | null;
+  workerName: string | null;
+  hours: number;
+};
+
+import type { DeliveryNoteBlockInput } from '@/lib/documentation/save-delivery-note';
+import { isDeliveryBlockEmpty, parseRawExtraction } from '@/lib/documentation/save-delivery-note';
+import type { DeliveryNoteExtractionStatus } from '@/lib/types/database';
+
 export type SignatureInput = {
   role: 'contractor' | 'client';
   signerName: string | null;
@@ -128,6 +141,149 @@ export function parseWorkItemRows(formData: FormData): WorkItemInput[] {
   }
 
   return rows;
+}
+
+export function parseSubcontractorPersonRows(formData: FormData): SubcontractorPersonRowInput[] {
+  const groupKeys = formData.getAll('subcontractor_group_key[]');
+  const partnerIds = formData.getAll('subcontractor_partner_id[]');
+  const companyNames = formData.getAll('subcontractor_company_name[]');
+  const descriptions = formData.getAll('subcontractor_work_description[]');
+  const workerNames = formData.getAll('subcontractor_worker_name[]');
+  const hoursList = formData.getAll('subcontractor_hours[]');
+  const rowCount = Math.max(
+    groupKeys.length,
+    partnerIds.length,
+    companyNames.length,
+    descriptions.length,
+    workerNames.length,
+    hoursList.length,
+  );
+
+  const byGroup = new Map<
+    string,
+    {
+      partnerId: string | null;
+      companyName: string;
+      workDescription: string | null;
+      persons: SubcontractorPersonRowInput[];
+    }
+  >();
+
+  for (let i = 0; i < rowCount; i++) {
+    const groupKey = String(groupKeys[i] ?? '').trim();
+    if (!groupKey) continue;
+
+    const partnerRaw = String(partnerIds[i] ?? '').trim();
+    const partnerId = partnerRaw && partnerRaw !== '__custom__' ? partnerRaw : null;
+    const companyName = String(companyNames[i] ?? '').trim();
+    const workDescription = String(descriptions[i] ?? '').trim() || null;
+    const workerName = String(workerNames[i] ?? '').trim() || null;
+    const hours = parseNumber(hoursList[i]) ?? 0;
+
+    if (!workerName && hours <= 0) continue;
+
+    let group = byGroup.get(groupKey);
+    if (!group) {
+      group = {
+        partnerId,
+        companyName,
+        workDescription,
+        persons: [],
+      };
+      byGroup.set(groupKey, group);
+    }
+
+    if (partnerId) group.partnerId = partnerId;
+    if (companyName) group.companyName = companyName;
+    if (workDescription) group.workDescription = workDescription;
+
+    group.persons.push({
+      groupKey,
+      partnerId: group.partnerId,
+      companyName: group.companyName,
+      workDescription: group.workDescription,
+      workerName,
+      hours,
+    });
+  }
+
+  const rows: SubcontractorPersonRowInput[] = [];
+  for (const group of byGroup.values()) {
+    if (!group.partnerId && !group.companyName) continue;
+    if (group.persons.length === 0) continue;
+    for (const person of group.persons) {
+      rows.push({
+        ...person,
+        partnerId: group.partnerId,
+        companyName: group.companyName,
+        workDescription: group.workDescription,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function normalizeDeliveryExtractionStatus(value: string): DeliveryNoteExtractionStatus {
+  if (value === 'pending' || value === 'success' || value === 'failed' || value === 'manual') {
+    return value;
+  }
+  return 'manual';
+}
+
+function parseDeliveryItemsForPrefix(formData: FormData, prefix: string) {
+  const itemDescriptions = formData.getAll(`${prefix}_item_description[]`);
+  const itemQuantities = formData.getAll(`${prefix}_item_quantity[]`);
+  const itemUnits = formData.getAll(`${prefix}_item_unit[]`);
+  const rowCount = Math.max(itemDescriptions.length, itemQuantities.length, itemUnits.length);
+  const items: DeliveryNoteBlockInput['items'] = [];
+
+  for (let i = 0; i < rowCount; i++) {
+    const description = String(itemDescriptions[i] ?? '').trim();
+    if (!description) continue;
+    const quantityRaw = String(itemQuantities[i] ?? '').trim();
+    const quantity = quantityRaw ? Number(quantityRaw) : null;
+    items.push({
+      description,
+      quantity: quantity !== null && Number.isFinite(quantity) ? quantity : null,
+      unit: String(itemUnits[i] ?? '').trim() || null,
+    });
+  }
+
+  return items;
+}
+
+export function parseDeliveryBlockAtIndex(formData: FormData, index: number): DeliveryNoteBlockInput {
+  const prefix = `delivery_${index}`;
+  const partnerIdRaw = String(formData.get(`${prefix}_partner_id`) ?? '').trim();
+  const partnerId = partnerIdRaw && partnerIdRaw !== '__custom__' ? partnerIdRaw : null;
+  const file = formData.get(`${prefix}_file`);
+  const extractionStatusRaw = String(formData.get(`${prefix}_extraction_status`) ?? 'manual');
+
+  return {
+    partnerId,
+    supplierFreeText: String(formData.get(`${prefix}_supplier_name`) ?? '').trim() || null,
+    deliveryNoteNumber: String(formData.get(`${prefix}_delivery_note_number`) ?? '').trim() || null,
+    deliveryDate: String(formData.get(`${prefix}_delivery_date`) ?? '').trim() || null,
+    description: String(formData.get(`${prefix}_description`) ?? '').trim() || null,
+    extractionStatus: normalizeDeliveryExtractionStatus(extractionStatusRaw),
+    rawExtraction: parseRawExtraction(String(formData.get(`${prefix}_raw_extraction`) ?? '')),
+    file: file instanceof File && file.size > 0 ? file : null,
+    items: parseDeliveryItemsForPrefix(formData, prefix),
+  };
+}
+
+export function parseDeliveryBlocks(formData: FormData): DeliveryNoteBlockInput[] {
+  const countRaw = Number(formData.get('delivery_block_count') ?? 0);
+  const count = Number.isFinite(countRaw) && countRaw > 0 ? Math.floor(countRaw) : 0;
+  const blocks: DeliveryNoteBlockInput[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const block = parseDeliveryBlockAtIndex(formData, i);
+    if (!isDeliveryBlockEmpty(block)) blocks.push(block);
+  }
+
+  return blocks;
 }
 
 export function parseResourceRows(formData: FormData): ResourceInput[] {

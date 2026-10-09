@@ -1,7 +1,17 @@
 import type { PermissionKey } from '@/lib/auth/permissions';
 
 export const SETTINGS_TABS = [
-  { id: 'allgemein', label: 'Allgemein' },
+  { id: 'allgemein', label: 'Allgemein', permission: 'nav.einstellungen' as PermissionKey },
+  {
+    id: 'stammdaten',
+    label: 'Stammdaten',
+    permission: 'nav.partners' as PermissionKey,
+  },
+  {
+    id: 'berichte',
+    label: 'Berichte',
+    permission: 'settings.branding' as PermissionKey,
+  },
   {
     id: 'startpasswort',
     label: 'Startpasswort',

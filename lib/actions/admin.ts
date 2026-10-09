@@ -5,11 +5,21 @@ import { createClient } from '@/lib/supabase/server';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
+import {
+  assertDailyLogInTenant,
+  assertProfileInTenant,
+  assertSiteInTenant,
+} from '@/lib/tenant/row-access';
 import { enumRoleFromTenantRoleId } from '@/lib/tenant/roles';
 import { canViewAllSites, requireSiteAccess } from '@/lib/sites/access';
 import { readSiteAddressFromForm } from '@/lib/sites/format-address';
 import { syncSiteGeocoding } from '@/lib/weather/sync-site-geocoding';
 import { resolvePartnerName } from '@/lib/actions/partners';
+import {
+  deliveryBlockFromStandaloneForm,
+  insertDeliveryNote,
+  isDeliveryBlockEmpty,
+} from '@/lib/documentation/save-delivery-note';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -40,7 +50,19 @@ export async function saveSite(formData: FormData) {
   // Wer keine mandantenweite Sicht hat (z.B. Vorarbeiter mit sites.manage), soll die
   // selbst angelegte Baustelle nicht sofort aus der eigenen Sicht verlieren (RLS-Filter
   // in lib/sites/access.ts zeigt Nicht-Verwaltung nur zugewiesene/verantwortete Sites).
-  const responsible_user_id = responsibleRaw || (canViewAllSites(ctx) ? null : ctx.userId);
+  const responsible_user_id =
+    responsibleRaw || (canViewAllSites(ctx) ? null : ctx.userId);
+
+  // Verantwortlichen muss RLS lesen können (INSERT … RETURNING / SELECT-Policy)
+  if (
+    responsible_user_id &&
+    responsible_user_id !== ctx.userId &&
+    !canViewAllSites(ctx)
+  ) {
+    throw new Error(
+      'Ohne mandantenweite Baustellen-Sicht darf nur der eigene Account als Verantwortlicher gesetzt werden — oder die Baustelle ohne VA anlegen (Sie werden dem Team zugewiesen).',
+    );
+  }
 
   const { data: site, error } = await supabase
     .from('sites')
@@ -138,7 +160,7 @@ export async function saveDailyLog(formData: FormData) {
   );
   for (const file of photoFiles) {
     const path = buildStoragePath(tenantId, siteId, log.id, `${Date.now()}-${file.name}`);
-    await uploadPrivateFile('daily-photos', path, file);
+    await uploadPrivateFile(tenantId, 'daily-photos', path, file);
     await supabase.from('daily_log_photos').insert({
       tenant_id: tenantId,
       daily_log_id: log.id,
@@ -158,86 +180,13 @@ export async function saveDeliveryNote(formData: FormData) {
   const supabase = await createClient();
   const dailyLogId = formData.get('daily_log_id') as string;
   if (!dailyLogId) throw new Error('Kein Tageseintrag ausgewählt');
+  await assertDailyLogInTenant(supabase, tenantId, dailyLogId);
 
-  const partnerIdRaw = (formData.get('partner_id') as string)?.trim() || null;
-  const partnerId = partnerIdRaw && partnerIdRaw !== '__custom__' ? partnerIdRaw : null;
-  const supplierFreeText = (formData.get('supplier_name') as string) || null;
-  let resolvedPartnerId: string | null = null;
-  let supplierName: string | null = null;
-  if (partnerId || String(supplierFreeText ?? '').trim()) {
-    const resolved = await resolvePartnerName(tenantId, partnerId, supplierFreeText, 'supplier');
-    resolvedPartnerId = resolved.partnerId;
-    supplierName = resolved.displayName;
+  const block = deliveryBlockFromStandaloneForm(formData);
+  if (isDeliveryBlockEmpty(block)) {
+    throw new Error('Bitte Lieferant, Lieferschein oder mindestens eine Position angeben.');
   }
-  const deliveryNoteNumber = (formData.get('delivery_note_number') as string) || null;
-  const deliveryDate = (formData.get('delivery_date') as string) || null;
-  const description = (formData.get('description') as string) || null;
-  const extractionStatusRaw = (formData.get('extraction_status') as string) || 'manual';
-  const extractionStatus = ['pending', 'success', 'failed', 'manual'].includes(extractionStatusRaw)
-    ? extractionStatusRaw
-    : 'manual';
-  const rawExtractionRaw = formData.get('raw_extraction') as string;
-  const file = formData.get('delivery_file');
-
-  let rawExtraction: Record<string, unknown> | null = null;
-  if (rawExtractionRaw) {
-    try {
-      rawExtraction = JSON.parse(rawExtractionRaw) as Record<string, unknown>;
-    } catch {
-      rawExtraction = null;
-    }
-  }
-
-  let fileUrl: string | null = null;
-  if (file instanceof File && file.size > 0) {
-    const path = buildStoragePath(tenantId, 'lieferungen', dailyLogId, `${Date.now()}-${file.name}`);
-    fileUrl = await uploadPrivateFile('daily-photos', path, file);
-  }
-
-  const { data: deliveryNote, error } = await supabase
-    .from('delivery_notes')
-    .insert({
-      tenant_id: tenantId,
-      daily_log_id: dailyLogId,
-      partner_id: resolvedPartnerId,
-      supplier_name: supplierName,
-      delivery_note_number: deliveryNoteNumber,
-      delivery_date: deliveryDate || null,
-      description,
-      file_url: fileUrl,
-      extraction_status: extractionStatus,
-      raw_extraction: rawExtraction,
-    })
-    .select('id')
-    .single();
-
-  if (error || !deliveryNote) throw new Error(error?.message ?? 'Fehler beim Speichern');
-
-  const itemDescriptions = formData.getAll('item_description[]');
-  const itemQuantities = formData.getAll('item_quantity[]');
-  const itemUnits = formData.getAll('item_unit[]');
-  const rowCount = Math.max(itemDescriptions.length, itemQuantities.length, itemUnits.length);
-
-  const items = [];
-  for (let i = 0; i < rowCount; i++) {
-    const itemDescription = String(itemDescriptions[i] ?? '').trim();
-    if (!itemDescription) continue;
-    const quantityRaw = String(itemQuantities[i] ?? '').trim();
-    const quantity = quantityRaw ? Number(quantityRaw) : null;
-    items.push({
-      tenant_id: tenantId,
-      delivery_note_id: deliveryNote.id,
-      position: items.length + 1,
-      description: itemDescription,
-      quantity: quantity !== null && Number.isFinite(quantity) ? quantity : null,
-      unit: String(itemUnits[i] ?? '').trim() || null,
-    });
-  }
-
-  if (items.length > 0) {
-    const { error: itemsError } = await supabase.from('delivery_note_items').insert(items);
-    if (itemsError) throw new Error(itemsError.message);
-  }
+  await insertDeliveryNote(supabase, tenantId, dailyLogId, block);
 
   revalidatePath('/app/dokumentation');
 }
@@ -250,6 +199,7 @@ export async function saveSubcontractorEntry(formData: FormData) {
   const supabase = await createClient();
   const dailyLogId = formData.get('daily_log_id') as string;
   if (!dailyLogId) throw new Error('Kein Tageseintrag ausgewählt');
+  await assertDailyLogInTenant(supabase, tenantId, dailyLogId);
 
   const partnerIdRaw = (formData.get('partner_id') as string)?.trim() || null;
   const partnerId = partnerIdRaw && partnerIdRaw !== '__custom__' ? partnerIdRaw : null;
@@ -324,10 +274,14 @@ export async function saveAssignment(formData: FormData) {
   const { tenantId } = ctx;
 
   const supabase = await createClient();
+  const userId = formData.get('user_id') as string;
+  const siteId = (formData.get('site_id') as string) || null;
+  await assertProfileInTenant(supabase, tenantId, userId);
+  if (siteId) await assertSiteInTenant(supabase, tenantId, siteId);
   const { error } = await supabase.from('daily_assignments').upsert({
     tenant_id: tenantId,
-    user_id: formData.get('user_id') as string,
-    site_id: (formData.get('site_id') as string) || null,
+    user_id: userId,
+    site_id: siteId,
     assignment_date: formData.get('assignment_date') as string,
     notes: (formData.get('notes') as string) || null,
   }, { onConflict: 'tenant_id,user_id,assignment_date' });
@@ -452,7 +406,7 @@ async function deleteSiteDocumentFiles(
   if (error) throw new Error(error.message);
 
   for (const doc of docs ?? []) {
-    if (doc.file_url) await deletePrivateFile('site-documents', doc.file_url);
+    if (doc.file_url) await deletePrivateFile(tenantId, 'site-documents', doc.file_url);
   }
 }
 
@@ -530,6 +484,7 @@ export async function saveSiteContacts(formData: FormData) {
 
   const supabase = await createClient();
   const siteId = formData.get('site_id') as string;
+  await assertSiteInTenant(supabase, tenantId, siteId);
   const names = formData.getAll('name[]');
   const roles = formData.getAll('role[]');
   const phones = formData.getAll('phone[]');
@@ -560,6 +515,7 @@ export async function saveSiteAppointments(formData: FormData) {
 
   const supabase = await createClient();
   const siteId = formData.get('site_id') as string;
+  await assertSiteInTenant(supabase, tenantId, siteId);
   const titles = formData.getAll('title[]');
   const dates = formData.getAll('appointment_date[]');
   const times = formData.getAll('appointment_time[]');
@@ -679,7 +635,7 @@ export async function deleteSiteDocument(formData: FormData) {
   if (fetchError) throw new Error(fetchError.message);
   if (!data) throw new Error('Dokument nicht gefunden');
 
-  await deletePrivateFile('site-documents', data.file_url);
+  await deletePrivateFile(tenantId, 'site-documents', data.file_url);
 
   const { error } = await supabase.from('site_documents').delete().eq('id', id).eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
@@ -701,7 +657,7 @@ export async function uploadSiteDocument(formData: FormData) {
   const title = (formData.get('title') as string) || file.name;
 
   const path = buildStoragePath(tenantId, siteId, 'dokumente', `${Date.now()}-${file.name}`);
-  await uploadPrivateFile('site-documents', path, file);
+  await uploadPrivateFile(tenantId, 'site-documents', path, file);
 
   const { error } = await supabase.from('site_documents').insert({
     tenant_id: tenantId,
@@ -748,9 +704,14 @@ export async function saveCompanyHoliday(formData: FormData) {
 export async function deleteCompanyHoliday(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'settings.holidays');
+  const { tenantId } = ctx;
 
   const supabase = await createClient();
-  const { error } = await supabase.from('company_holidays').delete().eq('id', formData.get('id') as string);
+  const { error } = await supabase
+    .from('company_holidays')
+    .delete()
+    .eq('id', formData.get('id') as string)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/urlaub');
@@ -775,10 +736,41 @@ export async function saveBridgeDay(formData: FormData) {
 export async function deleteBridgeDay(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'settings.holidays');
+  const { tenantId } = ctx;
 
   const supabase = await createClient();
-  const { error } = await supabase.from('bridge_days').delete().eq('id', formData.get('id') as string);
+  const { error } = await supabase
+    .from('bridge_days')
+    .delete()
+    .eq('id', formData.get('id') as string)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
+  revalidatePath('/app/einstellungen');
+  revalidatePath('/app/urlaub');
+}
+
+export async function updateTenantBadWeatherAllowance(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'settings.holidays');
+  const { tenantId } = ctx;
+
+  const raw = formData.get('bad_weather_allowance_days');
+  const parsed = Number(raw);
+  if (raw == null || String(raw).trim() === '' || Number.isNaN(parsed)) {
+    throw new Error('Bitte eine gültige Anzahl angeben.');
+  }
+  const days = Math.round(parsed);
+  if (days < 0 || days > 366) {
+    throw new Error('Die Anzahl muss zwischen 0 und 366 liegen.');
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({ bad_weather_allowance_days: days, updated_at: new Date().toISOString() })
+    .eq('id', tenantId);
+  if (error) throw new Error(error.message);
+
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/urlaub');
 }

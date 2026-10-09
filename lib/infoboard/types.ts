@@ -10,6 +10,7 @@ export const INFOBOARD_WIDGET_IDS = [
   'today_schedule',
   'infoboard_posts',
   'leave_pending',
+  'leave_mine',
   'messages_unread',
   'site_weather',
 ] as const;
@@ -65,6 +66,24 @@ export type PendingApprovalRow = {
   name: string;
 };
 
+export type PendingLeaveRow = {
+  id: string;
+  name: string;
+  leaveTypeLabel: string;
+  startDate: string;
+  endDate: string;
+  businessDays: number;
+};
+
+export type MyLeaveRow = {
+  id: string;
+  leaveTypeLabel: string;
+  startDate: string;
+  endDate: string;
+  status: 'pending' | 'approved' | 'rejected';
+  businessDays: number;
+};
+
 export type InfoboardPostRow = {
   id: string;
   title: string;
@@ -100,8 +119,15 @@ export type InfoboardWidgetData = {
   };
   posts: InfoboardPostRow[];
   canManagePosts: boolean;
-  leavePendingCount: number;
+  leavePending: {
+    rows: PendingLeaveRow[];
+    totalPending: number;
+  };
+  leaveMine: {
+    rows: MyLeaveRow[];
+  };
   unreadMessagesCount: number;
   showTeamTimeStats: boolean;
+  showActiveWorkersLine: boolean;
   ownMinutesToday: number;
 };

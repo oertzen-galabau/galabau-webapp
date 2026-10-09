@@ -1,5 +1,6 @@
 import type { InfoboardWidgetData, InfoboardWidgetId } from '@/lib/infoboard/types';
 import { InfoboardPostsWidget } from '@/components/infoboard/widgets/infoboard-posts-widget';
+import { LeaveMineWidget } from '@/components/infoboard/widgets/leave-mine-widget';
 import { LeavePendingWidget } from '@/components/infoboard/widgets/leave-pending-widget';
 import { MessagesUnreadWidget } from '@/components/infoboard/widgets/messages-unread-widget';
 import { MetricCompletedWidget } from '@/components/infoboard/widgets/metric-completed-widget';
@@ -7,7 +8,6 @@ import { MetricHoursWidget } from '@/components/infoboard/widgets/metric-hours-w
 import { MetricOpenSitesWidget } from '@/components/infoboard/widgets/metric-open-sites-widget';
 import { MetricReportsWidget } from '@/components/infoboard/widgets/metric-reports-widget';
 import { PendingApprovalWidget } from '@/components/infoboard/widgets/pending-approval-widget';
-import { RejectedTimesWidget } from '@/components/infoboard/widgets/rejected-times-widget';
 import { TodayScheduleWidget } from '@/components/infoboard/widgets/today-schedule-widget';
 
 type Props = {
@@ -18,7 +18,7 @@ type Props = {
 export function RenderWidget({ widgetId, data }: Props) {
   switch (widgetId) {
     case 'rejected_times':
-      return <RejectedTimesWidget rejectedCount={data.rejectedCount} />;
+      return null;
     case 'pending_approval':
       return (
         <PendingApprovalWidget
@@ -31,10 +31,9 @@ export function RenderWidget({ widgetId, data }: Props) {
       return (
         <MetricHoursWidget
           totalMinutesToday={data.metrics.totalMinutesToday}
-          activeWorkers={data.metrics.activeWorkers}
-          totalWorkers={data.metrics.totalWorkers}
           showTeamStats={data.showTeamTimeStats}
           ownMinutesToday={data.ownMinutesToday}
+          rejectedCount={data.rejectedCount}
         />
       );
     case 'metric_open_sites':
@@ -62,7 +61,14 @@ export function RenderWidget({ widgetId, data }: Props) {
         <InfoboardPostsWidget posts={data.posts} canManagePosts={data.canManagePosts} />
       );
     case 'leave_pending':
-      return <LeavePendingWidget count={data.leavePendingCount} />;
+      return (
+        <LeavePendingWidget
+          rows={data.leavePending.rows}
+          totalPending={data.leavePending.totalPending}
+        />
+      );
+    case 'leave_mine':
+      return <LeaveMineWidget rows={data.leaveMine.rows} />;
     case 'messages_unread':
       return <MessagesUnreadWidget count={data.unreadMessagesCount} />;
     case 'site_weather':

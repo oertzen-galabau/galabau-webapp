@@ -128,8 +128,53 @@ describe('computeLeaveBalanceBreakdown', () => {
     });
     assert.equal(result.mandatoryDays, 1);
     assert.equal(result.badWeatherDays, 1);
-    assert.equal(result.totalExtraDeduction, 2);
-    assert.equal(result.remaining, 30 - 5 - 2);
+    assert.equal(result.badWeatherAllowanceDays, 5);
+    assert.equal(result.badWeatherDeductionFromVacation, 5);
+    assert.equal(result.totalExtraDeduction, 6);
+    assert.equal(result.remaining, 30 - 5 - 6);
+  });
+
+  it('reserves SW allowance as buffer when none booked', () => {
+    const result = computeLeaveBalanceBreakdown({
+      balance: { entitlement_days: 30, carried_over_days: 0, used_days: 0 },
+      year: 2025,
+      companyHolidays: [],
+      bridgeDays: [],
+      tenantBadWeatherDays: [],
+      timeEntries: [],
+      badWeatherAllowanceDays: 5,
+    });
+    assert.equal(result.badWeatherDays, 0);
+    assert.equal(result.badWeatherDeductionFromVacation, 5);
+    assert.equal(result.remaining, 25);
+  });
+
+  it('deducts SW from rest above allowance on top of buffer', () => {
+    const swEntries = ['2025-01-06', '2025-01-07', '2025-01-08', '2025-01-09', '2025-01-10', '2025-01-13'].map(
+      (work_date) => ({
+        work_date,
+        bad_weather_claimed: true,
+        bad_weather_confirmed: true,
+        start_time: '07:00',
+        end_time: '15:00',
+        breakfast_start: null,
+        breakfast_end: null,
+        lunch_start: null,
+        lunch_end: null,
+      }),
+    );
+    const result = computeLeaveBalanceBreakdown({
+      balance: { entitlement_days: 30, carried_over_days: 0, used_days: 0 },
+      year: 2025,
+      companyHolidays: [],
+      bridgeDays: [],
+      tenantBadWeatherDays: [],
+      timeEntries: swEntries,
+      badWeatherAllowanceDays: 5,
+    });
+    assert.equal(result.badWeatherDays, 6);
+    assert.equal(result.badWeatherDeductionFromVacation, 6);
+    assert.equal(result.remaining, 24);
   });
 
   it('does not double-count SW on mandatory day', () => {
@@ -155,6 +200,7 @@ describe('computeLeaveBalanceBreakdown', () => {
     });
     assert.equal(result.mandatoryDays, 1);
     assert.equal(result.badWeatherDays, 0);
-    assert.equal(result.remaining, 29);
+    assert.equal(result.badWeatherDeductionFromVacation, 5);
+    assert.equal(result.remaining, 24);
   });
 });

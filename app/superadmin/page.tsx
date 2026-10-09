@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireSuperadmin } from '@/lib/auth/session';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createTenant, updateTenantStatus } from '@/lib/actions/superadmin';
+import { createTenant, openTenantAsSuperadmin, updateTenantStatus } from '@/lib/actions/superadmin';
 import { AppSelect } from '@/components/ui/app-select';
 import { SaveIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 
@@ -25,7 +25,7 @@ export default async function SuperadminPage() {
       <header className="marketing-header">
         <div className="marketing-brand"><strong>Superadmin</strong></div>
         <nav>
-          <Link href="/">Plattform</Link>
+          <Link href="/">Marketing</Link>
           <Link href="/login">Abmelden</Link>
         </nav>
       </header>
@@ -51,7 +51,7 @@ export default async function SuperadminPage() {
         <h2>Alle Mandanten</h2>
         <div className="data-table-wrap">
           <table className="data-table">
-            <thead><tr><th>Name</th><th className="data-table-col--optional">Slug</th><th>Status</th><th className="data-table-col--optional">Plan</th><th>Aktion</th></tr></thead>
+            <thead><tr><th>Name</th><th className="data-table-col--optional">Slug</th><th>Status</th><th className="data-table-col--optional">Plan</th><th>Aktion</th><th>App</th></tr></thead>
             <tbody>
               {(tenants ?? []).map((tenant) => (
                 <tr key={tenant.id}>
@@ -71,6 +71,14 @@ export default async function SuperadminPage() {
                       <TableIconActions>
                         <SaveIconAction type="submit" />
                       </TableIconActions>
+                    </form>
+                  </td>
+                  <td>
+                    <form action={openTenantAsSuperadmin}>
+                      <input type="hidden" name="slug" value={tenant.slug} />
+                      <button type="submit" className="secondary-button secondary-button--compact">
+                        App öffnen
+                      </button>
                     </form>
                   </td>
                 </tr>

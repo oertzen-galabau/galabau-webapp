@@ -6,6 +6,8 @@ import {
   loadTenantPayrollConfig,
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
+
+export const DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS = 5;
 import { calculateWorkMinutes } from '@/lib/utils/time';
 
 export type LeaveBalanceRow = {
@@ -46,8 +48,12 @@ export type LeaveBalanceBreakdown = {
   usedFromRequests: number;
   /** Betriebsurlaub + Brückentage (Werktage, dedupliziert). */
   mandatoryDays: number;
-  /** Schlechwetter-Tage, die nicht schon in mandatoryDays stecken. */
+  /** Genutzte Schlechwetter-Tage (ohne Doppel mit Betrieb/Brücke). */
   badWeatherDays: number;
+  /** Mandanten-Kontingent Schlechwetter pro Jahr (Einstellungen → Allgemein). */
+  badWeatherAllowanceDays: number;
+  /** Vom Resturlaub reserviert: Puffer (Kontingent) plus genutzte Tage darüber. */
+  badWeatherDeductionFromVacation: number;
   totalExtraDeduction: number;
   remaining: number;
 };
@@ -166,6 +172,7 @@ export function computeLeaveBalanceBreakdown(input: {
   timeEntries: TimeEntryForBadWeather[];
   badWeatherConfig?: BadWeatherConfig;
   badWeatherRuleEnabled?: boolean;
+  badWeatherAllowanceDays?: number;
 }): LeaveBalanceBreakdown {
   const entitlementDays = Number(input.balance?.entitlement_days ?? DEFAULT_ENTITLEMENT);
   const carriedOverDays = Number(input.balance?.carried_over_days ?? 0);
@@ -184,13 +191,26 @@ export function computeLeaveBalanceBreakdown(input: {
     input.badWeatherRuleEnabled ?? true,
   );
 
-  let badWeatherOnly = 0;
+  let badWeatherDaysUsed = 0;
   for (const d of swDates) {
-    if (!mandatoryDates.has(d)) badWeatherOnly += 1;
+    if (!mandatoryDates.has(d)) badWeatherDaysUsed += 1;
   }
 
+  const allowanceRaw = input.badWeatherAllowanceDays;
+  const badWeatherAllowanceDays =
+    allowanceRaw != null && !Number.isNaN(Number(allowanceRaw))
+      ? Math.max(0, Number(allowanceRaw))
+      : DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS;
+
+  // Kontingent ist Puffer: immer vom Resturlaub abziehen, auch ohne gebuchte SW-Tage.
+  // Zusätzlich Tage über dem Kontingent.
+  const badWeatherDeductionFromVacation = Math.max(
+    badWeatherAllowanceDays,
+    badWeatherDaysUsed,
+  );
+
   const mandatoryDays = mandatoryDates.size;
-  const totalExtraDeduction = mandatoryDays + badWeatherOnly;
+  const totalExtraDeduction = mandatoryDays + badWeatherDeductionFromVacation;
   const remaining =
     entitlementDays + carriedOverDays - usedFromRequests - totalExtraDeduction;
 
@@ -199,7 +219,9 @@ export function computeLeaveBalanceBreakdown(input: {
     carriedOverDays,
     usedFromRequests,
     mandatoryDays,
-    badWeatherDays: badWeatherOnly,
+    badWeatherDays: badWeatherDaysUsed,
+    badWeatherAllowanceDays,
+    badWeatherDeductionFromVacation,
     totalExtraDeduction,
     remaining,
   };
@@ -220,6 +242,7 @@ export async function loadLeaveBalanceContext(
     { data: bridgeDays },
     { data: tenantBadWeatherDays },
     { data: timeEntries },
+    { data: tenantRow },
     tenantConfig,
   ] = await Promise.all([
     supabase
@@ -256,6 +279,11 @@ export async function loadLeaveBalanceContext(
       .eq('user_id', userId)
       .gte('work_date', yearStart)
       .lte('work_date', yearEnd),
+    supabase
+      .from('tenants')
+      .select('bad_weather_allowance_days')
+      .eq('id', tenantId)
+      .single(),
     loadTenantPayrollConfig(supabase, tenantId),
   ]);
 
@@ -271,6 +299,8 @@ export async function loadLeaveBalanceContext(
     timeEntries: timeEntries ?? [],
     badWeatherConfig,
     badWeatherRuleEnabled: badWeatherRule?.enabled === true,
+    badWeatherAllowanceDays:
+      tenantRow?.bad_weather_allowance_days ?? DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS,
   });
 
   return {

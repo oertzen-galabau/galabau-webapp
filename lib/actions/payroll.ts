@@ -29,6 +29,7 @@ function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: Per
 
 function revalidatePayrollPaths() {
   revalidatePath('/app/zeiten');
+  revalidatePath('/app/zeiten/freigabe');
   revalidatePath('/app/zeiten/buchungen');
 }
 
@@ -320,6 +321,7 @@ export async function saveTenantRule(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/zeiten');
+  revalidatePath('/app/urlaub');
 }
 
 export async function deactivateTenantRule(formData: FormData) {
@@ -350,6 +352,7 @@ export async function deactivateTenantRule(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/zeiten');
+  revalidatePath('/app/urlaub');
 }
 
 export { saveEntrySegments, loadCodeLabels };

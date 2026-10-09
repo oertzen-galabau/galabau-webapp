@@ -268,7 +268,16 @@ export async function removeMemberFromRole(formData: FormData) {
 }
 
 export async function getRolePermissionKeys(roleId: string): Promise<PermissionKey[]> {
+  const ctx = await getActionContext();
   const supabase = await createClient();
+  const { data: role } = await supabase
+    .from('tenant_roles')
+    .select('id')
+    .eq('id', roleId)
+    .eq('tenant_id', ctx.tenantId)
+    .maybeSingle();
+  if (!role) throw new Error('Rolle nicht gefunden');
+
   const { data } = await supabase
     .from('tenant_role_permissions')
     .select('permission_key')

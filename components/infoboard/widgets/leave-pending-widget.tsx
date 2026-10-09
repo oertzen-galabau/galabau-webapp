@@ -1,21 +1,45 @@
 import Link from 'next/link';
-import { ArrowRight, CalendarClock } from 'lucide-react';
+import { ArrowRight, ChevronRight } from 'lucide-react';
+import type { PendingLeaveRow } from '@/lib/infoboard/types';
 
 type Props = {
-  count: number;
+  rows: PendingLeaveRow[];
+  totalPending: number;
 };
 
-export function LeavePendingWidget({ count }: Props) {
+export function LeavePendingWidget({ rows, totalPending }: Props) {
   return (
-    <article className="metric-card infoboard-metric-widget">
-      <div className="metric-icon"><CalendarClock size={20} /></div>
-      <span>Offene Urlaubsanträge</span>
-      <strong>{count}</strong>
-      <p>
-        <Link href="/app/urlaub/freigabe" className="text-button infoboard-inline-link">
-          Zur Freigabe-Übersicht <ArrowRight size={14} />
+    <section className="panel schedule-panel infoboard-panel-widget">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">Freigabe</span>
+          <h2>Offene Urlaubsanträge</h2>
+        </div>
+        <Link href="/app/urlaub/freigabe" className="text-button">
+          Zur Freigabe-Übersicht <ArrowRight size={16} />
         </Link>
-      </p>
-    </article>
+      </div>
+      <div className="job-list">
+        {rows.map((entry) => (
+          <Link className="job-row" key={entry.id} href="/app/urlaub/freigabe">
+            <time>{entry.startDate}</time>
+            <span className="job-marker travel" />
+            <span className="job-copy">
+              <strong>{entry.name}</strong>
+              <small>
+                {entry.leaveTypeLabel} · {entry.businessDays} T. · {entry.startDate} – {entry.endDate}
+              </small>
+            </span>
+            <ChevronRight size={18} />
+          </Link>
+        ))}
+        {!totalPending && <p className="muted">Keine offenen Anträge.</p>}
+      </div>
+      {totalPending > 5 && (
+        <p className="approval-preview-count">
+          + {totalPending - 5} weitere in der Freigabe-Übersicht
+        </p>
+      )}
+    </section>
   );
 }

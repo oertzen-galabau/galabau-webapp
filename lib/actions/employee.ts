@@ -43,6 +43,7 @@ function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: Per
 function revalidateTimePaths() {
   revalidatePath('/app');
   revalidatePath('/app/zeiten');
+  revalidatePath('/app/zeiten/freigabe');
   revalidatePath('/app/baustellen', 'layout');
 }
 
@@ -633,13 +634,47 @@ export async function saveLeaveRequest(formData: FormData) {
     notes,
   });
   if (error) throw new Error(error.message);
+
+  const startDate = formData.get('start_date') as string;
+  const endDate = formData.get('end_date') as string;
+  const { formatLeaveType } = await import('@/lib/leave/labels');
+  const { listLeaveApproverUserIds } = await import('@/lib/messages/leave-approver-recipients');
+  const { insertDirectMessageTrusted } = await import('@/lib/messages/status-notify');
+  const { displayName } = await import('@/lib/auth/roles');
+  const { data: senderProfile } = await supabase
+    .from('profiles')
+    .select('first_name, last_name, email')
+    .eq('id', userId)
+    .single();
+  const typeLabel = formatLeaveType(leaveType, notes);
+  const range = `${startDate} – ${endDate}`;
+  const notifyBody = `Neuer Antrag von ${displayName(senderProfile ?? { first_name: '', last_name: '', email: '' })}: ${typeLabel}, ${range}.`;
+
+  try {
+    const approverIds = await listLeaveApproverUserIds(supabase, tenantId, userId);
+    await Promise.all(
+      approverIds.map((recipientId) =>
+        insertDirectMessageTrusted({
+          tenantId,
+          senderId: userId,
+          recipientId,
+          body: notifyBody,
+        }),
+      ),
+    );
+  } catch (notifyErr) {
+    console.error('[leave] notify approvers on new request failed', notifyErr);
+  }
+
+  revalidatePath('/app');
   revalidatePath('/app/urlaub');
+  revalidatePath('/app/nachrichten');
 }
 
 export async function updateLeaveStatus(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'urlaub.approve');
-  const { userId } = ctx;
+  const { userId, tenantId } = ctx;
 
   const supabase = await createClient();
   const requestId = formData.get('id') as string;
@@ -649,6 +684,7 @@ export async function updateLeaveStatus(formData: FormData) {
     .from('leave_requests')
     .select('*')
     .eq('id', requestId)
+    .eq('tenant_id', tenantId)
     .single();
   if (fetchError || !request) throw new Error(fetchError?.message ?? 'Antrag nicht gefunden');
 
@@ -656,24 +692,24 @@ export async function updateLeaveStatus(formData: FormData) {
     status,
     reviewed_by: userId,
     reviewed_at: new Date().toISOString(),
-  }).eq('id', requestId);
+  }).eq('id', requestId).eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
 
   if (request.user_id !== userId) {
-    const { insertDirectMessage } = await import('@/lib/messages/status-notify');
+    const { insertDirectMessageWithFallback } = await import('@/lib/messages/status-notify');
     const { formatLeaveType } = await import('@/lib/leave/labels');
     const typeLabel = formatLeaveType(request.leave_type, request.notes);
     const statusLabel = status === 'approved' ? 'genehmigt' : 'abgelehnt';
     const range = `${request.start_date} – ${request.end_date}`;
     try {
-      await insertDirectMessage(supabase, {
+      await insertDirectMessageWithFallback(supabase, {
         tenantId: request.tenant_id,
         senderId: userId,
         recipientId: request.user_id,
         body: `Dein Antrag (${typeLabel}, ${range}) wurde ${statusLabel}.`,
       });
-    } catch {
-      // Chat-Benachrichtigung optional — Freigabe bleibt gültig
+    } catch (notifyErr) {
+      console.error('[leave] notify employee on status change failed', notifyErr);
     }
   }
 
@@ -716,6 +752,7 @@ export async function updateLeaveStatus(formData: FormData) {
     }, { onConflict: 'tenant_id,user_id,year' });
   }
 
+  revalidatePath('/app');
   revalidatePath('/app/urlaub');
   revalidatePath('/app/urlaub/freigabe');
   revalidatePath('/app/nachrichten');
@@ -876,7 +913,7 @@ export async function updateTenantBranding(formData: FormData) {
   let logoUrl = tenant?.logo_url ?? null;
   const logoFile = formData.get('logo');
   if (logoFile instanceof File && logoFile.size > 0) {
-    await deleteTenantLogo(logoUrl);
+    await deleteTenantLogo(tenantId, logoUrl);
     const uploaded = await uploadTenantLogo(tenantId, logoFile);
     logoUrl = uploaded.publicUrl;
   }
@@ -907,7 +944,7 @@ export async function removeTenantLogo() {
     .eq('id', tenantId)
     .single();
 
-  await deleteTenantLogo(tenant?.logo_url ?? null);
+  await deleteTenantLogo(tenantId, tenant?.logo_url ?? null);
 
   const { error } = await supabase
     .from('tenants')

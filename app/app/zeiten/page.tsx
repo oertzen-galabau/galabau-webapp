@@ -4,20 +4,16 @@ import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { saveTimeEntry, resubmitTimeEntry } from '@/lib/actions/employee';
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
-import { BadWeatherFreigabeControl } from '@/components/payroll/bad-weather-freigabe-control';
-import { TimeApprovalRow } from '@/components/payroll/time-approval-row';
-import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
 import { fetchAccessibleSites } from '@/lib/sites/access';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { formatMinutes } from '@/lib/utils/time';
-import { isBadWeatherForPreview } from '@/lib/payroll/bad-weather-entry';
 import {
   getBadWeatherSeasonFromConfig,
   loadTenantPayrollConfig,
   serializeTenantConfig,
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
-import type { PayrollBooking, TimeEntry } from '@/lib/types/database';
+import type { PayrollBooking } from '@/lib/types/database';
 
 export default async function ZeitenPage() {
   const ctx = await requireTenantMember();
@@ -26,8 +22,6 @@ export default async function ZeitenPage() {
   const supabase = await createClient();
   const month = todayWorkDate().slice(0, 7);
   const canApprove = canAccess(ctx, 'zeiten.approve');
-  const canEditBookings = canAccess(ctx, 'zeiten.bookings.edit');
-  const canMarkBadWeather = canAccess(ctx, 'zeiten.bad_weather.mark');
 
   const tenantPayrollConfig = await loadTenantPayrollConfig(supabase, ctx.tenant!.id);
   const tenantConfigSerialized = serializeTenantConfig(tenantPayrollConfig);
@@ -38,10 +32,8 @@ export default async function ZeitenPage() {
   const [
     { data: entries },
     { data: rejectedEntries },
-    { data: pendingEntries },
     sites,
     { data: bookingCodes },
-    { data: badWeatherDays },
   ] = await Promise.all([
     supabase
       .from('time_entries')
@@ -55,13 +47,6 @@ export default async function ZeitenPage() {
       .eq('user_id', ctx.userId)
       .eq('approval_status', 'rejected')
       .order('work_date', { ascending: false }),
-    canApprove
-      ? supabase
-          .from('time_entries')
-          .select('*, sites(name), profiles(first_name, last_name)')
-          .eq('approval_status', 'pending')
-          .order('submitted_at', { ascending: true })
-      : Promise.resolve({ data: [] as TimeEntry[] }),
     fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes'),
     supabase
       .from('payroll_booking_codes')
@@ -69,17 +54,9 @@ export default async function ZeitenPage() {
       .eq('tenant_id', ctx.tenant!.id)
       .eq('is_active', true)
       .order('sort_order'),
-    canMarkBadWeather
-      ? supabase
-          .from('bad_weather_days')
-          .select('work_date')
-          .eq('tenant_id', ctx.tenant!.id)
-      : Promise.resolve({ data: [] as { work_date: string }[] }),
   ]);
 
-  const pendingIds = (pendingEntries ?? []).map((e) => e.id);
-  const entryIds = (entries ?? []).map((e) => e.id);
-  const allEntryIds = [...new Set([...pendingIds, ...entryIds])];
+  const allEntryIds = (entries ?? []).map((e) => e.id);
 
   const [{ data: allSegments }, { data: allBookings }] = allEntryIds.length > 0
     ? await Promise.all([
@@ -125,42 +102,11 @@ export default async function ZeitenPage() {
   }
 
   const codeLabels = Object.fromEntries((bookingCodes ?? []).map((c) => [c.code, c.label]));
-  const badWeatherDates = (badWeatherDays ?? []).map((d) => d.work_date);
 
   const approvedMinutes = (entries ?? [])
     .filter((e) => e.approval_status === 'approved')
     .reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const today = todayWorkDate();
-  const emptyApprovalQuip = approvalEmptyQuip(today);
-
-  const pendingDates = [...new Set((pendingEntries ?? []).map((e) => e.work_date))].sort();
-
-  const pendingWithMeta = await Promise.all(
-    (pendingEntries ?? []).map(async (entry) => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('payroll_flags')
-        .eq('id', entry.user_id)
-        .single();
-      return {
-        ...entry,
-        segments: (segmentsByEntry.get(entry.id) ?? [])
-          .filter((segment) => segment.start_time && segment.end_time)
-          .map((segment) => ({
-            block_type: segment.block_type as import('@/lib/types/database').TimeBlockType,
-            start_time: segment.start_time!.slice(0, 5),
-            end_time: segment.end_time!.slice(0, 5),
-            site_id: segment.site_id,
-            travel_minutes: segment.travel_minutes,
-          })),
-        payrollFlags: (profile?.payroll_flags ?? {}) as { lkw_hours?: boolean },
-        isBadWeatherDay: isBadWeatherForPreview(
-          entry,
-          badWeatherDates.includes(entry.work_date),
-        ),
-      };
-    }),
-  );
 
   return (
     <>
@@ -173,9 +119,16 @@ export default async function ZeitenPage() {
             {' '}Buchungsvorschau — finale Lohnbuchungen entstehen nach Freigabe durch das Büro.
           </p>
         </div>
-        <Link href="/app/zeiten/buchungen" className="text-button">
-          Buchungsübersicht →
-        </Link>
+        <div className="page-heading-actions">
+          {canApprove && (
+            <Link href="/app/zeiten/freigabe" className="text-button">
+              Zeiten zur Freigabe →
+            </Link>
+          )}
+          <Link href="/app/zeiten/buchungen" className="text-button">
+            Buchungsübersicht →
+          </Link>
+        </div>
       </div>
 
       {(rejectedEntries ?? []).length > 0 && (
@@ -212,54 +165,6 @@ export default async function ZeitenPage() {
               </form>
             </article>
           ))}
-        </section>
-      )}
-
-      {canApprove && (
-        <section className="panel" id="freigabe" style={{ marginBottom: 16 }}>
-          <h2>Zeiten zur Freigabe</h2>
-          {canMarkBadWeather && (
-            <BadWeatherFreigabeControl
-              markedDates={badWeatherDates}
-              suggestedDates={pendingDates}
-            />
-          )}
-          {(pendingEntries ?? []).length > 0 ? (
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Mitarbeiter</th>
-                    <th>Datum</th>
-                    <th className="data-table-col--optional">Start</th>
-                    <th className="data-table-col--optional">Ende</th>
-                    <th>Arbeitszeit</th>
-                    <th>Fahrer</th>
-                    <th className="data-table-col--optional">KUG</th>
-                    <th>Buchungen</th>
-                    <th>Aktion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingWithMeta.map((entry) => (
-                    <TimeApprovalRow
-                      key={entry.id}
-                      entry={entry}
-                      bookings={bookingsByEntry.get(entry.id) ?? []}
-                      codeLabels={codeLabels}
-                      bookingCodes={bookingCodes ?? []}
-                      canEditBookings={canEditBookings}
-                      payrollFlags={entry.payrollFlags}
-                      isBadWeatherDay={entry.isBadWeatherDay}
-                      tenantConfig={tenantConfigSerialized}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="muted">{emptyApprovalQuip}</p>
-          )}
         </section>
       )}
 

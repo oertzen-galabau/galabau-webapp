@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import { PromptDialog } from '@/components/ui/app-dialogs';
 
-export function SendReportButton({ reportId, defaultTo }: { reportId: string; defaultTo?: string | null }) {
+export function SendReportButton({
+  reportId,
+  defaultTo,
+  linkStyle = false,
+}: {
+  reportId: string;
+  defaultTo?: string | null;
+  linkStyle?: boolean;
+}) {
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -29,12 +37,14 @@ export function SendReportButton({ reportId, defaultTo }: { reportId: string; de
     setLoading(false);
   }
 
+  const buttonClass = linkStyle ? 'table-action-link' : 'text-button';
+
   return (
-    <div className="inline-actions">
-      <button type="button" className="text-button" onClick={() => setDialogOpen(true)} disabled={loading}>
+    <span className={linkStyle ? 'send-report-inline' : 'inline-actions'}>
+      <button type="button" className={buttonClass} onClick={() => setDialogOpen(true)} disabled={loading}>
         {loading ? 'Sende…' : 'Senden'}
       </button>
-      {message && <span className="muted">{message}</span>}
+      {message && <span className="muted send-report-message">{message}</span>}
       <PromptDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -47,6 +57,6 @@ export function SendReportButton({ reportId, defaultTo }: { reportId: string; de
         submitLabel="Senden"
         pending={loading}
       />
-    </div>
+    </span>
   );
 }

@@ -15,6 +15,7 @@ import {
   displayTitleForLog,
   isHourlyWageRapport,
   type DailyLogReportType,
+  type TenantReportLabelConfig,
 } from '@/lib/documentation/report-labels';
 
 type DeleterProfile = {
@@ -52,6 +53,8 @@ type SubcontractorEntryItem = {
   id: string;
   company_name: string;
   work_description: string | null;
+  worker_name: string | null;
+  group_key: string | null;
   hours: number | null;
   deleted_at: string | null;
   deleter: DeleterProfile;
@@ -88,6 +91,7 @@ type SignatureSummary = {
 
 type LogEntry = {
   id: string;
+  canEdit?: boolean;
   log_date: string;
   report_type: DailyLogReportType;
   custom_title: string | null;
@@ -114,7 +118,7 @@ type Props = {
   logs: LogEntry[];
   signedUrls: Record<string, string>;
   canDelete: boolean;
-  canEdit?: boolean;
+  reportLabels?: TenantReportLabelConfig;
 };
 
 function formatQuantity(quantity: number | null, unit: string | null) {
@@ -125,6 +129,30 @@ function formatQuantity(quantity: number | null, unit: string | null) {
 function formatDeleterName(deleter: DeleterProfile): string {
   if (!deleter) return 'Unbekannt';
   return `${deleter.first_name} ${deleter.last_name}`.trim() || 'Unbekannt';
+}
+
+function groupSubcontractorListItems(entries: SubcontractorEntryItem[]) {
+  const map = new Map<string, SubcontractorEntryItem[]>();
+  for (const entry of entries) {
+    const key = entry.group_key ?? entry.id;
+    const list = map.get(key);
+    if (list) list.push(entry);
+    else map.set(key, [entry]);
+  }
+  return [...map.values()].map((items) => {
+    const active = items.filter((item) => !item.deleted_at);
+    const count = active.filter(
+      (item) => item.worker_name?.trim() || Number(item.hours) > 0,
+    ).length;
+    const totalHours = active.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+    return {
+      companyName: items[0]?.company_name ?? '',
+      workDescription: items[0]?.work_description ?? null,
+      items,
+      count,
+      totalHours,
+    };
+  });
 }
 
 function formatDeletedAt(deletedAt: string): string {
@@ -160,7 +188,12 @@ function DeleteButton({ onClick, disabled }: { onClick: () => void; disabled?: b
   );
 }
 
-export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = false }: Props) {
+export function DailyLogEntriesList({
+  logs,
+  signedUrls,
+  canDelete,
+  reportLabels,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
@@ -200,14 +233,18 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
       <div className="form-stack">
         {logs.map((log) => {
           const hourly = isHourlyWageRapport(log.report_type);
-          const displayTitle = displayTitleForLog(log.report_type, log.custom_title);
+          const displayTitle = displayTitleForLog(log.report_type, log.custom_title, reportLabels);
           return (
           <div key={log.id} className="panel" style={{ padding: 16 }}>
             <div className="documentation-entry-row">
               <div>
                 <div className="documentation-entry-title-row">
                   <strong>{log.log_date} · {log.site_name}</strong>
-                  <DailyLogReportTypeBadge reportType={log.report_type} customTitle={log.custom_title} />
+                  <DailyLogReportTypeBadge
+                    reportType={log.report_type}
+                    customTitle={log.custom_title}
+                    reportLabels={reportLabels}
+                  />
                 </div>
                 {log.custom_title?.trim() && (
                   <p className="muted" style={{ marginTop: 4 }}>{displayTitle}</p>
@@ -217,7 +254,7 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
                   {log.notes ? ` · Notiz: ${log.notes}` : ''}
                 </p>
               </div>
-              {canEdit && (
+              {log.canEdit && (
                 <Link href={`/app/dokumentation?edit=${log.id}`} className="table-action-link">
                   Bearbeiten
                 </Link>
@@ -395,38 +432,52 @@ export function DailyLogEntriesList({ logs, signedUrls, canDelete, canEdit = fal
 
             {log.subcontractors.length > 0 && (
               <ul className="documentation-entry-list">
-                {log.subcontractors.map((entry) => {
-                  const isDeleted = Boolean(entry.deleted_at);
-                  return (
-                    <li
-                      key={entry.id}
-                      className={['documentation-entry', isDeleted ? 'documentation-entry--deleted' : ''].filter(Boolean).join(' ')}
-                    >
-                      <div className="documentation-entry-row">
-                        <div>
-                          Subunternehmer: {entry.company_name} · {entry.work_description ?? '—'} · {entry.hours ?? 0} h
-                        </div>
-                        <div className="documentation-entry-actions">
-                          {isDeleted && entry.deleted_at && (
-                            <DeletedBadge deletedAt={entry.deleted_at} deleter={entry.deleter} />
-                          )}
-                          {canDelete && !isDeleted && (
-                            <DeleteButton
-                              disabled={pending}
-                              onClick={() =>
-                                setDeleteTarget({
-                                  type: 'subcontractor',
-                                  id: entry.id,
-                                  label: `Subunternehmer ${entry.company_name}`,
-                                })
-                              }
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
+                {groupSubcontractorListItems(log.subcontractors).map((group) => (
+                  <li key={`${group.companyName}-${group.items[0]?.id}`} className="documentation-entry documentation-entry--group">
+                    <ul className="documentation-entry-list documentation-entry-list--nested">
+                      {group.items.map((entry) => {
+                        const isDeleted = Boolean(entry.deleted_at);
+                        const personLabel = entry.worker_name?.trim() ? `${entry.worker_name} · ` : '';
+                        return (
+                          <li
+                            key={entry.id}
+                            className={['documentation-entry', isDeleted ? 'documentation-entry--deleted' : '']
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            <div className="documentation-entry-row">
+                              <div>
+                                Subunternehmer: {entry.company_name} · {personLabel}
+                                {group.workDescription ?? '—'} · {entry.hours ?? 0} h
+                              </div>
+                              <div className="documentation-entry-actions">
+                                {isDeleted && entry.deleted_at && (
+                                  <DeletedBadge deletedAt={entry.deleted_at} deleter={entry.deleter} />
+                                )}
+                                {canDelete && !isDeleted && (
+                                  <DeleteButton
+                                    disabled={pending}
+                                    onClick={() =>
+                                      setDeleteTarget({
+                                        type: 'subcontractor',
+                                        id: entry.id,
+                                        label: `Subunternehmer ${entry.company_name}`,
+                                      })
+                                    }
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p className="muted documentation-entry-group-summary">
+                      Summe {group.companyName}: {group.count} MA ·{' '}
+                      {group.totalHours.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Std. gesamt
+                    </p>
+                  </li>
+                ))}
               </ul>
             )}
           </div>

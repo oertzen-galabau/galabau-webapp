@@ -20,16 +20,19 @@ import { userCanAccessSite } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
 import { loadForemanOptions, loadTenantEmployeeTeamOptions } from '@/lib/sites/foremen-options';
 import type { TimeBlockType } from '@/lib/types/database';
-import { parseDailyLogReportType } from '@/lib/documentation/report-labels';
+import { parseDailyLogReportType, tenantReportLabelsFromTenant } from '@/lib/documentation/report-labels';
+import { resolveOwnedDailyLogIds, userCanEditDailyLog, canViewAllReports } from '@/lib/documentation/report-access';
 
 async function countRows(
   supabase: Awaited<ReturnType<typeof createClient>>,
   table: string,
+  tenantId: string,
   siteId: string,
 ) {
   const { count } = await supabase
     .from(table)
     .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
     .eq('site_id', siteId);
   return count ?? 0;
 }
@@ -38,6 +41,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   const { id } = await params;
   const ctx = await requireTenantMember();
   if (!canAccess(ctx, 'nav.baustellen')) return <p className="muted">Keine Berechtigung.</p>;
+  const reportLabels = tenantReportLabelsFromTenant(ctx.tenant);
 
   const supabase = await createClient();
   const canAccessSite = await userCanAccessSite(supabase, ctx, id);
@@ -45,6 +49,30 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
   const canManageSites = canAccess(ctx, 'sites.manage');
   const canManageTeam = canAccess(ctx, 'sites.assign_team');
+  const tenantId = ctx.tenant!.id;
+  const canViewAllTime = canAccess(ctx, 'zeiten.view_all');
+  const canManageDocs = canAccess(ctx, 'documentation.manage');
+
+  const ownedLogIdsOnSite = await resolveOwnedDailyLogIds(supabase, ctx, tenantId, { siteId: id });
+
+  let dailyLogsQuery = supabase
+    .from('daily_logs')
+    .select('id, log_date, weather, notes, report_type, custom_title, created_by')
+    .eq('site_id', id)
+    .order('log_date', { ascending: false });
+  if (!canViewAllReports(ctx)) {
+    dailyLogsQuery = dailyLogsQuery.eq('created_by', ctx.userId);
+  }
+
+  let siteReportsQuery = supabase
+    .from('reports')
+    .select('id, daily_log_id, report_date, status, pdf_url, sent_to, sent_at')
+    .eq('site_id', id)
+    .order('report_date', { ascending: false });
+  if (ownedLogIdsOnSite !== null) {
+    siteReportsQuery = siteReportsQuery.in('daily_log_id', ownedLogIdsOnSite);
+  }
+  const siteReportsPromise = siteReportsQuery;
 
   const [
     { data: site },
@@ -53,7 +81,6 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     { data: documents },
     { data: appointments },
     { data: dailyLogs },
-    { data: siteReports },
     dailyLogCount,
     reportCount,
     timeEntryCount,
@@ -64,27 +91,18 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     { data: teamRows },
     { data: masterSuppliers },
   ] = await Promise.all([
-    supabase.from('sites').select('*').eq('id', id).single(),
+    supabase.from('sites').select('*').eq('id', id).eq('tenant_id', tenantId).single(),
     supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
     supabase.from('site_suppliers').select('*').eq('site_id', id).order('name'),
     supabase.from('site_documents').select('*').eq('site_id', id).order('created_at', { ascending: false }),
     supabase.from('site_appointments').select('*').eq('site_id', id).order('appointment_at'),
-    supabase
-      .from('daily_logs')
-      .select('id, log_date, weather, notes, report_type, custom_title')
-      .eq('site_id', id)
-      .order('log_date', { ascending: false }),
-    supabase
-      .from('reports')
-      .select('id, daily_log_id, report_date, status, pdf_url, sent_to, sent_at')
-      .eq('site_id', id)
-      .order('report_date', { ascending: false }),
-    countRows(supabase, 'daily_logs', id),
-    countRows(supabase, 'reports', id),
-    countRows(supabase, 'time_entries', id),
-    countRows(supabase, 'daily_assignments', id),
-    countRows(supabase, 'bad_weather_days', id),
-    countRows(supabase, 'time_entry_segments', id),
+    dailyLogsQuery,
+    countRows(supabase, 'daily_logs', tenantId, id),
+    countRows(supabase, 'reports', tenantId, id),
+    countRows(supabase, 'time_entries', tenantId, id),
+    countRows(supabase, 'daily_assignments', tenantId, id),
+    countRows(supabase, 'bad_weather_days', tenantId, id),
+    countRows(supabase, 'time_entry_segments', tenantId, id),
     canManageSites ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
     supabase
       .from('site_team_members')
@@ -99,6 +117,8 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       .eq('is_active', true)
       .order('name'),
   ]);
+
+  const { data: siteReports } = await siteReportsPromise;
 
   const teamMembers: SiteTeamMemberRow[] = (teamRows ?? []).map((row) => {
     const profileRaw = row.profiles;
@@ -145,6 +165,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   const reportEntries: SiteReportEntry[] = (dailyLogs ?? []).map((log) => {
     const stats = workerStatsByLog.get(log.id);
     const report = reportByDailyLogId.get(log.id) ?? null;
+    const logCreatedBy = log.created_by as string | null;
     return {
       id: log.id,
       logDate: log.log_date,
@@ -154,6 +175,10 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       notes: log.notes,
       workerCount: stats?.count ?? 0,
       totalHours: stats?.totalHours ?? 0,
+      canEdit:
+        canManageDocs &&
+        Boolean(site?.is_active) &&
+        userCanEditDailyLog(ctx, { created_by: logCreatedBy }),
       report: report
         ? {
             id: report.id,
@@ -166,12 +191,11 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     };
   });
 
-  const pdfPaths = (siteReports ?? []).map((r) => r.pdf_url).filter(Boolean) as string[];
-  const signedPdfUrls = await getSignedFileUrls('reports', pdfPaths);
-
-  const { data: approvedSiteSegments } = await supabase
-    .from('time_entry_segments')
-    .select(`
+  const approvedSiteSegments = canViewAllTime
+    ? (
+        await supabase
+          .from('time_entry_segments')
+          .select(`
       start_time,
       end_time,
       block_type,
@@ -182,15 +206,17 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
         profiles(first_name, last_name)
       )
     `)
-    .eq('site_id', id)
-    .eq('block_type', 'site_work')
-    .eq('time_entries.approval_status', 'approved')
-    .not('start_time', 'is', null)
-    .not('end_time', 'is', null)
-    .order('created_at', { ascending: false });
+          .eq('site_id', id)
+          .eq('block_type', 'site_work')
+          .eq('time_entries.approval_status', 'approved')
+          .not('start_time', 'is', null)
+          .not('end_time', 'is', null)
+          .order('created_at', { ascending: false })
+      ).data ?? []
+    : [];
 
   const approvedEntriesMap = new Map<string, SiteApprovedTimeEntry>();
-  for (const segment of approvedSiteSegments ?? []) {
+  for (const segment of approvedSiteSegments) {
     const entryRaw = segment.time_entries;
     const entry = (Array.isArray(entryRaw) ? entryRaw[0] : entryRaw) as {
       id: string;
@@ -226,7 +252,6 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
   const canManage = canAccess(ctx, 'sites.manage');
   const canEdit = canManage && site.is_active;
-  const canManageDocs = canAccess(ctx, 'documentation.manage');
   const canNavDocs = canAccess(ctx, 'nav.dokumentation');
   const canGenerate = canAccess(ctx, 'reports.generate');
   const canSend = canAccess(ctx, 'reports.send');
@@ -239,7 +264,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   const removeMode = hasDocumentation || hasOperationalData ? 'archive' : 'delete';
 
   const docPaths = (documents ?? []).map((d) => d.file_url).filter(Boolean) as string[];
-  const signedUrls = await getSignedFileUrls('site-documents', docPaths);
+  const signedUrls = await getSignedFileUrls(tenantId, 'site-documents', docPaths);
 
   const plans = (documents ?? []).filter((d) => d.category === 'plan');
   const lv = (documents ?? []).filter((d) => d.category === 'leistungsverzeichnis');
@@ -280,15 +305,14 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
           <SiteReportsSection
             siteId={id}
             entries={reportEntries}
-            signedPdfUrls={signedPdfUrls}
-            canManageDocs={canManageDocs && site.is_active}
             canNavDocs={canNavDocs}
             canGenerate={canGenerate}
             canSend={canSend}
             canCreate={canCreateReport}
             defaultSendTo={ctx.profile.email}
+            reportLabels={reportLabels}
           />
-          <SiteTimeEntriesSection entries={approvedSiteEntries} />
+          {canViewAllTime && <SiteTimeEntriesSection entries={approvedSiteEntries} />}
         </section>
 
         <aside className="order-side">

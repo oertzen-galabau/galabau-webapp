@@ -34,9 +34,15 @@ export function LeaveBalanceMetrics({ breakdown, compact = false }: Props) {
         <span>Betrieb/Brücke</span>
         <strong>{breakdown.mandatoryDays}</strong>
       </article>
-      <article className="metric-card">
+      <article
+        className="metric-card"
+        title={`${breakdown.badWeatherDays} genutzt von ${breakdown.badWeatherAllowanceDays} Kontingent. Vom Resturlaub reserviert: ${breakdown.badWeatherDeductionFromVacation} Tage (Puffer auch ohne Buchung).`}
+      >
         <span>Schlechtwetter</span>
-        <strong>{breakdown.badWeatherDays}</strong>
+        <strong>
+          {breakdown.badWeatherDays}
+          <small> / {breakdown.badWeatherAllowanceDays}</small>
+        </strong>
       </article>
       <article className="metric-card metric-feature">
         <span>Rest</span>

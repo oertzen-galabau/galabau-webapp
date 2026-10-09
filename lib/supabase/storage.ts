@@ -1,5 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseUrl } from '@/lib/supabase/env';
+import {
+  assertStoragePathBelongsToTenant,
+  storagePathBelongsToTenant,
+} from '@/lib/tenant/row-access';
 
 export type PrivateBucket = 'site-documents' | 'daily-photos' | 'reports';
 
@@ -25,10 +29,12 @@ const TENANT_LOGO_EXT_BY_MIME: Record<string, string> = {
  * `site-documents`, `daily-photos` und `reports` nicht öffentlich sind).
  */
 export async function uploadPrivateFile(
+  tenantId: string,
   bucket: PrivateBucket,
   path: string,
   file: File,
 ) {
+  assertStoragePathBelongsToTenant(tenantId, path);
   const admin = createAdminClient();
   const { error } = await admin.storage.from(bucket).upload(path, file, {
     contentType: file.type || undefined,
@@ -44,11 +50,13 @@ export async function uploadPrivateFile(
  * angezeigt werden kann.
  */
 export async function getSignedFileUrl(
+  tenantId: string,
   bucket: PrivateBucket,
   path: string | null,
   expiresIn = 3600,
 ) {
   if (!path) return null;
+  assertStoragePathBelongsToTenant(tenantId, path);
   const admin = createAdminClient();
   const { data, error } = await admin.storage.from(bucket).createSignedUrl(path, expiresIn);
   if (error) return null;
@@ -59,13 +67,15 @@ export async function getSignedFileUrl(
  * Erzeugt signierte URLs für mehrere Objekte im selben Bucket auf einmal.
  */
 export async function getSignedFileUrls(
+  tenantId: string,
   bucket: PrivateBucket,
   paths: string[],
   expiresIn = 3600,
 ) {
-  if (paths.length === 0) return new Map<string, string>();
+  const allowed = paths.filter((path) => storagePathBelongsToTenant(tenantId, path));
+  if (allowed.length === 0) return new Map<string, string>();
   const admin = createAdminClient();
-  const { data, error } = await admin.storage.from(bucket).createSignedUrls(paths, expiresIn);
+  const { data, error } = await admin.storage.from(bucket).createSignedUrls(allowed, expiresIn);
   const map = new Map<string, string>();
   if (error || !data) return map;
   for (const entry of data) {
@@ -85,8 +95,9 @@ export function buildStoragePath(...segments: (string | number)[]) {
 }
 
 /** Entfernt ein Objekt aus einem privaten Bucket (Fehler werden ignoriert). */
-export async function deletePrivateFile(bucket: PrivateBucket, path: string | null) {
+export async function deletePrivateFile(tenantId: string, bucket: PrivateBucket, path: string | null) {
   if (!path) return;
+  assertStoragePathBelongsToTenant(tenantId, path);
   const admin = createAdminClient();
   const { error } = await admin.storage.from(bucket).remove([path]);
   if (error) console.warn(`Storage delete failed (${bucket}/${path}):`, error.message);
@@ -127,9 +138,10 @@ export async function uploadTenantLogo(tenantId: string, file: File) {
   return { path, publicUrl: getTenantLogoPublicUrl(path) };
 }
 
-export async function deleteTenantLogo(logoUrl: string | null) {
+export async function deleteTenantLogo(tenantId: string, logoUrl: string | null) {
   const path = tenantLogoStoragePath(logoUrl);
   if (!path) return;
+  assertStoragePathBelongsToTenant(tenantId, path);
   const admin = createAdminClient();
   const { error } = await admin.storage.from(TENANT_LOGOS_BUCKET).remove([path]);
   if (error) console.warn(`Tenant logo delete failed (${path}):`, error.message);

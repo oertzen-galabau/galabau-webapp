@@ -4,7 +4,9 @@ import {
   isHourlyWageRapport,
   parseDailyLogReportType,
   type DailyLogReportType,
+  type TenantReportLabelConfig,
 } from '@/lib/documentation/report-labels';
+import { groupSubcontractorEntries } from '@/lib/documentation/subcontractor-groups';
 
 export type ReportPhotoInput = {
   bytes: Uint8Array;
@@ -31,12 +33,19 @@ export type ReportInput = {
   reportDate: string;
   reportType?: DailyLogReportType;
   customTitle?: string | null;
+  reportLabels?: TenantReportLabelConfig;
   weather: string | null;
   notes: string | null;
   workers: { worker_name: string; job_title: string | null; hours: number }[];
   workItems: { description: string; quantity: number | null; unit: string | null }[];
   resources: { equipment_name: string; quantity: number | null; unit: string | null; hours: number }[];
-  subcontractors: { company_name: string; work_description: string | null; hours: number }[];
+  subcontractors: {
+    company_name: string;
+    work_description: string | null;
+    hours: number;
+    worker_name?: string | null;
+    group_key?: string | null;
+  }[];
   deliveries: {
     supplier_name: string | null;
     description: string | null;
@@ -61,7 +70,7 @@ function formatQuantityLine(quantity: number | null, unit: string | null, hours?
 export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
   const reportType = parseDailyLogReportType(input.reportType);
   const hourly = isHourlyWageRapport(reportType);
-  const headingTitle = displayTitleForLog(reportType, input.customTitle);
+  const headingTitle = displayTitleForLog(reportType, input.customTitle, input.reportLabels);
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -143,8 +152,19 @@ export async function buildReportPdf(input: ReportInput): Promise<Uint8Array> {
 
   drawSubheading('Subunternehmer');
   if (input.subcontractors.length) {
-    for (const item of input.subcontractors) {
-      drawLine(`${item.company_name} — ${item.work_description ?? ''} — ${item.hours} Std.`);
+    const groups = groupSubcontractorEntries(input.subcontractors);
+    for (const group of groups) {
+      for (const person of group.persons) {
+        const personLabel = person.worker_name?.trim() ? `${person.worker_name} · ` : '';
+        const gewerk = group.workDescription?.trim() ? `${group.workDescription} · ` : '';
+        drawLine(`${group.companyName} · ${personLabel}${gewerk}${person.hours} Std.`);
+      }
+      const activeCount = group.persons.filter(
+        (p) => p.worker_name?.trim() || Number(p.hours) > 0,
+      ).length;
+      drawLine(
+        `Summe ${group.companyName}: ${activeCount} MA · ${group.totalHours.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Std. gesamt`,
+      );
     }
   } else {
     drawLine('Keine Einträge');

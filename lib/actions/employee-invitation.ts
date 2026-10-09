@@ -82,7 +82,7 @@ export async function activateInvitation(
 
     const { data: profile, error: profileError } = await admin
       .from('profiles')
-      .select('email, must_change_password, is_active, tenants(slug)')
+      .select('email, must_change_password, is_active, tenants!profiles_tenant_id_fkey(slug)')
       .eq('id', invitation.user_id)
       .single();
 
@@ -168,7 +168,7 @@ export async function completeForcedPasswordChange(
     const admin = createAdminClient();
     const { data: profile, error: profileError } = await admin
       .from('profiles')
-      .select('must_change_password, is_active, tenants(slug)')
+      .select('must_change_password, is_active, tenants!profiles_tenant_id_fkey(slug)')
       .eq('id', user.id)
       .single();
 

@@ -11,10 +11,15 @@ export default async function TeamPage() {
     return <p className="muted">Keine Berechtigung.</p>;
   }
 
+  const tenantId = ctx.tenant!.id;
   const supabase = await createClient();
   const [{ data: members }, { data: tenantRoles }] = await Promise.all([
-    supabase.from('profiles').select('*, tenant_roles(name)').order('last_name'),
-    supabase.from('tenant_roles').select('*').order('sort_order'),
+    supabase
+      .from('profiles')
+      .select('*, tenant_roles(name)')
+      .eq('tenant_id', tenantId)
+      .order('last_name'),
+    supabase.from('tenant_roles').select('*').eq('tenant_id', tenantId).order('sort_order'),
   ]);
 
   const canInvite = canAccess(ctx, 'team.invite');

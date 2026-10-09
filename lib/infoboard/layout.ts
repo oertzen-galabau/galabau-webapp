@@ -15,16 +15,16 @@ import {
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   version: 1,
   items: [
-    { id: 'rejected_times', x: 0, y: 0, w: 4, h: 2, visible: true },
-    { id: 'pending_approval', x: 0, y: 2, w: 4, h: 4, visible: true },
-    { id: 'metric_hours_today', x: 0, y: 6, w: 2, h: 3, visible: true },
-    { id: 'metric_open_sites', x: 2, y: 6, w: 1, h: 3, visible: true },
-    { id: 'metric_completed_month', x: 3, y: 6, w: 1, h: 3, visible: true },
-    { id: 'metric_open_reports', x: 0, y: 9, w: 2, h: 3, visible: true },
-    { id: 'today_schedule', x: 0, y: 12, w: 4, h: 5, visible: true },
-    { id: 'infoboard_posts', x: 0, y: 17, w: 2, h: 4, visible: true },
-    { id: 'messages_unread', x: 2, y: 17, w: 2, h: 3, visible: true },
-    { id: 'leave_pending', x: 0, y: 21, w: 2, h: 3, visible: true },
+    { id: 'pending_approval', x: 0, y: 0, w: 4, h: 4, visible: true },
+    { id: 'leave_pending', x: 0, y: 4, w: 4, h: 4, visible: true },
+    { id: 'leave_mine', x: 0, y: 8, w: 4, h: 4, visible: true },
+    { id: 'metric_hours_today', x: 0, y: 12, w: 2, h: 3, visible: true },
+    { id: 'metric_open_sites', x: 2, y: 12, w: 1, h: 3, visible: true },
+    { id: 'metric_completed_month', x: 3, y: 12, w: 1, h: 3, visible: true },
+    { id: 'metric_open_reports', x: 0, y: 15, w: 2, h: 3, visible: true },
+    { id: 'today_schedule', x: 0, y: 18, w: 4, h: 5, visible: true },
+    { id: 'infoboard_posts', x: 0, y: 23, w: 2, h: 4, visible: true },
+    { id: 'messages_unread', x: 2, y: 23, w: 2, h: 3, visible: true },
   ],
 };
 

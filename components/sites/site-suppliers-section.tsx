@@ -78,7 +78,7 @@ export function SiteSuppliersSection({
           {canManagePartners ? (
             <>
               Zuerst Lieferanten in der{' '}
-              <Link href="/app/geschaeftspartner?tab=lieferanten">Stammdatenliste</Link> anlegen.
+              <Link href="/app/einstellungen?tab=stammdaten&partners=lieferanten">Stammdatenliste</Link> anlegen.
             </>
           ) : (
             'Bitte die Verwaltung, Lieferanten in den Stammdaten anzulegen.'

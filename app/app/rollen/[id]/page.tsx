@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
 import {
   deleteTenantRole,
   updateTenantRoleName,
@@ -22,6 +22,11 @@ export default async function RoleDetailPage({
     return <p className="muted">Keine Berechtigung.</p>;
   }
 
+  const tenantId = await getTenantIdForSession(ctx);
+  if (!tenantId) {
+    return <p className="muted">Kein Mandant.</p>;
+  }
+
   const { id: roleId } = await params;
   const supabase = await createClient();
 
@@ -32,7 +37,7 @@ export default async function RoleDetailPage({
     { data: allProfiles },
     { data: allRoles },
   ] = await Promise.all([
-    supabase.from('tenant_roles').select('*').eq('id', roleId).single(),
+    supabase.from('tenant_roles').select('*').eq('id', roleId).eq('tenant_id', tenantId).single(),
     supabase
       .from('tenant_role_permissions')
       .select('permission_key')
@@ -41,10 +46,11 @@ export default async function RoleDetailPage({
     supabase
       .from('profiles')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('tenant_role_id', roleId)
       .order('last_name'),
-    supabase.from('profiles').select('*').order('last_name'),
-    supabase.from('tenant_roles').select('*').order('sort_order'),
+    supabase.from('profiles').select('*').eq('tenant_id', tenantId).order('last_name'),
+    supabase.from('tenant_roles').select('*').eq('tenant_id', tenantId).order('sort_order'),
   ]);
 
   if (!role) notFound();
@@ -57,8 +63,6 @@ export default async function RoleDetailPage({
   const assignedIds = new Set(memberList.map((m) => m.id));
   const availableMembers = profileList.filter((p) => !assignedIds.has(p.id));
   const otherRoles = roleList.filter((r) => r.id !== roleId);
-  const defaultTargetRoleId =
-    roleList.find((r) => r.slug === 'mitarbeiter')?.id ?? otherRoles[0]?.id ?? '';
 
   return (
     <>
@@ -94,10 +98,10 @@ export default async function RoleDetailPage({
 
       <RoleMembersSection
         roleId={roleId}
+        currentRoleName={role.name}
         members={memberList}
         availableMembers={availableMembers}
         otherRoles={otherRoles}
-        defaultTargetRoleId={defaultTargetRoleId}
       />
     </>
   );

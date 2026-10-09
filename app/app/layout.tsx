@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
 import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
+import { getPendingOrderCount } from '@/lib/actions/orders';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { getTenantBySlug, tenantThemeStyle } from '@/lib/tenant/resolve';
 import { getTenantRoles } from '@/lib/tenant/roles';
@@ -53,6 +54,9 @@ export default async function TenantAppLayout({ children }: { children: React.Re
     ? await Promise.all([getUnreadMessageCount(), getUnreadInboxSummaries()])
     : [0, [] as Awaited<ReturnType<typeof getUnreadInboxSummaries>>];
 
+  const canManageOrders = canAccess(ctx, 'nav.bestellungen') && canAccess(ctx, 'orders.manage');
+  const initialPendingOrderCount = canManageOrders ? await getPendingOrderCount() : 0;
+
   return (
     <div style={tenantThemeStyle(tenant)}>
       <TenantShell
@@ -69,6 +73,7 @@ export default async function TenantAppLayout({ children }: { children: React.Re
         canRecordTime={canRecordTime}
         initialUnreadCount={initialUnreadCount}
         initialUnreadSummaries={initialUnreadSummaries}
+        initialPendingOrderCount={initialPendingOrderCount}
       >
         {children}
       </TenantShell>

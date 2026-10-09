@@ -121,16 +121,16 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
         <section key={category.id} className="panel" style={{ marginBottom: 16 }}>
           <h2>{category.name}</h2>
           <div className="data-table-wrap">
-            <table className="data-table">
+            <table className="data-table order-cart-table">
               <thead>
                 <tr>
                   <th>Artikelnr.</th>
                   <th>Kleidungsstil</th>
-                  <th className="data-table-col--optional">Serie</th>
+                  <th>Serie</th>
                   <th>Preis</th>
                   <th>Größe</th>
                   <th>Menge</th>
-                  <th className="data-table-col--optional">Namensdruck</th>
+                  <th>Namensdruck</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,11 +139,11 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
                   const sizeOptions = itemSizeOptions(item, sizePresets).map((s) => ({ value: s, label: s }));
                   return (
                     <tr key={item.id}>
-                      <td>{item.article_number ?? '—'}</td>
-                      <td>{item.clothing_style}</td>
-                      <td className="data-table-col--optional">{item.series ?? '—'}</td>
-                      <td>{item.price != null ? formatOrderEuro(Number(item.price)) : '—'}</td>
-                      <td>
+                      <td className="oc-nr">{item.article_number ?? '—'}</td>
+                      <td className="oc-style">{item.clothing_style}</td>
+                      <td className="oc-series">{item.series ?? '—'}</td>
+                      <td className="oc-price">{item.price != null ? formatOrderEuro(Number(item.price)) : '—'}</td>
+                      <td className="oc-size" data-label="Größe">
                         {sizeOptions.length > 0 ? (
                           <AppSelect
                             value={line.size}
@@ -156,17 +156,17 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
                           <span className="muted">—</span>
                         )}
                       </td>
-                      <td>
+                      <td className="oc-qty" data-label="Menge">
                         <input
                           type="number"
+                          inputMode="numeric"
                           min={0}
                           value={line.quantity || ''}
                           onChange={(e) => updateLine(item.id, { quantity: Number(e.target.value) || 0 })}
                           aria-label={`Menge ${item.clothing_style}`}
-                          style={{ maxWidth: 80 }}
                         />
                       </td>
-                      <td className="data-table-col--optional">
+                      <td className="oc-name" data-label="Namensdruck">
                         <input
                           value={line.namePrint}
                           onChange={(e) => updateLine(item.id, { namePrint: e.target.value })}

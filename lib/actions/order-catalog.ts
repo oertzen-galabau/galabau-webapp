@@ -74,6 +74,7 @@ export async function saveOrderCatalogCategory(formData: FormData) {
 export async function renameOrderCatalogCategory(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'orders.manage_catalog');
+  const { tenantId } = ctx;
 
   const id = z.string().uuid().parse(formData.get('id'));
   const name = categoryNameSchema.parse(formData.get('name'));
@@ -87,7 +88,8 @@ export async function renameOrderCatalogCategory(formData: FormData) {
   const { error } = await supabase
     .from('order_catalog_categories')
     .update(updates)
-    .eq('id', id);
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidatePath('/app/bestellungen');
 }
@@ -95,6 +97,7 @@ export async function renameOrderCatalogCategory(formData: FormData) {
 export async function deleteOrderCatalogCategory(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'orders.manage_catalog');
+  const { tenantId } = ctx;
 
   const id = z.string().uuid().parse(formData.get('id'));
   const supabase = await createClient();
@@ -108,7 +111,11 @@ export async function deleteOrderCatalogCategory(formData: FormData) {
     throw new Error('Kategorie wird noch von Artikeln verwendet und kann nicht gelöscht werden.');
   }
 
-  const { error } = await supabase.from('order_catalog_categories').delete().eq('id', id);
+  const { error } = await supabase
+    .from('order_catalog_categories')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidatePath('/app/bestellungen');
 }
@@ -146,7 +153,11 @@ export async function saveOrderCatalogItem(formData: FormData) {
 
   const supabase = await createClient();
   if (parsed.id) {
-    const { error } = await supabase.from('order_catalog_items').update(row).eq('id', parsed.id);
+    const { error } = await supabase
+      .from('order_catalog_items')
+      .update(row)
+      .eq('id', parsed.id)
+      .eq('tenant_id', tenantId);
     if (error) throw new Error(error.message);
   } else {
     const { error } = await supabase.from('order_catalog_items').insert(row);
@@ -159,6 +170,7 @@ export async function saveOrderCatalogItem(formData: FormData) {
 export async function setOrderCatalogItemActive(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'orders.manage_catalog');
+  const { tenantId } = ctx;
 
   const id = z.string().uuid().parse(formData.get('id'));
   const is_active = formData.get('is_active') === 'true';
@@ -167,7 +179,8 @@ export async function setOrderCatalogItemActive(formData: FormData) {
   const { error } = await supabase
     .from('order_catalog_items')
     .update({ is_active, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidatePath('/app/bestellungen');
 }
@@ -213,10 +226,15 @@ export async function addOrderCatalogSizeOption(formData: FormData) {
 export async function deleteOrderCatalogSizeOption(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'orders.manage_catalog');
+  const { tenantId } = ctx;
 
   const id = z.string().uuid().parse(formData.get('id'));
   const supabase = await createClient();
-  const { error } = await supabase.from('order_catalog_size_options').delete().eq('id', id);
+  const { error } = await supabase
+    .from('order_catalog_size_options')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidatePath('/app/bestellungen');
 }

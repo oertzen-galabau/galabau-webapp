@@ -12,41 +12,57 @@ import {
 import { PayrollRuleMatrix } from '@/components/payroll/payroll-rule-matrix';
 import { SettingsTabs } from '@/components/settings/settings-tabs';
 import { loadTenantPayrollConfig, serializeTenantConfig } from '@/lib/payroll/tenant-rules';
+import { BusinessPartnersPanel } from '@/components/partners/business-partners-panel';
+import { isPartnerTab, type PartnerTabId } from '@/lib/partners/kind';
 import { isSettingsTab, visibleSettingsTabs, type SettingsTabId } from '@/lib/settings/tabs';
 import { TenantTimeTrackingForm } from '@/components/settings/tenant-time-tracking-form';
 import { TenantOrderBudgetForm } from '@/components/settings/tenant-order-budget-form';
+import { TenantReportLabelsForm } from '@/components/settings/tenant-report-labels-form';
+import { TenantBadWeatherAllowanceForm } from '@/components/settings/tenant-bad-weather-allowance-form';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
 
 type PageProps = {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; partners?: string }>;
 };
 
 export default async function EinstellungenPage({ searchParams }: PageProps) {
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, partners: partnersParam } = await searchParams;
 
   const ctx = await requireTenantMember();
-  if (!canAccess(ctx, 'nav.einstellungen')) {
+
+  const tabs = visibleSettingsTabs(new Set(ctx.permissions), ctx.isSuperadminBypass);
+  if (tabs.length === 0) {
     return <p className="muted">Keine Berechtigung.</p>;
   }
-
-  const tabs = visibleSettingsTabs(ctx.permissions, ctx.isSuperadminBypass);
   const activeTab: SettingsTabId = isSettingsTab(tabParam) && tabs.some((t) => t.id === tabParam)
     ? tabParam
     : tabs[0].id;
 
+  const activePartnerTab: PartnerTabId = isPartnerTab(partnersParam) ? partnersParam : 'subunternehmer';
+
   const supabase = await createClient();
   const tenantId = ctx.tenant!.id;
 
-  const [
-    { data: tenant },
-    { data: holidays },
-    { data: bridgeDays },
-  ] = await Promise.all([
-    supabase.from('tenants').select('*').eq('id', tenantId).single(),
-    supabase.from('company_holidays').select('*').order('start_date', { ascending: false }),
-    supabase.from('bridge_days').select('*').order('date', { ascending: false }),
-  ]);
+  const needsCalendarData = activeTab === 'allgemein';
+  const needsTenantRow = needsCalendarData || activeTab === 'bestellbudget' || activeTab === 'berichte';
+  const { data: tenant } = needsTenantRow
+    ? await supabase.from('tenants').select('*').eq('id', tenantId).single()
+    : { data: null };
+  const { data: holidays } = needsCalendarData
+    ? await supabase
+        .from('company_holidays')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('start_date', { ascending: false })
+    : { data: null };
+  const { data: bridgeDays } = needsCalendarData
+    ? await supabase
+        .from('bridge_days')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('date', { ascending: false })
+    : { data: null };
 
   let codes: PayrollBookingCode[] = [];
   let tenantConfig = null;
@@ -95,6 +111,10 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                 ? 'Einheitliches Startpasswort für alle Mitarbeiter-Accounts verwalten.'
                 : activeTab === 'bestellbudget'
                   ? 'Standard-Jahresbudget für Arbeitskleidung pro Mitarbeiter.'
+                  : activeTab === 'stammdaten'
+                    ? 'Subunternehmer und Lieferanten für Dokumentation und Baustellen-Zuordnung.'
+                    : activeTab === 'berichte'
+                      ? 'Anzeigenamen für Tagesbericht und Std.-Lohn-Rapport in der App und in PDFs.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
           </p>
         </div>
@@ -126,6 +146,14 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
             ? Number(tenant.default_clothing_order_budget_eur)
             : null}
         />
+      ) : null}
+
+      {activeTab === 'stammdaten' ? (
+        <BusinessPartnersPanel ctx={ctx} activePartnerTab={activePartnerTab} />
+      ) : null}
+
+      {activeTab === 'berichte' && canAccess(ctx, 'settings.branding') && tenant ? (
+        <TenantReportLabelsForm tenant={tenant} />
       ) : null}
 
       {activeTab === 'allgemein' ? (
@@ -186,6 +214,14 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
               </div>
             </form>
           </section>
+
+          {canAccess(ctx, 'settings.holidays') && tenant ? (
+            <TenantBadWeatherAllowanceForm
+              allowanceDays={
+                tenant.bad_weather_allowance_days ?? 5
+              }
+            />
+          ) : null}
         </>
       ) : null}
     </>

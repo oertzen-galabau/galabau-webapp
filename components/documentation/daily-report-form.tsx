@@ -11,12 +11,16 @@ import { AppSelect } from '@/components/ui/app-select';
 import { DictationRecorder } from '@/components/documentation/dictation-recorder';
 import { ReportPhotoManager } from '@/components/documentation/report-photo-manager';
 import { SignaturePadField } from '@/components/documentation/signature-pad-field';
+import type { BusinessPartnerFieldOption } from '@/components/documentation/business-partner-field';
+import { DeliveryNoteBlockFields } from '@/components/documentation/delivery-note-block-fields';
+import { partnerOptionLabel } from '@/lib/partners/kind';
 import {
   DEFAULT_DAILY_LOG_REPORT_TYPE,
-  defaultTitleForReportType,
   isHourlyWageRapport,
   parseDailyLogReportType,
+  shortLabelForReportType,
   type DailyLogReportType,
+  type TenantReportLabelConfig,
 } from '@/lib/documentation/report-labels';
 
 type SiteOption = {
@@ -38,6 +42,15 @@ type EmployeeOption = {
 type WorkerRow = { id: number; userId: string; workerName: string; jobTitle: string; hours: string };
 type WorkRow = { id: number; description: string; quantity: string; unit: string };
 type ResourceRow = { id: number; name: string; quantity: string; unit: string; hours: string };
+type SubcontractorWorkerRow = { id: number; workerName: string; hours: string };
+type SubcontractorGroup = {
+  id: number;
+  groupKey: string;
+  partnerId: string;
+  companyName: string;
+  workDescription: string;
+  workers: SubcontractorWorkerRow[];
+};
 
 type ExistingPhoto = { id: string; url: string };
 type ExistingSignature = {
@@ -65,6 +78,13 @@ export type DailyReportFormInitial = {
   signatures?: ExistingSignature[];
   dictationTranscript?: string | null;
   dictationExtraction?: Record<string, unknown> | null;
+  subcontractorGroups?: Array<{
+    groupKey: string;
+    partnerId: string | null;
+    companyName: string;
+    workDescription: string | null;
+    workers: Array<{ workerName: string | null; hours: number }>;
+  }>;
 };
 
 type Props = {
@@ -74,6 +94,9 @@ type Props = {
   dictationConfigured: boolean;
   initial?: DailyReportFormInitial;
   defaultReportType?: DailyLogReportType;
+  reportLabels?: TenantReportLabelConfig;
+  subcontractorPartners?: BusinessPartnerFieldOption[];
+  supplierPartners?: BusinessPartnerFieldOption[];
 };
 
 let nextRowId = 1;
@@ -140,6 +163,35 @@ function createResourceRow(partial?: Partial<ResourceRow>): ResourceRow {
   };
 }
 
+function createSubcontractorGroupKey() {
+  return crypto.randomUUID();
+}
+
+function createSubcontractorWorkerRow(partial?: Partial<SubcontractorWorkerRow>): SubcontractorWorkerRow {
+  return {
+    id: createRowId(),
+    workerName: partial?.workerName ?? '',
+    hours: partial?.hours ?? '',
+  };
+}
+
+function createSubcontractorGroup(partial?: Partial<Omit<SubcontractorGroup, 'id'>>): SubcontractorGroup {
+  return {
+    id: createRowId(),
+    groupKey: partial?.groupKey ?? createSubcontractorGroupKey(),
+    partnerId: partial?.partnerId ?? '',
+    companyName: partial?.companyName ?? '',
+    workDescription: partial?.workDescription ?? '',
+    workers: partial?.workers ?? [createSubcontractorWorkerRow()],
+  };
+}
+
+function subcontractorGroupStats(workers: SubcontractorWorkerRow[]) {
+  const active = workers.filter((w) => w.workerName.trim() || Number(w.hours) > 0);
+  const totalHours = active.reduce((sum, w) => sum + (Number(w.hours) || 0), 0);
+  return { count: active.length, totalHours };
+}
+
 function unitOptions(current = '') {
   const values = new Set<string>([...REPORT_UNIT_OPTIONS]);
   if (current) values.add(current);
@@ -153,6 +205,9 @@ export function DailyReportForm({
   dictationConfigured,
   initial,
   defaultReportType = DEFAULT_DAILY_LOG_REPORT_TYPE,
+  reportLabels,
+  subcontractorPartners = [],
+  supplierPartners = [],
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -165,8 +220,9 @@ export function DailyReportForm({
   const [reportType, setReportType] = useState<DailyLogReportType>(
     lockedReportType ?? parseDailyLogReportType(defaultReportType),
   );
-  const [customTitle, setCustomTitle] = useState(initial?.customTitle ?? '');
   const hourlyRapport = isHourlyWageRapport(reportType);
+  const dailyReportLabel = shortLabelForReportType('daily_report', reportLabels);
+  const hourlyRapportLabel = shortLabelForReportType('hourly_wage_rapport', reportLabels);
 
   const [siteId, setSiteId] = useState(initial?.siteId ?? sites[0]?.id ?? '');
   const [logDate, setLogDate] = useState(initial?.logDate ?? new Date().toISOString().slice(0, 10));
@@ -215,6 +271,27 @@ export function DailyReportForm({
         )
       : [createResourceRow()],
   );
+  const [subcontractorGroups, setSubcontractorGroups] = useState<SubcontractorGroup[]>(() =>
+    initial?.subcontractorGroups?.length
+      ? initial.subcontractorGroups.map((group) =>
+          createSubcontractorGroup({
+            groupKey: group.groupKey,
+            partnerId: group.partnerId ?? '',
+            companyName: group.companyName,
+            workDescription: group.workDescription ?? '',
+            workers: group.workers.length
+              ? group.workers.map((w) =>
+                  createSubcontractorWorkerRow({
+                    workerName: w.workerName ?? '',
+                    hours: String(w.hours ?? ''),
+                  }),
+                )
+              : [createSubcontractorWorkerRow()],
+          }),
+        )
+      : [createSubcontractorGroup()],
+  );
+  const [deliveryBlocks, setDeliveryBlocks] = useState<{ id: number }[]>([]);
 
   const selectedSite = useMemo(() => sites.find((site) => site.id === siteId) ?? null, [siteId, sites]);
 
@@ -379,7 +456,6 @@ export function DailyReportForm({
     formData.set('weather', weather);
     formData.set('notes', notes);
     formData.set('report_type', reportType);
-    formData.set('custom_title', customTitle);
     if (initial?.dailyLogId) formData.set('daily_log_id', initial.dailyLogId);
     if (dictationTranscript) formData.set('dictation_transcript', dictationTranscript);
     if (dictationExtraction) formData.set('dictation_extraction', dictationExtraction);
@@ -407,49 +483,38 @@ export function DailyReportForm({
             <>
               <input type="hidden" name="report_type" value={reportType} />
               <p className="muted input-form-span-full">
-                {reportType === 'daily_report' ? 'Tagesbericht' : 'Std.-Lohnarbeit (Rapport)'} — Art kann nachträglich nicht geändert werden.
+                {reportType === 'daily_report' ? dailyReportLabel : hourlyRapportLabel} — Art kann nachträglich nicht geändert werden.
               </p>
             </>
           ) : (
-            <fieldset className="daily-report-type-fieldset input-form-span-full">
+            <fieldset className="daily-report-type-fieldset input-form-span-full" role="radiogroup">
               <legend className="sr-only">Berichtsart wählen</legend>
-              <label className="daily-report-type-option">
-                <input
-                  type="radio"
-                  name="report_type"
-                  value="daily_report"
-                  checked={reportType === 'daily_report'}
-                  onChange={() => setReportType('daily_report')}
-                />
-                <span>
-                  <strong>Tagesbericht</strong>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={reportType === 'daily_report'}
+                className={`daily-report-type-option${reportType === 'daily_report' ? ' active' : ''}`}
+                onClick={() => setReportType('daily_report')}
+              >
+                <span className="daily-report-type-option-body">
+                  <strong>{dailyReportLabel}</strong>
                   <span className="muted">Wetter, Tätigkeiten, Fotos, Bemerkung — ohne Stunden und Unterschriften</span>
                 </span>
-              </label>
-              <label className="daily-report-type-option">
-                <input
-                  type="radio"
-                  name="report_type"
-                  value="hourly_wage_rapport"
-                  checked={reportType === 'hourly_wage_rapport'}
-                  onChange={() => setReportType('hourly_wage_rapport')}
-                />
-                <span>
-                  <strong>Std.-Lohnarbeit (Rapport)</strong>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={reportType === 'hourly_wage_rapport'}
+                className={`daily-report-type-option${reportType === 'hourly_wage_rapport' ? ' active' : ''}`}
+                onClick={() => setReportType('hourly_wage_rapport')}
+              >
+                <span className="daily-report-type-option-body">
+                  <strong>{hourlyRapportLabel}</strong>
                   <span className="muted">Stunden, Leistung, Maschine/Material, Unterschriften</span>
                 </span>
-              </label>
+              </button>
             </fieldset>
           )}
-          <label className="input-form-span-full">
-            Titel <span className="report-optional-label">optional</span>
-            <input
-              name="custom_title"
-              value={customTitle}
-              onChange={(event) => setCustomTitle(event.target.value)}
-              placeholder={defaultTitleForReportType(reportType)}
-            />
-          </label>
         </div>
       </section>
 
@@ -764,6 +829,243 @@ export function DailyReportForm({
               </div>
             </div>
           ))}
+        </div>
+      </section>
+      )}
+
+      {hourlyRapport && (
+      <section className="input-form-section">
+        <h3 className="input-form-section-title">Subunternehmer</h3>
+        <p className="muted input-form-span-full" style={{ marginTop: 0 }}>
+          Pro Subunternehmer eine Gruppe: Firma und Gewerk, darunter je Person Name und Std. — Anzahl MA und Std. gesamt werden automatisch summiert.
+        </p>
+        <div className="subcontractor-groups-stack">
+          {subcontractorGroups.map((group, groupIndex) => {
+            const stats = subcontractorGroupStats(group.workers);
+            return (
+              <div key={group.id} className="subcontractor-group panel form-panel--compact">
+                <div className="input-form-core daily-report-row-grid daily-report-row-grid--subcontractor-head">
+                  <label>
+                    Subunternehmer
+                    <AppSelect
+                      value={group.partnerId}
+                      onValueChange={(value) =>
+                        setSubcontractorGroups((current) =>
+                          current.map((entry) =>
+                            entry.id === group.id ? { ...entry, partnerId: value } : entry,
+                          ),
+                        )
+                      }
+                      allowEmpty
+                      placeholder="— Freitext —"
+                      options={subcontractorPartners.map((partner) => ({
+                        value: partner.id,
+                        label: partnerOptionLabel(partner),
+                      }))}
+                    />
+                  </label>
+                  <label>
+                    Firma (Freitext)
+                    <input
+                      value={group.companyName}
+                      onChange={(event) =>
+                        setSubcontractorGroups((current) =>
+                          current.map((entry) =>
+                            entry.id === group.id ? { ...entry, companyName: event.target.value } : entry,
+                          ),
+                        )
+                      }
+                      placeholder="Subunternehmer"
+                    />
+                  </label>
+                  <label>
+                    Gewerk / Beschreibung
+                    <input
+                      value={group.workDescription}
+                      onChange={(event) =>
+                        setSubcontractorGroups((current) =>
+                          current.map((entry) =>
+                            entry.id === group.id ? { ...entry, workDescription: event.target.value } : entry,
+                          ),
+                        )
+                      }
+                      placeholder="z.B. Pflasterarbeiten"
+                    />
+                  </label>
+                </div>
+                <p className="muted subcontractor-group-stats">
+                  {stats.count} MA · {stats.totalHours.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Std. gesamt
+                </p>
+                <div className="input-form-work-equipment-rows">
+                  {group.workers.map((worker, workerIndex) => (
+                    <div key={worker.id} className="input-form-work-equipment-row">
+                      <div className="daily-report-row-grid daily-report-row-grid--worker">
+                        <label>
+                          Person
+                          <input
+                            value={worker.workerName}
+                            onChange={(event) =>
+                              setSubcontractorGroups((current) =>
+                                current.map((entry) =>
+                                  entry.id === group.id
+                                    ? {
+                                        ...entry,
+                                        workers: entry.workers.map((w) =>
+                                          w.id === worker.id ? { ...w, workerName: event.target.value } : w,
+                                        ),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            placeholder="Name"
+                          />
+                        </label>
+                        <label className="input-form-field--narrow">
+                          Std.
+                          <input
+                            type="number"
+                            step="0.25"
+                            min={0}
+                            inputMode="decimal"
+                            value={worker.hours}
+                            onChange={(event) =>
+                              setSubcontractorGroups((current) =>
+                                current.map((entry) =>
+                                  entry.id === group.id
+                                    ? {
+                                        ...entry,
+                                        workers: entry.workers.map((w) =>
+                                          w.id === worker.id ? { ...w, hours: event.target.value } : w,
+                                        ),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="input-form-work-equipment-actions">
+                        <button
+                          type="button"
+                          className="input-form-row-action input-form-row-action--add"
+                          onClick={() =>
+                            setSubcontractorGroups((current) =>
+                              current.map((entry) => {
+                                if (entry.id !== group.id) return entry;
+                                const nextWorkers = [...entry.workers];
+                                nextWorkers.splice(workerIndex + 1, 0, createSubcontractorWorkerRow());
+                                return { ...entry, workers: nextWorkers };
+                              }),
+                            )
+                          }
+                          aria-label="Person hinzufügen"
+                        >
+                          <Plus size={20} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          className="input-form-row-action input-form-row-action--remove"
+                          onClick={() =>
+                            setSubcontractorGroups((current) =>
+                              current.map((entry) => {
+                                if (entry.id !== group.id) return entry;
+                                const nextWorkers =
+                                  entry.workers.length <= 1
+                                    ? [createSubcontractorWorkerRow()]
+                                    : entry.workers.filter((w) => w.id !== worker.id);
+                                return { ...entry, workers: nextWorkers };
+                              }),
+                            )
+                          }
+                          aria-label="Person entfernen"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                      <input type="hidden" name="subcontractor_group_key[]" value={group.groupKey} />
+                      <input type="hidden" name="subcontractor_partner_id[]" value={group.partnerId} />
+                      <input type="hidden" name="subcontractor_company_name[]" value={group.companyName} />
+                      <input type="hidden" name="subcontractor_work_description[]" value={group.workDescription} />
+                      <input type="hidden" name="subcontractor_worker_name[]" value={worker.workerName} />
+                      <input type="hidden" name="subcontractor_hours[]" value={worker.hours} />
+                    </div>
+                  ))}
+                </div>
+                <div className="subcontractor-group-actions">
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button--compact"
+                    onClick={() =>
+                      setSubcontractorGroups((current) => {
+                        const next = [...current];
+                        next.splice(groupIndex + 1, 0, createSubcontractorGroup());
+                        return next;
+                      })
+                    }
+                  >
+                    Weiteren Subunternehmer
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() =>
+                      setSubcontractorGroups((current) =>
+                        current.length <= 1 ? [createSubcontractorGroup()] : current.filter((g) => g.id !== group.id),
+                      )
+                    }
+                  >
+                    Gruppe entfernen
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      )}
+
+      {!hourlyRapport && (
+      <section className="input-form-section">
+        <h3 className="input-form-section-title">Lieferungen <span className="report-optional-label">optional</span></h3>
+        <p className="muted input-form-span-full" style={{ marginTop: 0 }}>
+          Lieferungen können hier mit dem Tagesbericht gespeichert werden. Weitere Nachträge ohne Bericht: Bereich
+          „Lieferung erfassen“ weiter unten.
+        </p>
+        <input type="hidden" name="delivery_block_count" value={deliveryBlocks.length} />
+        {deliveryBlocks.length > 0 && (
+          <div className="subcontractor-groups-stack">
+            {deliveryBlocks.map((block, index) => (
+              <div key={block.id} className="subcontractor-group panel form-panel--compact">
+                <DeliveryNoteBlockFields
+                  namePrefix={`delivery_${index}`}
+                  suppliers={supplierPartners}
+                  blockTitle={`Lieferung ${index + 1}`}
+                />
+                <div className="subcontractor-group-actions">
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button--compact"
+                    onClick={() =>
+                      setDeliveryBlocks((current) => current.filter((entry) => entry.id !== block.id))
+                    }
+                  >
+                    Lieferung entfernen
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="subcontractor-group-actions">
+          <button
+            type="button"
+            className="secondary-button secondary-button--compact"
+            onClick={() => setDeliveryBlocks((current) => [...current, { id: createRowId() }])}
+          >
+            Lieferung hinzufügen
+          </button>
         </div>
       </section>
       )}

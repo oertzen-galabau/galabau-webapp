@@ -9,17 +9,22 @@ import {
   parseResourceRows,
   assertSignatureMetadata,
   parseSignatureInputs,
+  parseDeliveryBlocks,
+  parseSubcontractorPersonRows,
   parseWorkerHoursRows,
   parseWorkItemRows,
   validatePhotoCount,
 } from '@/lib/documentation/report-validation';
+import { insertDeliveryNote } from '@/lib/documentation/save-delivery-note';
+import { resolvePartnerName } from '@/lib/actions/partners';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
 import {
   isHourlyWageRapport,
   parseDailyLogReportType,
   type DailyLogReportType,
 } from '@/lib/documentation/report-labels';
-import { requireSiteAccess } from '@/lib/sites/access';
+import { requireSiteAccess, resolveAssignedSiteIds } from '@/lib/sites/access';
+import { userCanEditDailyLog } from '@/lib/documentation/report-access';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -59,7 +64,11 @@ async function replaceChildRows(
   if (workers.length > 0) {
     const userIds = workers.map((row) => row.userId).filter((id): id is string => Boolean(id));
     const { data: profiles } = userIds.length
-      ? await supabase.from('profiles').select('id, first_name, last_name, job_title').in('id', userIds)
+      ? await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, job_title')
+          .eq('tenant_id', tenantId)
+          .in('id', userIds)
       : { data: [] };
     const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
 
@@ -96,6 +105,33 @@ async function replaceChildRows(
     );
     if (error) throw new Error(error.message);
   }
+
+  await supabase
+    .from('subcontractor_entries')
+    .delete()
+    .eq('daily_log_id', dailyLogId)
+    .is('deleted_at', null);
+
+  const subcontractorRows = parseSubcontractorPersonRows(formData);
+  for (const row of subcontractorRows) {
+    const { partnerId: resolvedPartnerId, displayName: companyName } = await resolvePartnerName(
+      tenantId,
+      row.partnerId,
+      row.companyName,
+      'subcontractor',
+    );
+    const { error } = await supabase.from('subcontractor_entries').insert({
+      tenant_id: tenantId,
+      daily_log_id: dailyLogId,
+      partner_id: resolvedPartnerId,
+      company_name: companyName,
+      work_description: row.workDescription,
+      worker_name: row.workerName,
+      group_key: row.groupKey,
+      hours: row.hours,
+    });
+    if (error) throw new Error(error.message);
+  }
 }
 
 async function saveSignatures(
@@ -116,7 +152,7 @@ async function saveSignatures(
       .maybeSingle();
 
     if (signature.remove) {
-      if (existing?.file_url) await deletePrivateFile('daily-photos', existing.file_url);
+      if (existing?.file_url) await deletePrivateFile(tenantId, 'daily-photos', existing.file_url);
       if (existing) {
         await supabase.from('daily_log_signatures').delete().eq('id', existing.id);
       }
@@ -129,10 +165,10 @@ async function saveSignatures(
       const ext = mime.includes('png') ? 'png' : 'jpg';
       const path = buildStoragePath(tenantId, siteId, dailyLogId, `signature-${signature.role}.${ext}`);
       const file = new File([new Uint8Array(buffer)], `signature-${signature.role}.${ext}`, { type: mime });
-      await uploadPrivateFile('daily-photos', path, file);
+      await uploadPrivateFile(tenantId, 'daily-photos', path, file);
 
       if (existing?.file_url && existing.file_url !== path) {
-        await deletePrivateFile('daily-photos', existing.file_url);
+        await deletePrivateFile(tenantId, 'daily-photos', existing.file_url);
       }
 
       const { error } = await supabase.from('daily_log_signatures').upsert(
@@ -151,7 +187,7 @@ async function saveSignatures(
       );
       if (error) throw new Error(error.message);
     } else if (!signature.keepExisting && existing) {
-      if (existing.file_url) await deletePrivateFile('daily-photos', existing.file_url);
+      if (existing.file_url) await deletePrivateFile(tenantId, 'daily-photos', existing.file_url);
       await supabase.from('daily_log_signatures').delete().eq('id', existing.id);
     } else if (signature.signerName && existing) {
       await supabase
@@ -176,7 +212,15 @@ export async function saveDailyReport(formData: FormData) {
 
   await requireSiteAccess(supabase, ctx, siteId);
 
-  const customTitle = String(formData.get('custom_title') ?? '').trim() || null;
+  // Neue Berichte nur für zugewiesene Baustellen (Verantwortlicher / Baustellen-Team)
+  const assertAssignedSite = async () => {
+    const assignedIds = await resolveAssignedSiteIds(supabase, ctx);
+    if (!assignedIds.includes(siteId)) {
+      throw new Error('Diese Baustelle ist dir nicht zugewiesen');
+    }
+  };
+  if (!existingLogId) await assertAssignedSite();
+
   let reportType = parseDailyLogReportType(String(formData.get('report_type') ?? ''));
 
   const removedPhotoIds = formData.getAll('removed_photo_id[]').map((id) => String(id));
@@ -189,12 +233,16 @@ export async function saveDailyReport(formData: FormData) {
   if (existingLogId) {
     const { data: existingLog, error: loadError } = await supabase
       .from('daily_logs')
-      .select('id, tenant_id, site_id, report_type')
+      .select('id, tenant_id, site_id, report_type, created_by')
       .eq('id', existingLogId)
       .single();
     if (loadError || !existingLog) throw new Error('Tageseintrag nicht gefunden');
     if (existingLog.tenant_id !== tenantId) throw new Error('Keine Berechtigung');
+    if (!userCanEditDailyLog(ctx, { created_by: existingLog.created_by as string | null })) {
+      throw new Error('Keine Berechtigung');
+    }
     await requireSiteAccess(supabase, ctx, existingLog.site_id);
+    if (siteId !== existingLog.site_id) await assertAssignedSite();
     reportType = parseDailyLogReportType(existingLog.report_type as string);
 
     const { data: activePhotos } = await supabase
@@ -216,7 +264,6 @@ export async function saveDailyReport(formData: FormData) {
         dictation_extraction: formData.get('dictation_extraction')
           ? (JSON.parse(String(formData.get('dictation_extraction'))) as Record<string, unknown>)
           : null,
-        custom_title: customTitle,
       })
       .eq('id', existingLogId);
     if (error) throw new Error(error.message);
@@ -230,7 +277,7 @@ export async function saveDailyReport(formData: FormData) {
         .select('id, file_url')
         .eq('daily_log_id', existingLogId);
       for (const signature of existingSignatures ?? []) {
-        if (signature.file_url) await deletePrivateFile('daily-photos', signature.file_url);
+        if (signature.file_url) await deletePrivateFile(tenantId, 'daily-photos', signature.file_url);
         await supabase.from('daily_log_signatures').delete().eq('id', signature.id);
       }
     }
@@ -265,7 +312,7 @@ export async function saveDailyReport(formData: FormData) {
             ? (JSON.parse(String(formData.get('dictation_extraction'))) as Record<string, unknown>)
             : null,
           report_type: reportType,
-          custom_title: customTitle,
+          custom_title: null,
         },
         { onConflict: 'tenant_id,site_id,log_date,report_type' },
       )
@@ -285,7 +332,7 @@ export async function saveDailyReport(formData: FormData) {
 
   for (const file of photoFiles) {
     const path = buildStoragePath(tenantId, siteId, logId, `${Date.now()}-${file.name}`);
-    await uploadPrivateFile('daily-photos', path, file);
+    await uploadPrivateFile(tenantId, 'daily-photos', path, file);
     await supabase.from('daily_log_photos').insert({
       tenant_id: tenantId,
       daily_log_id: logId,
@@ -294,5 +341,13 @@ export async function saveDailyReport(formData: FormData) {
     });
   }
 
+  if (!isHourlyWageRapport(reportType)) {
+    const deliveryBlocks = parseDeliveryBlocks(formData);
+    for (const block of deliveryBlocks) {
+      await insertDeliveryNote(supabase, tenantId, logId, block);
+    }
+  }
+
   revalidatePath('/app/dokumentation');
+  return { logId };
 }

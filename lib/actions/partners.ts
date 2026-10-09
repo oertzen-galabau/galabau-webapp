@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import type { BusinessPartnerKind } from '@/lib/types/database';
 import { partnerKindFromTab, type PartnerTabId } from '@/lib/partners/kind';
+import { partnerSettingsListPath } from '@/lib/partners/paths';
 
 function requirePartnerManage(ctx: Awaited<ReturnType<typeof getActionContext>>) {
   if (!canAccess(ctx, 'partners.manage')) throw new Error('Keine Berechtigung');
@@ -23,7 +24,7 @@ function readPartnerFields(formData: FormData) {
 }
 
 function partnerListPath(tab: PartnerTabId) {
-  return tab === 'subunternehmer' ? '/app/geschaeftspartner' : '/app/geschaeftspartner?tab=lieferanten';
+  return partnerSettingsListPath(tab);
 }
 
 export async function createPartner(formData: FormData) {
@@ -119,6 +120,9 @@ export async function linkSiteSupplier(formData: FormData) {
     .maybeSingle();
   if (partnerError) throw new Error(partnerError.message);
   if (!partner) throw new Error('Lieferant nicht gefunden');
+
+  const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
+  await assertSiteInTenant(supabase, tenantId, siteId);
 
   const { data: existing } = await supabase
     .from('site_suppliers')

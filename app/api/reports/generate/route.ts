@@ -4,7 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildReportPdf, type ReportPhotoInput, type ReportSignatureInput } from '@/lib/reports/pdf';
 import { buildStoragePath } from '@/lib/supabase/storage';
-import { parseDailyLogReportType } from '@/lib/documentation/report-labels';
+import { assertStoragePathBelongsToTenant } from '@/lib/tenant/row-access';
+import { parseDailyLogReportType, tenantReportLabelsFromTenant } from '@/lib/documentation/report-labels';
+import { userCanViewDailyLog } from '@/lib/documentation/report-access';
 
 export async function POST(request: Request) {
   const { dailyLogId } = await request.json();
@@ -29,8 +31,19 @@ export async function POST(request: Request) {
     .eq('id', dailyLogId)
     .single();
   if (!log) return NextResponse.json({ error: 'Tageseintrag nicht gefunden' }, { status: 404 });
+  if (log.tenant_id !== ctx.tenantId) {
+    return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 });
+  }
+  if (!userCanViewDailyLog(ctx, { created_by: log.created_by as string | null })) {
+    return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 });
+  }
 
-  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', log.tenant_id).single();
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('name, daily_report_label, hourly_wage_rapport_label')
+    .eq('id', log.tenant_id)
+    .single();
+  const reportLabels = tenantReportLabelsFromTenant(tenant);
 
   const [
     { data: workers },
@@ -68,6 +81,7 @@ export async function POST(request: Request) {
   const photoInputs: ReportPhotoInput[] = [];
   for (const photo of photos ?? []) {
     if (!photo.file_url) continue;
+    assertStoragePathBelongsToTenant(ctx.tenantId, photo.file_url);
     const { data: file } = await admin.storage.from('daily-photos').download(photo.file_url);
     if (!file) continue;
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -77,6 +91,7 @@ export async function POST(request: Request) {
   const signatureInputs: ReportSignatureInput[] = [];
   for (const signature of signatures ?? []) {
     if (!signature.file_url) continue;
+    assertStoragePathBelongsToTenant(ctx.tenantId, signature.file_url);
     const { data: file } = await admin.storage.from('daily-photos').download(signature.file_url);
     if (!file) continue;
     signatureInputs.push({
@@ -101,6 +116,7 @@ export async function POST(request: Request) {
     reportDate: log.log_date,
     reportType: parseDailyLogReportType(log.report_type as string),
     customTitle: log.custom_title as string | null,
+    reportLabels,
     weather: log.weather,
     notes: log.notes,
     workers: (workers ?? []).map((row) => ({

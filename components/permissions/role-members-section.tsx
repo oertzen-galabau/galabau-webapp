@@ -5,21 +5,23 @@ import type { Profile } from '@/lib/types/database';
 import type { TenantRole } from '@/lib/tenant/roles';
 import { MemberAccessBadge } from '@/components/team/member-access-badge';
 import { AppSelect } from '@/components/ui/app-select';
+import { IconActionButton } from '@/components/ui/icon-action-button';
+import { Trash2 } from 'lucide-react';
 
 type Props = {
   roleId: string;
+  currentRoleName: string;
   members: Profile[];
   availableMembers: Profile[];
   otherRoles: TenantRole[];
-  defaultTargetRoleId: string;
 };
 
 export function RoleMembersSection({
   roleId,
+  currentRoleName,
   members,
   availableMembers,
   otherRoles,
-  defaultTargetRoleId,
 }: Props) {
   return (
     <section className="panel form-panel employee-section">
@@ -48,44 +50,55 @@ export function RoleMembersSection({
             <button type="submit" className="primary-button primary-button--compact">Hinzufügen</button>
           </div>
         </form>
-      ) : (
-        <p className="muted">Alle Mitarbeiter sind bereits dieser Rolle zugewiesen.</p>
-      )}
+      ) : members.length === 0 ? (
+        <p className="muted">
+          Noch keine Mitarbeiter im Mandanten. Neue Personen legen Sie unter Team & Mitarbeiter an.
+        </p>
+      ) : null}
 
       {members.length > 0 ? (
-        <div className="team-list team-list--links role-members-list">
+        <ul className="role-members-list">
           {members.map((member) => (
-            <div className="role-member-row" key={member.id}>
-              <Link href={`/app/team/${member.id}`} className="team-row team-row--link">
+            <li className="role-member-row" key={member.id}>
+              <Link href={`/app/team/${member.id}`} className="role-member-identity">
                 <span className="person-avatar">{initials(member)}</span>
-                <span className="team-row-person">
+                <span className="role-member-meta">
                   <strong>{member.first_name} {member.last_name}</strong>
                   <small>{member.email}</small>
                 </span>
-                <span className="team-row-status">
-                  <MemberAccessBadge
-                    is_active={member.is_active}
-                    must_change_password={member.must_change_password}
-                  />
-                </span>
+                <MemberAccessBadge
+                  is_active={member.is_active}
+                  must_change_password={member.must_change_password}
+                />
               </Link>
-              <form action={removeMemberFromRole} className="role-member-remove-form">
+              <form action={removeMemberFromRole} className="role-member-actions">
                 <input type="hidden" name="role_id" value={roleId} />
                 <input type="hidden" name="user_id" value={member.id} />
-                <label className="team-role-label">
-                  Neue Rolle
-                  <AppSelect
-                    name="target_role_id"
-                    defaultValue={defaultTargetRoleId}
-                    allowEmpty={false}
-                    options={otherRoles.map((role) => ({ value: role.id, label: role.name }))}
-                  />
-                </label>
-                <button type="submit" className="text-button">Entfernen</button>
+                <div className="role-member-role-field">
+                  <span className="role-member-role-caption">Rolle</span>
+                  <div className="role-member-role-row">
+                    <div className="role-member-role-select">
+                      <AppSelect
+                        name="target_role_id"
+                        placeholder={`${currentRoleName} (aktuell)`}
+                        allowEmpty
+                        required
+                        aria-label="Rolle"
+                        options={[
+                          { value: roleId, label: `${currentRoleName} (aktuell)`, disabled: true },
+                          ...otherRoles.map((role) => ({ value: role.id, label: role.name })),
+                        ]}
+                      />
+                    </div>
+                    <IconActionButton type="submit" label="Entfernen" variant="danger">
+                      <Trash2 size={18} />
+                    </IconActionButton>
+                  </div>
+                </div>
               </form>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
         <p className="muted" style={{ marginTop: 16 }}>Noch keine Mitarbeiter in dieser Rolle.</p>
       )}

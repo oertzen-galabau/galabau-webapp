@@ -40,7 +40,17 @@ export async function resolveAccessibleSiteIds(
   ctx: SessionContext | ActionContext,
 ): Promise<string[] | null> {
   if (canViewAllSites(ctx)) return null;
+  return resolveAssignedSiteIds(supabase, ctx);
+}
 
+/**
+ * Nur Baustellen, denen der Nutzer direkt zugewiesen ist (Verantwortlicher oder Baustellen-Team)
+ * – unabhängig von mandantenweiten Rechten. Immer auf den eigenen Mandanten beschränkt.
+ */
+export async function resolveAssignedSiteIds(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+): Promise<string[]> {
   const access = asSiteAccessContext(ctx);
   const ids = new Set<string>();
 
@@ -59,8 +69,17 @@ export async function resolveAccessibleSiteIds(
     .select('site_id')
     .eq('user_id', access.userId);
 
-  for (const row of teamSites ?? []) {
-    if (row.site_id) ids.add(row.site_id);
+  const teamSiteIds = (teamSites ?? []).map((row) => row.site_id).filter((id): id is string => Boolean(id));
+  if (teamSiteIds.length > 0) {
+    // Nur Baustellen des eigenen Mandanten zulassen
+    const { data: tenantTeamSites } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('tenant_id', access.tenantId)
+      .in('id', teamSiteIds);
+    for (const row of tenantTeamSites ?? []) {
+      ids.add(row.id);
+    }
   }
 
   return [...ids];
@@ -71,6 +90,16 @@ export async function userCanAccessSite(
   ctx: SessionContext | ActionContext,
   siteId: string,
 ): Promise<boolean> {
+  if (ctx.isSuperadminBypass) {
+    const { tenantId } = asSiteAccessContext(ctx);
+    const { data } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('id', siteId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    return !!data;
+  }
   if (canViewAllSites(ctx)) return true;
   const allowed = await resolveAccessibleSiteIds(supabase, ctx);
   return allowed?.includes(siteId) ?? false;
@@ -123,9 +152,18 @@ export async function fetchAccessibleSites(
   supabase: SupabaseClient,
   ctx: SessionContext | ActionContext,
   columns = 'id, name, default_travel_minutes',
+  options: { onlyAssigned?: boolean } = {},
 ): Promise<AccessibleSiteRow[]> {
-  const ids = await resolveAccessibleSiteIds(supabase, ctx);
-  let query = supabase.from('sites').select(columns).eq('is_active', true).order('name');
+  const ids = options.onlyAssigned
+    ? await resolveAssignedSiteIds(supabase, ctx)
+    : await resolveAccessibleSiteIds(supabase, ctx);
+  const { tenantId } = asSiteAccessContext(ctx);
+  let query = supabase
+    .from('sites')
+    .select(columns)
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('name');
   query = applySiteListFilter(query, { ids });
   const { data, error } = await query;
   if (error) throw new Error(error.message);

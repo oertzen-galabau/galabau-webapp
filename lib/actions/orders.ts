@@ -173,9 +173,25 @@ export async function cancelCatalogOrder(formData: FormData) {
   revalidateOrderPaths(ctx.userId);
 }
 
+/** Anzahl neuer (offener) Bestellungen – nur für Nutzer mit `orders.manage`. */
+export async function getPendingOrderCount(): Promise<number> {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'nav.bestellungen') || !canAccess(ctx, 'orders.manage')) return 0;
+
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('catalog_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', ctx.tenantId)
+    .eq('status', 'pending');
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 export async function updateCatalogOrderStatus(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'orders.manage');
+  const { tenantId } = ctx;
 
   const orderId = z.string().uuid().parse(formData.get('order_id'));
   const status = statusSchema.parse(formData.get('status'));
@@ -184,7 +200,8 @@ export async function updateCatalogOrderStatus(formData: FormData) {
   const { error } = await supabase
     .from('catalog_orders')
     .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', orderId);
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId);
   if (error) throw new Error(error.message);
   revalidateOrderPaths();
 }

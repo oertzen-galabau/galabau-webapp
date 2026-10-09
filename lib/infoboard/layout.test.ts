@@ -30,6 +30,7 @@ describe('resolveEffectiveLayout', () => {
     assert.equal(layout.version, 1);
     assert.ok(layout.items.some((item) => item.id === 'metric_hours_today'));
     assert.ok(layout.items.some((item) => item.id === 'pending_approval'));
+    assert.ok(layout.items.some((item) => item.id === 'leave_pending'));
   });
 
   it('strips widgets without permission', () => {
@@ -37,10 +38,13 @@ describe('resolveEffectiveLayout', () => {
       'nav.infoboard',
       'nav.zeiten',
       'zeiten.record',
+      'urlaub.request',
       'infoboard.customize',
     ]);
     const layout = resolveEffectiveLayout(DEFAULT_DASHBOARD_LAYOUT, employeePermissions, false);
     assert.ok(!layout.items.some((item) => item.id === 'pending_approval'));
+    assert.ok(!layout.items.some((item) => item.id === 'leave_pending'));
+    assert.ok(layout.items.some((item) => item.id === 'leave_mine'));
     assert.ok(layout.items.some((item) => item.id === 'metric_hours_today'));
     assert.ok(layout.items.some((item) => item.id === 'infoboard_posts' && item.visible));
   });

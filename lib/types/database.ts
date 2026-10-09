@@ -20,6 +20,9 @@ export type Tenant = {
   surface_color: string;
   default_start_password: string | null;
   default_clothing_order_budget_eur: number | null;
+  daily_report_label: string | null;
+  hourly_wage_rapport_label: string | null;
+  bad_weather_allowance_days: number;
   status: TenantStatus;
   plan: string;
   created_at: string;
