@@ -3,6 +3,7 @@ export const PERMISSION_KEYS = [
   'nav.zeiten',
   'nav.urlaub',
   'nav.baustellen',
+  'nav.einsatzplanung',
   'nav.dokumentation',
   'nav.rapporte',
   'nav.nachrichten',
@@ -25,6 +26,10 @@ export const PERMISSION_KEYS = [
   'sites.view',
   'sites.manage',
   'sites.assign_team',
+  'schedule.view',
+  'schedule.manage',
+  'schedule.publish',
+  'schedule.share',
   'documentation.manage',
   'documentation.view_all',
   'documentation.dictate',
@@ -72,6 +77,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'nav.zeiten', label: 'Zeiten', group: 'Navigation' },
   { key: 'nav.urlaub', label: 'Urlaub', group: 'Navigation' },
   { key: 'nav.baustellen', label: 'Baustellen', group: 'Navigation' },
+  { key: 'nav.einsatzplanung', label: 'Einsatzplanung', group: 'Navigation', implies: ['schedule.view'] },
   { key: 'nav.dokumentation', label: 'Dokumentation', group: 'Navigation' },
   { key: 'nav.rapporte', label: 'Rapporte', group: 'Navigation' },
   { key: 'nav.nachrichten', label: 'Nachrichten', group: 'Navigation' },
@@ -98,6 +104,10 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   { key: 'sites.manage', label: 'Baustellen bearbeiten', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'sites.assign_team', label: 'Baustellen-Team zuweisen', group: 'Baustellen', implies: ['sites.view'] },
+  { key: 'schedule.view', label: 'Einsatzplan einsehen', group: 'Einsatzplanung' },
+  { key: 'schedule.manage', label: 'Einsatzplan bearbeiten', group: 'Einsatzplanung', implies: ['schedule.view'] },
+  { key: 'schedule.publish', label: 'Einsatzplan veröffentlichen', group: 'Einsatzplanung', implies: ['schedule.manage'] },
+  { key: 'schedule.share', label: 'Einsatzplan teilen', group: 'Einsatzplanung', implies: ['schedule.view'] },
   { key: 'documentation.manage', label: 'Tagesdokumentation', group: 'Dokumentation', implies: ['sites.view'] },
   {
     key: 'documentation.view_all',
@@ -171,7 +181,8 @@ export const SYSTEM_ROLE_LABELS: Record<SystemRoleSlug, string> = {
 };
 
 const BASE_EMPLOYEE: PermissionKey[] = [
-  'nav.infoboard', 'nav.zeiten', 'nav.urlaub', 'nav.baustellen', 'nav.nachrichten', 'nav.bestellungen',
+  'nav.infoboard', 'nav.zeiten', 'nav.urlaub', 'nav.baustellen', 'nav.einsatzplanung', 'nav.nachrichten', 'nav.bestellungen',
+  'schedule.view',
   'infoboard.customize',
   'zeiten.record', 'urlaub.request', 'messages.send', 'orders.create',
   'profile.edit_self', 'profile.change_email', 'profile.change_password',
@@ -179,7 +190,8 @@ const BASE_EMPLOYEE: PermissionKey[] = [
 
 const FOREMAN_EXTRA: PermissionKey[] = [
   'nav.baustellen', 'nav.dokumentation', 'nav.rapporte', 'nav.partners', 'partners.view',
-  'infoboard.assignments', 'sites.view', 'sites.manage', 'documentation.manage', 'documentation.view_all', 'documentation.dictate',
+  'infoboard.assignments', 'schedule.manage', 'schedule.publish', 'schedule.share',
+  'sites.view', 'sites.manage', 'documentation.manage', 'documentation.view_all', 'documentation.dictate',
   'reports.generate', 'reports.send',
   'zeiten.view_all', 'zeiten.approve', 'zeiten.bookings.edit', 'zeiten.bad_weather.mark',
 ];

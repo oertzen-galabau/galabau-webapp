@@ -3,6 +3,7 @@ import { canAccess, type SessionContext } from '@/lib/auth/session';
 import { PartnerTabs } from '@/components/partners/partner-tabs';
 import { PartnerRow } from '@/components/partners/partner-row';
 import { PartnerCreateForm } from '@/components/partners/partner-create-form';
+import { EquipmentPanel } from '@/components/equipment/equipment-panel';
 import { partnerKindFromTab, type PartnerTabId } from '@/lib/partners/kind';
 import type { TenantBusinessPartner } from '@/lib/types/database';
 
@@ -14,6 +15,10 @@ type Props = {
 export async function BusinessPartnersPanel({ ctx, activePartnerTab }: Props) {
   if (!canAccess(ctx, 'nav.partners') || !canAccess(ctx, 'partners.view')) {
     return <p className="muted">Keine Berechtigung.</p>;
+  }
+
+  if (activePartnerTab === 'fahrzeuge') {
+    return <EquipmentPanel ctx={ctx} />;
   }
 
   const kind = partnerKindFromTab(activePartnerTab);

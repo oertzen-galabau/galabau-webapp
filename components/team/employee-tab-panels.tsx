@@ -226,6 +226,7 @@ function StammdatenTab({ member, ctx }: Props) {
           <label>E-Mail<input name="email" type="email" defaultValue={member.email} required disabled={!editable} /></label>
           <label>Telefon<input name="phone" type="tel" defaultValue={member.phone ?? ''} disabled={!editable} /></label>
           <label>Berufbezeichnung<input name="job_title" defaultValue={member.job_title ?? ''} disabled={!editable} placeholder="z.B. Vorarbeiter, Gärtner" /></label>
+          <label>Bauleiter-Kürzel<input name="leader_code" defaultValue={member.leader_code ?? ''} disabled={!editable} placeholder="z.B. LG, MS" maxLength={8} /></label>
           <label>Straße<input name="address" defaultValue={member.address ?? ''} disabled={!editable} /></label>
           <label>PLZ<input name="zip_code" defaultValue={member.zip_code ?? ''} disabled={!editable} /></label>
           <label>Ort<input name="city" defaultValue={member.city ?? ''} disabled={!editable} /></label>

@@ -5,7 +5,16 @@ import {
   storagePathBelongsToTenant,
 } from '@/lib/tenant/row-access';
 
-export type PrivateBucket = 'site-documents' | 'daily-photos' | 'reports';
+export type PrivateBucket = 'site-documents' | 'daily-photos' | 'reports' | 'equipment-photos';
+
+export const EQUIPMENT_PHOTOS_BUCKET = 'equipment-photos' as const;
+const EQUIPMENT_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+const EQUIPMENT_PHOTO_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const EQUIPMENT_PHOTO_EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 export const TENANT_LOGOS_BUCKET = 'tenant-logos';
 const TENANT_LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -101,6 +110,25 @@ export async function deletePrivateFile(tenantId: string, bucket: PrivateBucket,
   const admin = createAdminClient();
   const { error } = await admin.storage.from(bucket).remove([path]);
   if (error) console.warn(`Storage delete failed (${bucket}/${path}):`, error.message);
+}
+
+export function validateEquipmentPhotoFile(file: File) {
+  if (file.size === 0) throw new Error('Keine Datei ausgewählt');
+  if (file.size > EQUIPMENT_PHOTO_MAX_BYTES) {
+    throw new Error('Foto darf maximal 2 MB groß sein');
+  }
+  const mime = file.type || 'application/octet-stream';
+  if (!EQUIPMENT_PHOTO_MIME_TYPES.has(mime)) {
+    throw new Error('Foto muss JPEG, PNG oder WebP sein');
+  }
+}
+
+export async function uploadEquipmentPhoto(tenantId: string, equipmentId: string, file: File) {
+  validateEquipmentPhotoFile(file);
+  const ext = EQUIPMENT_PHOTO_EXT_BY_MIME[file.type] ?? 'jpg';
+  const path = buildStoragePath(tenantId, equipmentId, `photo.${ext}`);
+  await uploadPrivateFile(tenantId, EQUIPMENT_PHOTOS_BUCKET, path, file);
+  return path;
 }
 
 export function validateTenantLogoFile(file: File) {

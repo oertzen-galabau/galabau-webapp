@@ -15,8 +15,8 @@ export function TodayScheduleWidget({ dateLabel, rows }: Props) {
           <span className="eyebrow">{dateLabel}</span>
           <h2>Heutige Einsätze</h2>
         </div>
-        <Link href="/app/baustellen" className="text-button">
-          Alle Aufträge <ArrowRight size={16} />
+        <Link href="/app/einsatzplanung" className="text-button">
+          Einsatzplan <ArrowRight size={16} />
         </Link>
       </div>
       <div className="job-list">

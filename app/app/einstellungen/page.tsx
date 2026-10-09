@@ -112,7 +112,7 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                 : activeTab === 'bestellbudget'
                   ? 'Standard-Jahresbudget für Arbeitskleidung pro Mitarbeiter.'
                   : activeTab === 'stammdaten'
-                    ? 'Subunternehmer und Lieferanten für Dokumentation und Baustellen-Zuordnung.'
+                    ? 'Subunternehmer, Lieferanten und Fahrzeuge & Geräte für Dokumentation und Einsatzplanung.'
                     : activeTab === 'berichte'
                       ? 'Anzeigenamen für Tagesbericht und Std.-Lohn-Rapport in der App und in PDFs.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}

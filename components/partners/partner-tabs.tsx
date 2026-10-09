@@ -3,7 +3,7 @@ import type { PartnerTabId } from '@/lib/partners/kind';
 import { PARTNER_TAB_LABELS } from '@/lib/partners/kind';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
 
-const TABS: PartnerTabId[] = ['subunternehmer', 'lieferanten'];
+const TABS: PartnerTabId[] = ['subunternehmer', 'lieferanten', 'fahrzeuge'];
 
 type Props = {
   activeTab: PartnerTabId;

@@ -96,6 +96,7 @@ export async function fetchInfoboardPayload(
     { data: startingSites },
     { data: openReports },
     { data: appointments },
+    { data: todayScheduleEntries },
     { data: myAssignment },
     { data: pendingPreview },
     { count: pendingCount },
@@ -145,6 +146,15 @@ export async function fetchInfoboardPayload(
       .gte('appointment_at', dayStart)
       .lte('appointment_at', dayEnd)
       .order('appointment_at'),
+    canAccess(ctx, 'schedule.view')
+      ? supabase
+          .from('schedule_entries')
+          .select('id, start_time, end_time, site_id, sites(name, address), schedule_entry_members(user_id)')
+          .eq('tenant_id', tenantId)
+          .lte('start_date', today)
+          .gte('end_date', today)
+          .order('start_time')
+      : Promise.resolve({ data: [] }),
     supabase
       .from('daily_assignments')
       .select('site_id, sites(name, address)')
@@ -223,17 +233,39 @@ export async function fetchInfoboardPayload(
   const rejectedCount = rejectedTimeEntries?.length ?? 0;
   const totalPending = pendingCount ?? 0;
 
-  const scheduleRows: ScheduleRow[] = (appointments ?? []).map((a) => {
-    const site = asSiteRef(a.sites);
-    return {
-      id: a.id,
-      time: formatAppointmentTime(a.appointment_at),
-      title: a.title || site?.name || 'Termin',
+  const canManageSchedule = canAccess(ctx, 'schedule.manage');
+  const scheduleRows: ScheduleRow[] = [];
+
+  for (const entry of todayScheduleEntries ?? []) {
+    const members = (entry.schedule_entry_members ?? []) as { user_id: string }[];
+    const isMine = members.some((m) => m.user_id === ctx.userId);
+    if (!canManageSchedule && !isMine) continue;
+    const site = asSiteRef(entry.sites);
+    const start = String(entry.start_time).slice(0, 5);
+    const end = String(entry.end_time).slice(0, 5);
+    scheduleRows.push({
+      id: entry.id,
+      time: `${start}–${end}`,
+      title: site?.name ?? 'Einsatz',
       place: site?.address ?? '—',
-      tone: appointmentTone(a.appointment_at),
-      href: `/app/baustellen/${a.site_id}`,
-    };
-  });
+      tone: 'active',
+      href: `/app/einsatzplanung?view=day&day=${today}`,
+    });
+  }
+
+  if (!scheduleRows.length) {
+    scheduleRows.push(...(appointments ?? []).map((a) => {
+      const site = asSiteRef(a.sites);
+      return {
+        id: a.id,
+        time: formatAppointmentTime(a.appointment_at),
+        title: a.title || site?.name || 'Termin',
+        place: site?.address ?? '—',
+        tone: appointmentTone(a.appointment_at),
+        href: `/app/baustellen/${a.site_id}`,
+      };
+    }));
+  }
 
   const assignmentSite = asSiteRef(myAssignment?.sites);
   if (!scheduleRows.length && assignmentSite) {

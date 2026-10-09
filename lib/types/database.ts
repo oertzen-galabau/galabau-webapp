@@ -48,6 +48,7 @@ export type Profile = {
   entry_date: string | null;
   exit_date: string | null;
   job_title: string | null;
+  leader_code: string | null;
   is_active: boolean;
   must_change_password: boolean;
   dashboard_layout: Record<string, unknown> | null;
@@ -501,6 +502,72 @@ export type CatalogOrderItem = {
   name_print: string | null;
   line_total_eur: number;
   sort_order: number;
+};
+
+export type ScheduleEntry = {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  foreman_user_id: string | null;
+  external_workers_text: string | null;
+  notes: string | null;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ScheduleEntryMember = {
+  id: string;
+  tenant_id: string;
+  schedule_entry_id: string;
+  user_id: string;
+  created_at: string;
+};
+
+export type TenantEquipmentKind = 'vehicle' | 'equipment' | 'trailer';
+export type TenantEquipmentStatus = 'active' | 'workshop' | 'retired';
+
+export type TenantEquipment = {
+  id: string;
+  tenant_id: string;
+  kind: TenantEquipmentKind;
+  name: string;
+  photo_path: string | null;
+  build_year: number | null;
+  serial_number: string | null;
+  inventory_number: string | null;
+  uvv_due_date: string | null;
+  license_plate: string | null;
+  manufacturer_model: string | null;
+  inspection_due_date: string | null;
+  operating_hours: number | null;
+  mileage_km: number | null;
+  license_class_required: string | null;
+  status: TenantEquipmentStatus;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ScheduleEntryEquipment = {
+  id: string;
+  tenant_id: string;
+  schedule_entry_id: string;
+  equipment_id: string;
+  created_at: string;
+};
+
+export type ScheduleWeekPublication = {
+  tenant_id: string;
+  week_start: string;
+  published_at: string;
+  published_by: string | null;
 };
 
 export type InfoboardPost = {

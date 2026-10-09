@@ -7,7 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BriefcaseBusiness, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
+  BriefcaseBusiness, CalendarRange, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
   Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
@@ -35,6 +35,7 @@ const navItems: NavItem[] = [
   { href: '/app/zeiten', label: 'Zeiten', icon: Clock3, permission: 'nav.zeiten' },
   { href: '/app/urlaub', label: 'Abwesenheit', icon: FileText, permission: 'nav.urlaub' },
   { href: '/app/baustellen', label: 'Baustellen', icon: BriefcaseBusiness, permission: 'nav.baustellen' },
+  { href: '/app/einsatzplanung', label: 'Einsatzplan', icon: CalendarRange, permission: 'nav.einsatzplanung' },
   { href: '/app/dokumentation', label: 'Dokumentation', icon: FileText, permission: 'nav.dokumentation' },
   { href: '/app/rapporte', label: 'Rapporte', icon: FileText, permission: 'nav.rapporte' },
   { href: '/app/nachrichten', label: 'Nachrichten', icon: MessageSquare, permission: 'nav.nachrichten' },
@@ -52,6 +53,7 @@ const BOTTOM_NAV_PRIORITY = [
   '/app/bestellungen',
   '/app/dokumentation',
   '/app/baustellen',
+  '/app/einsatzplanung',
   '/app/rapporte',
   '/app/team',
   '/app/einstellungen',

@@ -1117,6 +1117,7 @@ export async function updateEmployeeProfile(formData: FormData) {
     entry_date: (formData.get('entry_date') as string) || null,
     exit_date: (formData.get('exit_date') as string) || null,
     job_title: (formData.get('job_title') as string) || null,
+    leader_code: ((formData.get('leader_code') as string) || '').trim().toUpperCase() || null,
   };
 
   const { error: authError } = await admin.auth.admin.updateUserById(targetUserId, { email });
