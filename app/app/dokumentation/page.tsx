@@ -49,7 +49,7 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
   const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
   const [sitesRaw, { data: employees }, { data: businessPartners }] = await Promise.all([
     // Formular: nur zugewiesene Baustellen (Verantwortlicher / Baustellen-Team)
-    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, latitude, longitude', {
+    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, street, zip_code, city, latitude, longitude', {
       onlyAssigned: !canViewAllSites(ctx),
     }),
     supabase.from('profiles').select('id, first_name, last_name, job_title').eq('tenant_id', ctx.tenant!.id).eq('is_active', true).order('last_name'),
@@ -73,6 +73,9 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     name: string;
     client_name: string | null;
     address: string | null;
+    street: string | null;
+    zip_code: string | null;
+    city: string | null;
     latitude: number | null;
     longitude: number | null;
   }>;
@@ -205,6 +208,9 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
             name: editSite?.name ?? '',
             client_name: editSite?.client_name ?? null,
             address: editSite?.address ?? null,
+            street: null,
+            zip_code: null,
+            city: null,
             latitude: null,
             longitude: null,
           },

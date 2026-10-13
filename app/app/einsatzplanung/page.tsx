@@ -16,7 +16,7 @@ export default async function EinsatzplanungPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const weekStart = mondayOfWeek(params.week ?? todayIsoInBerlin());
-  const view = params.view === 'day' ? 'day' : 'week';
+  const view = params.view === 'week' ? 'week' : 'day';
   const weekDays = weekDaysFromMonday(weekStart);
   const today = todayIsoInBerlin();
   const requestedDay = params.day ?? today;

@@ -21,25 +21,23 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { ScheduleEntryDialog } from '@/components/schedule/schedule-entry-dialog';
 import { PromptDialog } from '@/components/ui/app-dialogs';
 import {
+  copyScheduleDay,
   copyScheduleWeek,
   moveScheduleEntry,
+  publishScheduleDay,
   publishScheduleWeek,
 } from '@/lib/actions/schedule';
-import { entrySpansDay } from '@/lib/schedule/conflicts';
 import { scheduleEntryPhase } from '@/lib/schedule/entry-phase';
-import { layoutEntriesForVisibleDays, layoutWeekEntries } from '@/lib/schedule/week-layout';
-import { formatDayIndexRanges, siteDayIndicesInWeek } from '@/lib/schedule/site-planning-days';
 import type { SchedulePlanData } from '@/lib/schedule/load-plan-data';
 import {
   addDays,
   formatGermanDate,
   mondayOfWeek,
-  parseIsoDate,
   SCHEDULE_DEFAULT_VISIBLE_DAYS,
   SCHEDULE_WEEKEND_START_INDEX,
   todayIsoInBerlin,
   weekDayLabels,
-  dateInRange,
+  formatGermanWeekdayDate,
 } from '@/lib/schedule/week';
 import type { Profile, Site } from '@/lib/types/database';
 
@@ -292,15 +290,6 @@ export function SchedulePlanningClient({
   const [weekendExpanded, setWeekendExpanded] = useState(false);
   const [sitesCollapsed, setSitesCollapsed] = useState(false);
 
-  // Auf dem Handy ohne explizite Ansicht standardmäßig die Tagesansicht öffnen.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('view')) return;
-    if (!window.matchMedia('(max-width: 760px)').matches) return;
-    router.replace(`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${selectedDay}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     const tick = () => setNow(new Date());
     const id = window.setInterval(tick, 60_000);
@@ -318,77 +307,54 @@ export function SchedulePlanningClient({
 
   const visibleDayCount = weekendExpanded ? plan.weekDays.length : SCHEDULE_DEFAULT_VISIBLE_DAYS;
 
-  const {
-    conflictEntryIds,
-    weekLayout,
-    weekendHasEntries,
-    unplannedSites,
-    plannedSites,
-  } = useMemo(() => {
+  const { conflictEntryIds, entriesByDay, weekendHasEntries, unplannedSites, plannedSites } = useMemo(() => {
     const conflictIds = new Set<string>();
     for (const c of plan.scheduleConflicts) {
       conflictIds.add(c.entryIds[0]);
       conflictIds.add(c.entryIds[1]);
     }
 
-    const layoutFull = layoutWeekEntries(plan.entries, plan.weekDays);
-    const layoutVisible = layoutEntriesForVisibleDays(layoutFull, visibleDayCount);
-
-    const weekendEntries = plan.entries.some((entry) =>
-      plan.weekDays
-        .slice(SCHEDULE_WEEKEND_START_INDEX)
-        .some((day) => dateInRange(day, entry.start_date, entry.end_date)),
-    );
-
-    const dayLabels = weekDayLabels();
-    const siteIndices = siteDayIndicesInWeek(plan.entries, plan.weekDays);
-    const unplanned: Pick<Site, 'id' | 'name'>[] = [];
-    const planned: { site: Pick<Site, 'id' | 'name'>; dayLabel: string }[] = [];
-    for (const site of sites) {
-      const indices = siteIndices.get(site.id);
-      if (indices?.size) {
-        planned.push({
-          site,
-          dayLabel: formatDayIndexRanges([...indices], dayLabels),
-        });
-      } else {
-        unplanned.push(site);
-      }
+    const byDay = new Map<string, SchedulePlanData['entries']>();
+    for (const day of plan.weekDays) byDay.set(day, []);
+    for (const entry of plan.entries) {
+      const list = byDay.get(entry.start_date);
+      if (list) list.push(entry);
     }
-    planned.sort((a, b) => a.site.name.localeCompare(b.site.name, 'de'));
-    unplanned.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+    const weekendEntries = plan.weekDays
+      .slice(SCHEDULE_WEEKEND_START_INDEX)
+      .some((day) => (byDay.get(day)?.length ?? 0) > 0);
+
+    const daySiteIds = new Set(
+      (byDay.get(selectedDay) ?? []).map((e) => e.site_id),
+    );
+    const unplanned = sites.filter((s) => !daySiteIds.has(s.id));
+    const planned = (byDay.get(selectedDay) ?? []).map((e) => e.site);
 
     return {
       conflictEntryIds: conflictIds,
-      weekLayout: layoutVisible,
+      entriesByDay: byDay,
       weekendHasEntries: weekendEntries,
       unplannedSites: unplanned,
       plannedSites: planned,
     };
-  }, [plan.scheduleConflicts, plan.entries, plan.weekDays, sites, visibleDayCount]);
+  }, [plan.scheduleConflicts, plan.entries, plan.weekDays, sites, selectedDay]);
 
   const visibleWeekDays = plan.weekDays.slice(0, visibleDayCount);
-  const maxRow = weekLayout.reduce((m, l) => Math.max(m, l.row), 0);
-  const rowCount = maxRow + 1;
 
-  const dayEntries = plan.entries.filter((e) => entrySpansDay(e, selectedDay));
+  const dayEntries = plan.entries.filter((e) => e.start_date === selectedDay);
+  const selectedDayPublished = plan.publishedByDay[selectedDay] ?? false;
 
   const dayLabels = weekDayLabels();
   const today = todayIsoInBerlin();
   const weekOfToday = mondayOfWeek(today);
-  const heuteHref =
-    view === 'day'
-      ? `/app/einsatzplanung?week=${weekOfToday}&view=day&day=${today}`
-      : `/app/einsatzplanung?week=${weekOfToday}&view=week`;
-  const heuteIsCurrent =
-    view === 'day'
-      ? plan.weekStart === weekOfToday && selectedDay === today
-      : plan.weekStart === weekOfToday;
+  const tomorrow = addDays(today, 1);
+  const heuteHref = `/app/einsatzplanung?week=${weekOfToday}&view=day&day=${today}`;
+  const morgenHref = `/app/einsatzplanung?week=${mondayOfWeek(tomorrow)}&view=day&day=${tomorrow}`;
+  const heuteIsCurrent = view === 'day' && selectedDay === today;
+  const morgenIsCurrent = view === 'day' && selectedDay === tomorrow;
 
-  function renderSiteChip(
-    site: Pick<Site, 'id' | 'name'>,
-    opts?: { planned?: boolean; dayLabel?: string },
-  ) {
+  function renderSiteChip(site: Pick<Site, 'id' | 'name'>, opts?: { planned?: boolean }) {
     return (
       <DraggableChip
         key={site.id}
@@ -397,7 +363,6 @@ export function SchedulePlanningClient({
         className={`schedule-chip${opts?.planned ? ' schedule-chip-planned' : ''}`}
       >
         <span className="schedule-chip-name">{site.name}</span>
-        {opts?.dayLabel ? <span className="schedule-chip-days">{opts.dayLabel}</span> : null}
       </DraggableChip>
     );
   }
@@ -441,7 +406,7 @@ export function SchedulePlanningClient({
 
     if (payload.kind === 'site') {
       const alreadyPlanned = plan.entries.some(
-        (e) => e.site_id === payload.siteId && entrySpansDay(e, targetDay),
+        (e) => e.site_id === payload.siteId && e.start_date === targetDay,
       );
       if (alreadyPlanned) {
         setActionError('Diese Baustelle ist an diesem Tag bereits eingeplant. Bitte die vorhandene Karte bearbeiten oder verschieben.');
@@ -459,15 +424,11 @@ export function SchedulePlanningClient({
         if (payload.kind === 'entry') {
           const entry = plan.entries.find((e) => e.id === payload.entryId);
           if (!entry) return;
-          const span = Math.round(
-            (parseIsoDate(entry.end_date).getTime() - parseIsoDate(entry.start_date).getTime()) / 86400000,
-          );
-          const newEnd = addDays(targetDay, span);
-          if (entry.start_date === targetDay && entry.end_date === newEnd) return;
+          if (entry.start_date === targetDay) return;
           fd.set('entry_id', payload.entryId);
           fd.set('target_day', targetDay);
           await moveScheduleEntry(fd);
-          openEdit({ ...entry, start_date: targetDay, end_date: newEnd });
+          openEdit({ ...entry, start_date: targetDay, end_date: targetDay });
         }
         router.refresh();
       } catch (e) {
@@ -497,16 +458,29 @@ export function SchedulePlanningClient({
     }
   }
 
-  async function sharePdf(mode: 'day' | 'week') {
-    const url = mode === 'week'
-      ? `/api/schedule/pdf?mode=week&week_start=${plan.weekStart}`
-      : `/api/schedule/pdf?mode=day&date=${selectedDay}`;
+  async function fetchSchedulePdf(mode: 'day' | 'week', disposition: 'attachment' | 'inline' = 'attachment') {
+    const base =
+      mode === 'week'
+        ? `/api/schedule/pdf?mode=week&week_start=${plan.weekStart}`
+        : `/api/schedule/pdf?mode=day&date=${selectedDay}`;
+    const url = `${base}&disposition=${disposition}`;
     const res = await fetch(url);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const file = new File([blob], mode === 'week' ? `wochenplan-${plan.weekStart}.pdf` : `einsatzplan-${selectedDay}.pdf`, {
-      type: 'application/pdf',
-    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setActionError((data as { error?: string }).error ?? 'PDF konnte nicht erstellt werden');
+      return null;
+    }
+    return res.blob();
+  }
+
+  async function sharePdf(mode: 'day' | 'week') {
+    const blob = await fetchSchedulePdf(mode);
+    if (!blob) return;
+    const file = new File(
+      [blob],
+      mode === 'week' ? `wochenplan-${plan.weekStart}.pdf` : `einsatzplan-${selectedDay}.pdf`,
+      { type: 'application/pdf' },
+    );
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({
         files: [file],
@@ -525,14 +499,27 @@ export function SchedulePlanningClient({
     }
   }
 
+  async function printDayPdf() {
+    const blob = await fetchSchedulePdf('day', 'inline');
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   return (
     <div className="schedule-page">
       <header className="page-header schedule-header">
         <div>
           <h1>Einsatzplanung</h1>
           <p className="muted">
-            {plan.published ? 'Veröffentlicht' : 'Entwurf'}
-            {plan.publishedAt ? ` · ${formatGermanDate(plan.weekStart, { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}
+            {view === 'day'
+              ? selectedDayPublished
+                ? `Tag veröffentlicht · ${formatGermanWeekdayDate(selectedDay)}`
+                : `Entwurf · ${formatGermanWeekdayDate(selectedDay)}`
+              : plan.published
+                ? 'Woche vollständig veröffentlicht'
+                : 'Woche teilweise oder nicht veröffentlicht'}
           </p>
         </div>
         <div className="schedule-toolbar">
@@ -559,6 +546,17 @@ export function SchedulePlanningClient({
               aria-current={heuteIsCurrent ? 'true' : undefined}
             >
               Heute
+            </Link>
+            <Link
+              href={morgenHref}
+              className={
+                morgenIsCurrent
+                  ? 'secondary-button secondary-button--compact schedule-toolbar-heute is-current'
+                  : 'secondary-button secondary-button--compact schedule-toolbar-heute'
+              }
+              aria-current={morgenIsCurrent ? 'true' : undefined}
+            >
+              Morgen
             </Link>
           </div>
           <div className="schedule-toolbar-nav" role="group" aria-label="Woche wechseln">
@@ -587,27 +585,70 @@ export function SchedulePlanningClient({
               >
                 Vorwoche kopieren
               </button>
+              {view === 'day' ? (
+                <button
+                  type="button"
+                  className="secondary-button secondary-button--compact"
+                  disabled={pending}
+                  onClick={() => startTransition(async () => {
+                    const fd = new FormData();
+                    fd.set('target_day', selectedDay);
+                    await copyScheduleDay(fd);
+                    router.refresh();
+                  })}
+                >
+                  Vortag übernehmen
+                </button>
+              ) : null}
             </>
           ) : null}
           {canPublish ? (
-            <button
-              type="button"
-              className="primary-button primary-button--compact"
-              disabled={pending || plan.published}
-              onClick={() => startTransition(async () => {
-                const fd = new FormData();
-                fd.set('week_start', plan.weekStart);
-                await publishScheduleWeek(fd);
-                router.refresh();
-              })}
-            >
-              Veröffentlichen
-            </button>
+            <>
+              {view === 'day' ? (
+                <button
+                  type="button"
+                  className="primary-button primary-button--compact"
+                  disabled={pending || selectedDayPublished || dayEntries.length === 0}
+                  onClick={() => startTransition(async () => {
+                    const fd = new FormData();
+                    fd.set('plan_date', selectedDay);
+                    await publishScheduleDay(fd);
+                    router.refresh();
+                  })}
+                >
+                  Tag veröffentlichen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="secondary-button secondary-button--compact"
+                  disabled={pending || plan.published}
+                  onClick={() => startTransition(async () => {
+                    const fd = new FormData();
+                    fd.set('week_start', plan.weekStart);
+                    await publishScheduleWeek(fd);
+                    router.refresh();
+                  })}
+                >
+                  Woche veröffentlichen
+                </button>
+              )}
+            </>
           ) : null}
           {canShare ? (
             <>
-              <button type="button" className="secondary-button secondary-button--compact" onClick={() => sharePdf(view === 'week' ? 'week' : 'day')}>
-                Teilen / PDF
+              <button
+                type="button"
+                className="primary-button primary-button--compact"
+                onClick={() => sharePdf('day')}
+              >
+                Tagesplan PDF
+              </button>
+              <button type="button" className="secondary-button secondary-button--compact" onClick={() => printDayPdf()}>
+                Drucken
+              </button>
+              <button type="button" className="secondary-button secondary-button--compact" onClick={() => sharePdf('week')}>
+                Wochenplan PDF
               </button>
               <button type="button" className="secondary-button secondary-button--compact" onClick={() => setEmailDialogOpen(true)}>
                 E-Mail
@@ -630,7 +671,7 @@ export function SchedulePlanningClient({
         onDragEnd={handleDragEnd}
       >
         <ScheduleDndRoot>
-        {view === 'week' && canManage ? (
+        {canManage && (view === 'day' || view === 'week') ? (
           <div className={`schedule-sites-bar${sitesCollapsed ? ' is-collapsed' : ''}`}>
             <button
               type="button"
@@ -638,31 +679,39 @@ export function SchedulePlanningClient({
               aria-expanded={!sitesCollapsed}
               onClick={() => setSitesCollapsed((v) => !v)}
             >
-              Baustellen
+              Baustellen{view === 'day' ? ` · ${formatGermanDate(selectedDay, { weekday: 'short', day: '2-digit', month: '2-digit' })}` : ''}
               <span className="schedule-sites-bar-chevron" aria-hidden="true">{sitesCollapsed ? '▸' : '▾'}</span>
             </button>
             <div className="schedule-sites-bar-groups">
-              {unplannedSites.length > 0 ? (
-                <section className="schedule-sites-bar-group">
-                  <h3 className="schedule-sidebar-group-title">
-                    Noch nicht eingeplant
-                    <span className="schedule-sidebar-group-count">{unplannedSites.length}</span>
-                  </h3>
-                  <div className="schedule-chip-list">{unplannedSites.map((s) => renderSiteChip(s))}</div>
-                </section>
-              ) : null}
-              {plannedSites.length > 0 ? (
-                <section className="schedule-sites-bar-group">
-                  <h3 className="schedule-sidebar-group-title">
-                    Diese Woche eingeplant
-                    <span className="schedule-sidebar-group-count">{plannedSites.length}</span>
-                  </h3>
-                  <div className="schedule-chip-list">
-                    {plannedSites.map(({ site, dayLabel }) => renderSiteChip(site, { planned: true, dayLabel }))}
-                  </div>
-                </section>
-              ) : null}
-              {unplannedSites.length === 0 && plannedSites.length === 0 ? (
+              {view === 'day' ? (
+                <>
+                  {unplannedSites.length > 0 ? (
+                    <section className="schedule-sites-bar-group">
+                      <h3 className="schedule-sidebar-group-title">
+                        Noch nicht eingeplant
+                        <span className="schedule-sidebar-group-count">{unplannedSites.length}</span>
+                      </h3>
+                      <div className="schedule-chip-list">{unplannedSites.map((s) => renderSiteChip(s))}</div>
+                    </section>
+                  ) : null}
+                  {plannedSites.length > 0 ? (
+                    <section className="schedule-sites-bar-group">
+                      <h3 className="schedule-sidebar-group-title">
+                        An diesem Tag eingeplant
+                        <span className="schedule-sidebar-group-count">{plannedSites.length}</span>
+                      </h3>
+                      <div className="schedule-chip-list">
+                        {plannedSites.map((site) => renderSiteChip(site, { planned: true }))}
+                      </div>
+                    </section>
+                  ) : null}
+                </>
+              ) : (
+                <p className="muted schedule-sites-bar-empty">
+                  Baustellen per Drag-and-drop in der Wochenansicht auf einen Tag ziehen oder in der Tagesansicht planen.
+                </p>
+              )}
+              {view === 'day' && unplannedSites.length === 0 && plannedSites.length === 0 ? (
                 <p className="muted schedule-sites-bar-empty">Keine aktiven Baustellen.</p>
               ) : null}
             </div>
@@ -671,75 +720,55 @@ export function SchedulePlanningClient({
 
         {actionError ? <p className="form-error">{actionError}</p> : null}
 
-        {!canManage && !plan.published ? (
-          <p className="muted">Diese Woche wurde noch nicht veröffentlicht.</p>
+        {!canManage && view === 'day' && !selectedDayPublished ? (
+          <p className="muted">Dieser Tag wurde noch nicht veröffentlicht.</p>
         ) : null}
 
         {view === 'week' ? (
           <div className="schedule-board">
             <div className={`schedule-week-wrap${weekendExpanded ? ' is-weekend-expanded' : ''}`}>
-            <div className={`schedule-week-grid${weekendExpanded ? ' is-weekend-expanded' : ''}`}>
+            <div className={`schedule-week-grid schedule-week-grid--by-day${weekendExpanded ? ' is-weekend-expanded' : ''}`}>
               {visibleWeekDays.map((day) => {
                 const labelIdx = plan.weekDays.indexOf(day);
                 const isToday = day === today;
+                const dayPublished = plan.publishedByDay[day] ?? false;
+                const colEntries = entriesByDay.get(day) ?? [];
                 return (
-                <DroppableDay
-                  key={`head-${day}`}
-                  id={`day-head-${day}`}
-                  data={{ scheduleDay: day }}
-                  markDay
-                  className={`schedule-week-col-head schedule-week-col-head-drop${isToday ? ' schedule-week-col-head-today' : ''}`}
-                >
-                  <span>{weekDayLabels()[labelIdx] ?? '?'}</span>
-                  <small>{formatGermanDate(day, { day: '2-digit', month: '2-digit' })}</small>
-                </DroppableDay>
-              );
-              })}
-              <div
-                className="schedule-week-body"
-                style={{ gridTemplateRows: `repeat(${Math.max(rowCount, 1)}, minmax(72px, auto))` }}
-              >
-                {visibleWeekDays.map((day, colIdx) => (
-                  <DroppableDay
-                    key={`drop-${day}`}
-                    id={`day-${day}`}
-                    data={{ scheduleDay: day }}
-                    markDay
-                    className="schedule-week-col-bg"
-                    style={{
-                      gridColumn: colIdx + 1,
-                      gridRow: `1 / ${Math.max(rowCount, 1) + 1}`,
-                    }}
-                  />
-                ))}
-                {weekLayout.map(({ entry, row, colStart, colSpan }) => {
-                  const dropDay = plan.weekDays[colStart] ?? entry.start_date;
-                  return (
-                    <div
-                      key={entry.id}
-                      className="schedule-week-entry-slot"
-                      style={{
-                        gridColumn: `${colStart + 1} / span ${colSpan}`,
-                        gridRow: row + 1,
-                      }}
+                  <div key={day} className="schedule-week-day-col">
+                    <Link
+                      href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${day}`}
+                      className={`schedule-week-col-head schedule-week-col-head-link${isToday ? ' schedule-week-col-head-today' : ''}`}
                     >
-                      <DroppableDay
-                        id={`entry-drop-${entry.id}`}
-                        data={{ scheduleDay: dropDay }}
-                        className="schedule-week-entry-drop"
-                      >
-                        <EntryCard
-                          entry={entry}
-                          conflict={conflictEntryIds.has(entry.id)}
-                          onEdit={() => openEdit(entry)}
-                          draggable={canManage}
-                          now={now}
-                        />
-                      </DroppableDay>
-                    </div>
-                  );
-                })}
-              </div>
+                      <span>{weekDayLabels()[labelIdx] ?? '?'}</span>
+                      <small>{formatGermanDate(day, { day: '2-digit', month: '2-digit' })}</small>
+                      <small className={dayPublished ? 'schedule-day-pub schedule-day-pub--ok' : 'schedule-day-pub'}>
+                        {dayPublished ? 'Veröffentlicht' : 'Entwurf'}
+                      </small>
+                    </Link>
+                    <DroppableDay
+                      id={`day-${day}`}
+                      data={{ scheduleDay: day }}
+                      markDay
+                      className="schedule-week-day-stack"
+                    >
+                      {colEntries.length === 0 ? (
+                        <p className="muted schedule-week-day-empty">—</p>
+                      ) : (
+                        colEntries.map((entry) => (
+                          <EntryCard
+                            key={entry.id}
+                            entry={entry}
+                            conflict={conflictEntryIds.has(entry.id)}
+                            onEdit={() => openEdit(entry)}
+                            draggable={canManage}
+                            now={now}
+                          />
+                        ))
+                      )}
+                    </DroppableDay>
+                  </div>
+                );
+              })}
             </div>
             <button
               type="button"
@@ -771,7 +800,7 @@ export function SchedulePlanningClient({
           <>
           <nav className="schedule-day-tabs" aria-label="Tag wählen">
             {plan.weekDays.map((day, i) => {
-              const count = plan.entries.filter((e) => entrySpansDay(e, day)).length;
+              const count = (entriesByDay.get(day) ?? []).length;
               return (
                 <Link
                   key={day}
@@ -786,7 +815,12 @@ export function SchedulePlanningClient({
               );
             })}
           </nav>
-          <div className="schedule-day-board">
+          <DroppableDay
+            id={`day-${selectedDay}`}
+            data={{ scheduleDay: selectedDay }}
+            markDay
+            className="schedule-day-board"
+          >
             {dayEntries.length === 0 ? (
               <p className="muted">Keine Einsätze an diesem Tag.</p>
             ) : (
@@ -816,7 +850,7 @@ export function SchedulePlanningClient({
                 </div>
               ))
             )}
-          </div>
+          </DroppableDay>
           </>
         )}
         <DragOverlay dropAnimation={null}>
@@ -859,6 +893,7 @@ export function SchedulePlanningClient({
           equipment={plan.equipment}
           defaultSiteId={dialogDefaults.siteId}
           defaultDay={dialogDefaults.day ?? selectedDay}
+          weekDays={plan.weekDays}
         />
       ) : null}
     </div>

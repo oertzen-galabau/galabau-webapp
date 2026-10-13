@@ -17,6 +17,7 @@ import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { partnerOptionLabel } from '@/lib/partners/kind';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
 import type { SchedulePlanData } from '@/lib/schedule/load-plan-data';
+import { mondayOfWeek, weekDaysFromMonday } from '@/lib/schedule/week';
 import type { Profile, Site } from '@/lib/types/database';
 
 export type ScheduleSubcontractorOption = {
@@ -36,6 +37,7 @@ type Props = {
   equipment: SchedulePlanData['equipment'];
   defaultSiteId?: string;
   defaultDay?: string;
+  weekDays?: string[];
 };
 
 export function ScheduleEntryDialog({
@@ -49,6 +51,7 @@ export function ScheduleEntryDialog({
   equipment,
   defaultSiteId,
   defaultDay,
+  weekDays,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +71,15 @@ export function ScheduleEntryDialog({
   // Beim Wechsel auf einen anderen Einsatz immer mit dem ersten Tab starten.
   const activeTab = tabState.key === formKey ? tabState.tab : 'details';
 
+  const primaryDay = entry?.start_date ?? defaultDay ?? '';
+  const extraDayOptions = useMemo(() => {
+    if (entry) return [];
+    const base = primaryDay || weekDays?.[0];
+    if (!base) return [];
+    const days = weekDays?.length ? weekDays : weekDaysFromMonday(mondayOfWeek(base));
+    return days.filter((d) => d !== primaryDay);
+  }, [entry, primaryDay, weekDays]);
+
   function handleSubmit(formData: FormData) {
     setError(null);
     const partnerIds = formData.getAll('external_partner_id[]').map(String);
@@ -76,6 +88,8 @@ export function ScheduleEntryDialog({
       'external_workers_text',
       buildExternalWorkersText(partnerIds, subcontractors, extra),
     );
+    const planDate = String(formData.get('start_date') ?? primaryDay);
+    formData.set('start_date', planDate);
     startTransition(async () => {
       try {
         if (entry) {
@@ -157,24 +171,28 @@ export function ScheduleEntryDialog({
             </select>
           </label>
           <label>
-            Von (Datum)
+            Tag
             <input
               type="date"
               name="start_date"
               required
-              disabled={pending}
+              disabled={pending || Boolean(entry)}
               defaultValue={entry?.start_date ?? defaultDay ?? ''}
             />
           </label>
-          <label>
-            Bis (Datum)
-            <input
-              type="date"
-              name="end_date"
-              disabled={pending}
-              defaultValue={entry?.end_date ?? defaultDay ?? ''}
-            />
-          </label>
+          {!entry && extraDayOptions.length > 0 ? (
+            <div className="input-form-span-full schedule-entry-extra-days">
+              <p className="input-form-section-title">Auch an weiteren Tagen eintragen</p>
+              <div className="input-form-checkboxes">
+                {extraDayOptions.map((d) => (
+                  <label key={d} className="input-form-checkbox">
+                    <input type="checkbox" name="extra_plan_date[]" value={d} disabled={pending} />
+                    {d}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <label>
             Von (Uhrzeit)
             <input

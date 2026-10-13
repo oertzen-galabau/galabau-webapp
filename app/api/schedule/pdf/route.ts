@@ -20,6 +20,8 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get('mode') ?? 'day';
   const date = url.searchParams.get('date');
   const weekStartParam = url.searchParams.get('week_start');
+  const dispositionParam = url.searchParams.get('disposition');
+  const disposition = dispositionParam === 'inline' ? 'inline' : 'attachment';
 
   const supabase = await createClient();
   const { data: tenant } = await supabase.from('tenants').select('name').eq('id', ctx.tenantId).single();
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
     const weekStart = mondayOfWeek(weekStartParam ?? date ?? new Date().toISOString().slice(0, 10));
     const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
     if (!canAccess(ctx, 'schedule.manage') && !plan.published) {
-      return NextResponse.json({ error: 'Woche noch nicht veröffentlicht' }, { status: 403 });
+      return NextResponse.json({ error: 'Woche noch nicht vollständig veröffentlicht' }, { status: 403 });
     }
     bytes = await buildScheduleWeekPdf({
       tenantName,
@@ -45,18 +47,30 @@ export async function GET(request: Request) {
     const day = date ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
     const weekStart = mondayOfWeek(day);
     const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
-    if (!canAccess(ctx, 'schedule.manage') && !plan.published) {
-      return NextResponse.json({ error: 'Woche noch nicht veröffentlicht' }, { status: 403 });
+    const dayPublished = plan.publishedByDay[day] ?? false;
+    if (!canAccess(ctx, 'schedule.manage') && !dayPublished) {
+      return NextResponse.json({ error: 'Tag noch nicht veröffentlicht' }, { status: 403 });
     }
     const dayData = await loadScheduleDayData(supabase, ctx.tenantId, day);
-    bytes = await buildScheduleDayPdf({ tenantName, day, entries: dayData.entries });
+    const employeeNames: Record<string, string> = {};
+    for (const e of plan.employees) {
+      employeeNames[e.id] = `${e.first_name} ${e.last_name}`.trim();
+    }
+    bytes = await buildScheduleDayPdf({
+      tenantName,
+      day,
+      entries: dayData.entries,
+      draft: canAccess(ctx, 'schedule.manage') && !dayPublished,
+      absentees: plan.leaveDays,
+      employeeNames,
+    });
     filename = `einsatzplan-${day}.pdf`;
   }
 
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': `${disposition}; filename="${filename}"`,
     },
   });
 }

@@ -38,7 +38,10 @@ type ForecastApiResponse = {
   };
 };
 
-/** Holt aktuelles Wetter + 5-Tage-Vorhersage von Open-Meteo (30 Min Cache). */
+const PAST_DAYS = 7;
+const FORECAST_DAYS = 16;
+
+/** Holt aktuelles Wetter + Tagesdaten von Open-Meteo (30 Min Cache). */
 export async function fetchSiteWeather(
   latitude: number,
   longitude: number,
@@ -53,7 +56,8 @@ export async function fetchSiteWeather(
       'temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode',
     );
     url.searchParams.set('timezone', 'auto');
-    url.searchParams.set('forecast_days', '5');
+    url.searchParams.set('past_days', String(PAST_DAYS));
+    url.searchParams.set('forecast_days', String(FORECAST_DAYS));
 
     const response = await fetch(url.toString(), {
       next: { revalidate: 1800 },
@@ -98,4 +102,13 @@ export async function fetchSiteWeather(
     console.warn('[weather] fehlgeschlagen', error);
     return null;
   }
+}
+
+export function isDateWithinWeatherWindow(targetDate: string): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${targetDate}T12:00:00`);
+  if (Number.isNaN(target.getTime())) return false;
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  return diffDays >= -PAST_DAYS && diffDays < FORECAST_DAYS;
 }

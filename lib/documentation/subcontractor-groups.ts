@@ -62,6 +62,61 @@ export function buildSubcontractorFormGroups(
   return [...map.values()];
 }
 
+export type SubcontractorFormSubmitGroup = {
+  groupKey: string;
+  partnerId: string;
+  companyName: string;
+  workDescription: string;
+  workers: Array<{ workerName: string; hours: string }>;
+};
+
+const SUBCONTRACTOR_FORM_ARRAY_KEYS = [
+  'subcontractor_group_key[]',
+  'subcontractor_partner_id[]',
+  'subcontractor_company_name[]',
+  'subcontractor_work_description[]',
+  'subcontractor_worker_name[]',
+  'subcontractor_hours[]',
+] as const;
+
+export function clearSubcontractorFormFields(formData: FormData) {
+  for (const key of SUBCONTRACTOR_FORM_ARRAY_KEYS) {
+    while (formData.has(key)) {
+      formData.delete(key);
+    }
+  }
+}
+
+/** Subunternehmer-Daten aus dem React-State in FormData schreiben (Submit-Quelle der Wahrheit). */
+export function appendSubcontractorGroupsToFormData(
+  formData: FormData,
+  groups: SubcontractorFormSubmitGroup[],
+) {
+  clearSubcontractorFormFields(formData);
+
+  for (const group of groups) {
+    const partnerId = group.partnerId.trim();
+    const companyName = group.companyName.trim();
+    const workDescription = group.workDescription.trim();
+    if (!partnerId && !companyName && !workDescription) continue;
+
+    const activeWorkers = group.workers.filter(
+      (worker) => worker.workerName.trim() || Number(String(worker.hours).replace(',', '.')) > 0,
+    );
+    const workersToSubmit =
+      activeWorkers.length > 0 ? activeWorkers : [{ workerName: '', hours: '0' }];
+
+    for (const worker of workersToSubmit) {
+      formData.append('subcontractor_group_key[]', group.groupKey);
+      formData.append('subcontractor_partner_id[]', partnerId);
+      formData.append('subcontractor_company_name[]', companyName);
+      formData.append('subcontractor_work_description[]', workDescription);
+      formData.append('subcontractor_worker_name[]', worker.workerName.trim());
+      formData.append('subcontractor_hours[]', worker.hours.trim() || '0');
+    }
+  }
+}
+
 export function groupSubcontractorEntries(rows: SubcontractorDisplayRow[]): SubcontractorDisplayGroup[] {
   const map = new Map<string, SubcontractorDisplayGroup>();
 

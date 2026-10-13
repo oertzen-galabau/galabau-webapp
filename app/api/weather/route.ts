@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { fetchSiteWeather } from '@/lib/weather/fetch-weather';
+import { fetchSiteWeather, isDateWithinWeatherWindow } from '@/lib/weather/fetch-weather';
+import { pickWeatherForDate, reportWeatherTodayDate } from '@/lib/weather/format-report-weather';
 import { reverseGeocodeLocation } from '@/lib/weather/reverse-geocode';
 
 function parseCoordinate(value: string | null): number | null {
@@ -28,9 +29,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lat = parseCoordinate(searchParams.get('lat'));
   const lng = parseCoordinate(searchParams.get('lng'));
+  const targetDate = searchParams.get('date')?.trim() || reportWeatherTodayDate();
 
   if (lat == null || lng == null || !isValidLatitude(lat) || !isValidLongitude(lng)) {
     return NextResponse.json({ error: 'Ungültige Koordinaten' }, { status: 400 });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    return NextResponse.json({ error: 'Ungültiges Datum' }, { status: 400 });
+  }
+
+  if (!isDateWithinWeatherWindow(targetDate)) {
+    return NextResponse.json({ outOfRange: true, weatherText: null });
   }
 
   const [weather, location] = await Promise.all([
@@ -42,10 +52,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Wetterdaten nicht verfügbar' }, { status: 502 });
   }
 
+  const picked = pickWeatherForDate(weather, targetDate);
+  if (!picked) {
+    return NextResponse.json({ outOfRange: true, weatherText: null });
+  }
+
   return NextResponse.json({
     temperature: weather.current.temperature,
     label: weather.current.label,
-    iconKind: weather.current.iconKind,
+    iconKind: picked.iconKind,
     location,
+    weatherText: picked.weatherText,
+    targetDate,
   });
 }

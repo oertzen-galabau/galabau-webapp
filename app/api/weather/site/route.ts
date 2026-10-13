@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { getActionContext } from '@/lib/auth/session';
 import { userCanAccessSite } from '@/lib/sites/access';
 import { createClient } from '@/lib/supabase/server';
-import { fetchSiteWeather } from '@/lib/weather/fetch-weather';
-import { formatReportWeather } from '@/lib/weather/format-report-weather';
+import { fetchSiteWeather, isDateWithinWeatherWindow } from '@/lib/weather/fetch-weather';
+import { pickWeatherForDate, reportWeatherTodayDate } from '@/lib/weather/format-report-weather';
 import { formatSiteAddress } from '@/lib/sites/format-address';
 import { geocodeAddress } from '@/lib/weather/geocode';
 import { reverseGeocodeLocation } from '@/lib/weather/reverse-geocode';
@@ -17,9 +17,19 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const siteId = new URL(request.url).searchParams.get('siteId');
+  const { searchParams } = new URL(request.url);
+  const siteId = searchParams.get('siteId');
+  const targetDate = searchParams.get('date')?.trim() || reportWeatherTodayDate();
   if (!siteId) {
     return NextResponse.json({ error: 'Baustelle fehlt' }, { status: 400 });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    return NextResponse.json({ error: 'Ungültiges Datum' }, { status: 400 });
+  }
+
+  if (!isDateWithinWeatherWindow(targetDate)) {
+    return NextResponse.json({ outOfRange: true, weatherText: null });
   }
 
   if (!(await userCanAccessSite(supabase, ctx, siteId))) {
@@ -63,11 +73,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Wetterdaten nicht verfügbar' }, { status: 502 });
   }
 
+  const picked = pickWeatherForDate(weather, targetDate);
+  if (!picked) {
+    return NextResponse.json({ outOfRange: true, weatherText: null });
+  }
+
   return NextResponse.json({
     temperature: weather.current.temperature,
     label: weather.current.label,
-    iconKind: weather.current.iconKind,
+    iconKind: picked.iconKind,
     location,
-    weatherText: formatReportWeather(weather.current.temperature, weather.current.label),
+    weatherText: picked.weatherText,
+    targetDate,
   });
 }

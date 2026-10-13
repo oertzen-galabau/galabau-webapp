@@ -2,7 +2,12 @@
 
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { formatReportWeather } from '@/lib/weather/format-report-weather';
+import {
+  loadReportWeatherByGeolocation,
+  loadReportWeatherForSite,
+  type ReportWeatherResult,
+} from '@/lib/documentation/load-report-weather';
+import { formatSiteAddress, hasSiteAddress } from '@/lib/sites/format-address';
 import { useRouter } from 'next/navigation';
 import { saveDailyReport } from '@/lib/actions/daily-report';
 import type { DailyLogDictationDraft } from '@/lib/ai/daily-log-dictation';
@@ -22,12 +27,16 @@ import {
   type DailyLogReportType,
   type TenantReportLabelConfig,
 } from '@/lib/documentation/report-labels';
+import { appendSubcontractorGroupsToFormData } from '@/lib/documentation/subcontractor-groups';
 
 type SiteOption = {
   id: string;
   name: string;
   client_name: string | null;
   address: string | null;
+  street?: string | null;
+  zip_code?: string | null;
+  city?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -104,34 +113,15 @@ function createRowId() {
   return nextRowId++;
 }
 
-const GEO_TIMEOUT_MS = 10000;
-
-function requestDevicePosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation nicht verfügbar'));
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: GEO_TIMEOUT_MS,
-      maximumAge: 10 * 60 * 1000,
-    });
-  });
-}
-
-async function fetchWeatherByCoords(lat: number, lng: number) {
-  const response = await fetch(
-    `/api/weather?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`,
-  );
-  if (!response.ok) return null;
-  return (await response.json()) as {
-    temperature: number;
-    label: string;
-    location: string | null;
-    weatherText?: string;
-  };
+function weatherHintForResult(result: Extract<ReportWeatherResult, { ok: false }>): string {
+  switch (result.reason) {
+    case 'out_of_range':
+      return 'Für dieses Datum keine automatische Wettervorlage — bitte manuell eintragen.';
+    case 'geolocation_denied':
+      return 'Standort nicht verfügbar — Wetter bitte manuell eintragen.';
+    default:
+      return 'Wetter konnte nicht ermittelt werden.';
+  }
 }
 
 function createWorkerRow(partial?: Partial<WorkerRow>): WorkerRow {
@@ -228,6 +218,8 @@ export function DailyReportForm({
   const [logDate, setLogDate] = useState(initial?.logDate ?? new Date().toISOString().slice(0, 10));
   const [weather, setWeather] = useState(initial?.weather ?? '');
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherHint, setWeatherHint] = useState<string | null>(null);
+  const [weatherReloadNonce, setWeatherReloadNonce] = useState(0);
   const [geoLocationLabel, setGeoLocationLabel] = useState<string | null>(null);
   const weatherTouchedRef = useRef(Boolean(initial?.weather?.trim()));
   const [notes, setNotes] = useState(initial?.notes ?? '');
@@ -295,70 +287,55 @@ export function DailyReportForm({
 
   const selectedSite = useMemo(() => sites.find((site) => site.id === siteId) ?? null, [siteId, sites]);
 
+  const formattedSiteAddress = selectedSite ? formatSiteAddress(selectedSite) : null;
+
   const addressLabel = useMemo(() => {
     if (!selectedSite) return null;
-    if (selectedSite.address?.trim()) return selectedSite.address;
+    if (formattedSiteAddress) return formattedSiteAddress;
     if (geoLocationLabel) return geoLocationLabel;
     return 'Aktueller Standort';
-  }, [selectedSite, geoLocationLabel]);
+  }, [selectedSite, formattedSiteAddress, geoLocationLabel]);
 
   useEffect(() => {
     if (!selectedSite) return;
 
     const skipBecauseEditing =
-      Boolean(initial?.weather?.trim()) && selectedSite.id === (initial?.siteId ?? siteId);
+      Boolean(initial?.dailyLogId) &&
+      Boolean(initial?.weather?.trim()) &&
+      selectedSite.id === (initial?.siteId ?? '') &&
+      logDate === (initial?.logDate ?? '') &&
+      weatherReloadNonce === 0;
     if (skipBecauseEditing) return;
 
     let cancelled = false;
-    weatherTouchedRef.current = false;
 
     async function loadWeather() {
       setWeatherLoading(true);
+      setWeatherHint(null);
 
       try {
-        const hasAddress = Boolean(selectedSite!.address?.trim());
-
-        if (!hasAddress) {
+        const useSiteApi = hasSiteAddress(selectedSite!);
+        if (useSiteApi) {
           setGeoLocationLabel(null);
         }
 
-        if (hasAddress) {
-          const response = await fetch(
-            `/api/weather/site?siteId=${encodeURIComponent(selectedSite!.id)}`,
-          );
-          if (cancelled || !response.ok) return;
+        const result = useSiteApi
+          ? await loadReportWeatherForSite(selectedSite!, logDate)
+          : await loadReportWeatherByGeolocation(logDate);
 
-          const data = (await response.json()) as {
-            temperature: number;
-            label: string;
-            weatherText?: string;
-          };
+        if (cancelled) return;
 
+        if (result.ok) {
+          if (result.locationLabel) {
+            setGeoLocationLabel(result.locationLabel);
+          }
           if (!weatherTouchedRef.current) {
-            setWeather(data.weatherText ?? formatReportWeather(data.temperature, data.label));
+            setWeather(result.weatherText);
           }
           return;
         }
 
-        if (!window.isSecureContext) return;
-
-        const position = await requestDevicePosition();
-        if (cancelled) return;
-
-        const result = await fetchWeatherByCoords(position.coords.latitude, position.coords.longitude);
-        if (cancelled || !result) return;
-
-        if (result.location) {
-          setGeoLocationLabel(`Aktueller Standort (${result.location})`);
-        } else {
-          setGeoLocationLabel('Aktueller Standort');
-        }
-
-        if (!weatherTouchedRef.current) {
-          setWeather(formatReportWeather(result.temperature, result.label));
-        }
-      } catch {
-        // Standort verweigert oder Wetter nicht verfügbar
+        setWeatherHint(weatherHintForResult(result));
       } finally {
         if (!cancelled) setWeatherLoading(false);
       }
@@ -369,7 +346,12 @@ export function DailyReportForm({
     return () => {
       cancelled = true;
     };
-  }, [selectedSite, initial?.weather, initial?.siteId, siteId]);
+  }, [selectedSite, logDate, initial?.dailyLogId, initial?.weather, initial?.siteId, initial?.logDate, weatherReloadNonce]);
+
+  function reloadWeatherTemplate() {
+    weatherTouchedRef.current = false;
+    setWeatherReloadNonce((value) => value + 1);
+  }
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
 
   const contractorSignature = initial?.signatures?.find((entry) => entry.role === 'contractor');
@@ -378,7 +360,10 @@ export function DailyReportForm({
   function applyDictationDraft(draft: DailyLogDictationDraft) {
     setDictationTranscript(draft.transcript);
     setDictationExtraction(JSON.stringify(draft));
-    if (draft.weather) setWeather(draft.weather);
+    if (draft.weather) {
+      weatherTouchedRef.current = true;
+      setWeather(draft.weather);
+    }
     if (draft.notes) setNotes((current) => (current ? `${current}\n${draft.notes}` : draft.notes ?? ''));
 
     if (hourlyRapport && draft.workers.length > 0) {
@@ -459,6 +444,22 @@ export function DailyReportForm({
     if (initial?.dailyLogId) formData.set('daily_log_id', initial.dailyLogId);
     if (dictationTranscript) formData.set('dictation_transcript', dictationTranscript);
     if (dictationExtraction) formData.set('dictation_extraction', dictationExtraction);
+
+    if (isHourlyWageRapport(reportType)) {
+      appendSubcontractorGroupsToFormData(
+        formData,
+        subcontractorGroups.map((group) => ({
+          groupKey: group.groupKey,
+          partnerId: group.partnerId,
+          companyName: group.companyName,
+          workDescription: group.workDescription,
+          workers: group.workers.map((worker) => ({
+            workerName: worker.workerName,
+            hours: worker.hours,
+          })),
+        })),
+      );
+    }
 
     startTransition(async () => {
       try {
@@ -551,18 +552,31 @@ export function DailyReportForm({
             Datum
             <input type="date" name="log_date" value={logDate} onChange={(event) => setLogDate(event.target.value)} required />
           </label>
-          <label>
+          <label className="input-form-span-full">
             Wetter
-            <input
-              name="weather"
-              value={weather}
-              onChange={(event) => {
-                weatherTouchedRef.current = true;
-                setWeather(event.target.value);
-              }}
-              placeholder={weatherLoading ? 'Wird ermittelt…' : 'z.B. 18°C, trocken'}
-              aria-busy={weatherLoading}
-            />
+            <div className="inline-actions" style={{ alignItems: 'stretch', gap: 8 }}>
+              <input
+                name="weather"
+                value={weather}
+                onChange={(event) => {
+                  weatherTouchedRef.current = true;
+                  setWeather(event.target.value);
+                  setWeatherHint(null);
+                }}
+                placeholder={weatherLoading ? 'Wird ermittelt…' : 'z.B. 18°C, trocken'}
+                aria-busy={weatherLoading}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="text-button"
+                disabled={weatherLoading || !selectedSite}
+                onClick={reloadWeatherTemplate}
+              >
+                Wetter aktualisieren
+              </button>
+            </div>
+            {weatherHint && <span className="muted">{weatherHint}</span>}
           </label>
           <div className="daily-report-core-meta input-form-span-full">
             <div className="daily-report-readonly">
@@ -572,7 +586,7 @@ export function DailyReportForm({
             <div className="daily-report-readonly">
               <span className="daily-report-readonly-label">Baustellenadresse</span>
               <strong>
-                {addressLabel ?? selectedSite?.address ?? (weatherLoading ? 'Wird ermittelt…' : '—')}
+                {addressLabel ?? formattedSiteAddress ?? (weatherLoading ? 'Wird ermittelt…' : '—')}
               </strong>
             </div>
           </div>
@@ -851,9 +865,18 @@ export function DailyReportForm({
                       value={group.partnerId}
                       onValueChange={(value) =>
                         setSubcontractorGroups((current) =>
-                          current.map((entry) =>
-                            entry.id === group.id ? { ...entry, partnerId: value } : entry,
-                          ),
+                          current.map((entry) => {
+                            if (entry.id !== group.id) return entry;
+                            const partner = subcontractorPartners.find((p) => p.id === value);
+                            return {
+                              ...entry,
+                              partnerId: value,
+                              companyName:
+                                partner && !entry.companyName.trim()
+                                  ? partner.name
+                                  : entry.companyName,
+                            };
+                          }),
                         )
                       }
                       allowEmpty
@@ -984,12 +1007,6 @@ export function DailyReportForm({
                           <Trash2 size={18} />
                         </button>
                       </div>
-                      <input type="hidden" name="subcontractor_group_key[]" value={group.groupKey} />
-                      <input type="hidden" name="subcontractor_partner_id[]" value={group.partnerId} />
-                      <input type="hidden" name="subcontractor_company_name[]" value={group.companyName} />
-                      <input type="hidden" name="subcontractor_work_description[]" value={group.workDescription} />
-                      <input type="hidden" name="subcontractor_worker_name[]" value={worker.workerName} />
-                      <input type="hidden" name="subcontractor_hours[]" value={worker.hours} />
                     </div>
                   ))}
                 </div>

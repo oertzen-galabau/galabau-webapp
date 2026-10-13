@@ -8,6 +8,7 @@ import {
 } from '@/lib/schedule/conflicts';
 import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { leaderCodeForProfile } from '@/lib/schedule/leader-code';
+import { isWeekFullyPublished } from '@/lib/schedule/day-publication';
 import { addDays, mondayOfWeek, weekDaysFromMonday } from '@/lib/schedule/week';
 import type { Profile, ScheduleEntry, Site } from '@/lib/types/database';
 
@@ -26,7 +27,7 @@ export type ScheduleEquipmentRow = {
 };
 
 export type ScheduleEntryView = ScheduleEntry & {
-  site: Pick<Site, 'id' | 'name' | 'responsible_user_id'>;
+  site: Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>;
   foreman: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code'> | null;
   members: ScheduleMemberRow[];
   equipment: ScheduleEquipmentRow[];
@@ -39,8 +40,11 @@ export type SchedulePlanData = {
   weekEnd: string;
   weekDays: string[];
   entries: ScheduleEntryView[];
+  /** true, wenn jeder Tag mit mindestens einem Einsatz veröffentlicht ist */
   published: boolean;
   publishedAt: string | null;
+  publishedByDay: Record<string, boolean>;
+  publishedAtByDay: Record<string, string | null>;
   sites: Pick<Site, 'id' | 'name' | 'responsible_user_id'>[];
   employees: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code' | 'is_active'>[];
   foremen: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code'>[];
@@ -76,7 +80,7 @@ export async function loadSchedulePlanData(
 
   const [
     { data: entriesRaw, error: entriesError },
-    { data: publication },
+    { data: dayPublications },
     { data: sites },
     { data: employees },
     { data: foremenRoles },
@@ -88,7 +92,7 @@ export async function loadSchedulePlanData(
       .from('schedule_entries')
       .select(`
         *,
-        sites(id, name, responsible_user_id),
+        sites(id, name, responsible_user_id, street, zip_code, city, address),
         schedule_entry_members(user_id, profiles(first_name, last_name, leader_code)),
         schedule_entry_equipment(
           equipment_id,
@@ -101,11 +105,11 @@ export async function loadSchedulePlanData(
       .order('sort_order')
       .order('start_time'),
     supabase
-      .from('schedule_week_publications')
-      .select('published_at')
+      .from('schedule_day_publications')
+      .select('plan_date, published_at')
       .eq('tenant_id', tenantId)
-      .eq('week_start', weekStart)
-      .maybeSingle(),
+      .gte('plan_date', weekStart)
+      .lte('plan_date', weekEnd),
     supabase
       .from('sites')
       .select('id, name, responsible_user_id')
@@ -173,7 +177,10 @@ export async function loadSchedulePlanData(
   }
 
   const entries: ScheduleEntryView[] = (entriesRaw ?? []).map((row) => {
-    const siteRaw = row.sites as Pick<Site, 'id' | 'name' | 'responsible_user_id'> | Pick<Site, 'id' | 'name' | 'responsible_user_id'>[] | null;
+    const siteRaw = row.sites as
+      | Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>
+      | Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>[]
+      | null;
     const site = Array.isArray(siteRaw) ? siteRaw[0] : siteRaw;
     const foreman = row.foreman_user_id
       ? (employees ?? []).find((e) => e.id === row.foreman_user_id) ?? foremen.find((e) => e.id === row.foreman_user_id) ?? null
@@ -222,7 +229,15 @@ export async function loadSchedulePlanData(
       ...entry,
       start_time: normalizeTime(entry.start_time),
       end_time: normalizeTime(entry.end_time),
-      site: site ?? { id: entry.site_id, name: '—', responsible_user_id: null },
+      site: site ?? {
+        id: entry.site_id,
+        name: '—',
+        responsible_user_id: null,
+        street: null,
+        zip_code: null,
+        city: null,
+        address: null,
+      },
       foreman,
       members,
       equipment,
@@ -261,13 +276,36 @@ export async function loadSchedulePlanData(
   const timeConflicts = findTimeConflicts(slots);
   const equipmentConflicts = findEquipmentConflicts(equipmentSlots);
 
+  const publishedAtByDay: Record<string, string | null> = {};
+  const publishedByDay: Record<string, boolean> = {};
+  for (const day of weekDays) {
+    publishedByDay[day] = false;
+    publishedAtByDay[day] = null;
+  }
+  for (const row of dayPublications ?? []) {
+    publishedByDay[row.plan_date] = true;
+    publishedAtByDay[row.plan_date] = row.published_at ?? null;
+  }
+
+  const daysWithEntries = [...new Set(entries.map((e) => e.start_date))];
+  const published = isWeekFullyPublished(daysWithEntries, publishedByDay);
+
+  const publishedAt =
+    [...daysWithEntries]
+      .map((d) => publishedAtByDay[d])
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null;
+
   return {
     weekStart,
     weekEnd,
     weekDays,
     entries,
-    published: Boolean(publication),
-    publishedAt: publication?.published_at ?? null,
+    published,
+    publishedAt,
+    publishedByDay,
+    publishedAtByDay,
     sites: sites ?? [],
     employees: employees ?? [],
     foremen,
@@ -287,8 +325,6 @@ export async function loadScheduleDayData(
   day: string,
 ): Promise<{ day: string; entries: ScheduleEntryView[] }> {
   const plan = await loadSchedulePlanData(supabase, tenantId, mondayOfWeek(day));
-  const entries = plan.entries.filter(
-    (e) => e.start_date <= day && e.end_date >= day,
-  );
+  const entries = plan.entries.filter((e) => e.start_date === day);
   return { day, entries };
 }

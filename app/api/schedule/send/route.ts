@@ -39,6 +39,9 @@ export async function POST(request: Request) {
   if (resolvedMode === 'week') {
     const weekStart = mondayOfWeek(weekStartParam ?? date ?? new Date().toISOString().slice(0, 10));
     const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
+    if (!canAccess(ctx, 'schedule.manage') && !plan.published) {
+      return NextResponse.json({ error: 'Woche noch nicht vollständig veröffentlicht' }, { status: 403 });
+    }
     bytes = await buildScheduleWeekPdf({
       tenantName,
       weekStart: plan.weekStart,
@@ -50,11 +53,28 @@ export async function POST(request: Request) {
     textBody = `Anbei der Wochenplan ab ${weekStart} für ${tenantName}.`;
   } else {
     const day = date ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
+    const weekStart = mondayOfWeek(day);
+    const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
+    const dayPublished = plan.publishedByDay[day] ?? false;
+    if (!canAccess(ctx, 'schedule.manage') && !dayPublished) {
+      return NextResponse.json({ error: 'Tag noch nicht veröffentlicht' }, { status: 403 });
+    }
     const dayData = await loadScheduleDayData(supabase, ctx.tenantId, day);
-    bytes = await buildScheduleDayPdf({ tenantName, day, entries: dayData.entries });
-    subject = `Einsatztafel ${formatGermanWeekdayDate(day)} – ${tenantName}`;
+    const employeeNames: Record<string, string> = {};
+    for (const e of plan.employees) {
+      employeeNames[e.id] = `${e.first_name} ${e.last_name}`.trim();
+    }
+    bytes = await buildScheduleDayPdf({
+      tenantName,
+      day,
+      entries: dayData.entries,
+      draft: false,
+      absentees: plan.leaveDays,
+      employeeNames,
+    });
+    subject = `Tageseinsatzplan ${formatGermanWeekdayDate(day)} – ${tenantName}`;
     filename = `einsatzplan-${day}.pdf`;
-    textBody = `Anbei die Einsatztafel für ${formatGermanWeekdayDate(day)} (${tenantName}).`;
+    textBody = `Anbei der Tageseinsatzplan für ${formatGermanWeekdayDate(day)} (${tenantName}).`;
   }
 
   const recipients = new Set<string>();

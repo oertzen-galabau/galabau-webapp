@@ -180,8 +180,6 @@ export function parseSubcontractorPersonRows(formData: FormData): SubcontractorP
     const workerName = String(workerNames[i] ?? '').trim() || null;
     const hours = parseNumber(hoursList[i]) ?? 0;
 
-    if (!workerName && hours <= 0) continue;
-
     let group = byGroup.get(groupKey);
     if (!group) {
       group = {
@@ -197,6 +195,8 @@ export function parseSubcontractorPersonRows(formData: FormData): SubcontractorP
     if (companyName) group.companyName = companyName;
     if (workDescription) group.workDescription = workDescription;
 
+    if (!workerName && hours <= 0) continue;
+
     group.persons.push({
       groupKey,
       partnerId: group.partnerId,
@@ -208,9 +208,21 @@ export function parseSubcontractorPersonRows(formData: FormData): SubcontractorP
   }
 
   const rows: SubcontractorPersonRowInput[] = [];
-  for (const group of byGroup.values()) {
+  for (const [groupKey, group] of byGroup.entries()) {
     if (!group.partnerId && !group.companyName) continue;
-    if (group.persons.length === 0) continue;
+
+    if (group.persons.length === 0) {
+      rows.push({
+        groupKey,
+        partnerId: group.partnerId,
+        companyName: group.companyName,
+        workDescription: group.workDescription,
+        workerName: null,
+        hours: 0,
+      });
+      continue;
+    }
+
     for (const person of group.persons) {
       rows.push({
         ...person,

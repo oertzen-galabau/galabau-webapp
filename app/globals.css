@@ -2974,6 +2974,29 @@ button.input-form-file-cta {
   background: var(--line);
 }
 .schedule-week-grid.is-weekend-expanded { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.schedule-week-grid--by-day { align-items: stretch; }
+.schedule-week-day-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface-muted);
+}
+.schedule-week-col-head-link {
+  text-decoration: none;
+  color: inherit;
+}
+.schedule-week-col-head-link:hover { background: color-mix(in srgb, var(--brand) 6%, var(--surface-raised)); }
+.schedule-day-pub { font-size: 9px; font-weight: 650; color: var(--text-soft); }
+.schedule-day-pub--ok { color: var(--success); }
+.schedule-week-day-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  min-height: 100px;
+}
+.schedule-week-day-empty { margin: 0; font-size: var(--text-caption); text-align: center; padding: 12px 0; }
 .schedule-weekend-toggle {
   flex: none;
   width: 52px;

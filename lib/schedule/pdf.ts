@@ -1,9 +1,12 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { formatSiteAddress } from '@/lib/sites/format-address';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
+import type { LeaveDay } from '@/lib/schedule/conflicts';
 import { formatGermanWeekdayDate, weekDayLabels } from '@/lib/schedule/week';
 
-const LANDSCAPE = [841.89, 595.28] as const;
-const MARGIN = 36;
+const A4 = [595.28, 841.89] as const;
+const MARGIN = 48;
+const LINE = 14;
 
 function memberNames(entry: ScheduleEntryView): string {
   const internal = entry.members.map((m) => `${m.first_name} ${m.last_name}`.trim()).join(', ');
@@ -12,51 +15,147 @@ function memberNames(entry: ScheduleEntryView): string {
   return internal || external || '—';
 }
 
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ');
+  if (!words.length || words[0] === '') return ['—'];
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : ['—'];
+}
+
+function drawWrapped(
+  page: PDFPage,
+  text: string,
+  x: number,
+  y: number,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+  lineHeight = LINE,
+): number {
+  const lines = wrapText(text, font, size, maxWidth);
+  let cy = y;
+  for (const line of lines) {
+    page.drawText(line, { x, y: cy, size, font, maxWidth });
+    cy -= lineHeight;
+  }
+  return cy;
+}
+
 export async function buildScheduleDayPdf(input: {
   tenantName: string;
   day: string;
   entries: ScheduleEntryView[];
+  draft?: boolean;
+  absentees?: LeaveDay[];
+  employeeNames?: Record<string, string>;
 }): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const page = pdfDoc.addPage([...LANDSCAPE]);
-  const { width, height } = page.getSize();
 
-  const y = height - MARGIN;
-  page.drawText('Einsatztafel', { x: MARGIN, y, size: 18, font: bold });
-  page.drawText(input.tenantName, { x: MARGIN, y: y - 20, size: 10, font });
-  page.drawText(formatGermanWeekdayDate(input.day), { x: MARGIN, y: y - 36, size: 11, font: bold });
+  let page = pdfDoc.addPage([...A4]);
+  let { width, height } = page.getSize();
+  let y = height - MARGIN;
 
-  const sorted = [...input.entries].sort((a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name));
-  const cols = Math.max(sorted.length, 1);
-  const colWidth = (width - MARGIN * 2) / cols;
+  page.drawText('Tageseinsatzplan', { x: MARGIN, y, size: 16, font: bold });
+  y -= 18;
+  page.drawText(input.tenantName, { x: MARGIN, y, size: 10, font });
+  y -= 16;
+  page.drawText(formatGermanWeekdayDate(input.day), { x: MARGIN, y, size: 11, font: bold });
+  y -= 20;
 
-  sorted.forEach((entry, index) => {
-    const x = MARGIN + index * colWidth;
-    let cy = y - 70;
-    page.drawText(entry.leaderLabel, { x, y: cy, size: 12, font: bold, color: rgb(0.2, 0.2, 0.2) });
-    cy -= 16;
-    page.drawText(entry.site.name, { x, y: cy, size: 10, font: bold, maxWidth: colWidth - 8 });
-    cy -= 14;
-    page.drawText(`${entry.start_time}–${entry.end_time}`, { x, y: cy, size: 9, font });
-    cy -= 14;
-    const names = memberNames(entry);
-    const lines = names.match(/.{1,28}(\s|$)/g) ?? [names];
-    for (const line of lines.slice(0, 8)) {
-      page.drawText(line.trim(), { x, y: cy, size: 9, font, maxWidth: colWidth - 8 });
-      cy -= 12;
+  if (input.draft) {
+    page.drawText('ENTWURF – noch nicht veröffentlicht', {
+      x: MARGIN,
+      y,
+      size: 9,
+      font: bold,
+      color: rgb(0.65, 0.2, 0.15),
+    });
+    y -= 18;
+  }
+
+  const sorted = [...input.entries].sort(
+    (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
+  );
+  const contentWidth = width - MARGIN * 2;
+
+  const ensureSpace = (needed: number) => {
+    if (y - needed >= MARGIN) return;
+    page = pdfDoc.addPage([...A4]);
+    ({ width, height } = page.getSize());
+    y = height - MARGIN;
+  };
+
+  if (!sorted.length) {
+    page.drawText('Keine Einsätze an diesem Tag.', { x: MARGIN, y, size: 10, font });
+  }
+
+  for (const entry of sorted) {
+    const address = formatSiteAddress(entry.site);
+    const blockEstimate = 90;
+    ensureSpace(blockEstimate);
+
+    page.drawLine({
+      start: { x: MARGIN, y: y + 4 },
+      end: { x: width - MARGIN, y: y + 4 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+    y -= 8;
+
+    page.drawText(`${entry.leaderLabel} · ${entry.site.name}`, {
+      x: MARGIN,
+      y,
+      size: 11,
+      font: bold,
+      maxWidth: contentWidth,
+    });
+    y -= LINE;
+
+    if (address) {
+      y = drawWrapped(page, address, MARGIN, y, font, 9, contentWidth) - 2;
     }
+
+    page.drawText(`Zeit: ${entry.start_time}–${entry.end_time}`, { x: MARGIN, y, size: 9, font });
+    y -= LINE;
+
+    y = drawWrapped(page, `Team: ${memberNames(entry)}`, MARGIN, y, font, 9, contentWidth) - 2;
+
     if (entry.equipmentLabel) {
-      cy -= 2;
-      page.drawText(entry.equipmentLabel.slice(0, 80), { x, y: cy, size: 8, font, maxWidth: colWidth - 8 });
-      cy -= 12;
+      y = drawWrapped(page, `Fahrzeuge/Geräte: ${entry.equipmentLabel}`, MARGIN, y, font, 9, contentWidth) - 2;
     }
-    if (entry.notes) {
-      cy -= 4;
-      page.drawText(entry.notes.slice(0, 80), { x, y: cy, size: 8, font, maxWidth: colWidth - 8 });
+
+    if (entry.notes?.trim()) {
+      y = drawWrapped(page, `Hinweis: ${entry.notes.trim()}`, MARGIN, y, font, 9, contentWidth) - 2;
     }
-  });
+
+    y -= 10;
+  }
+
+  const dayAbsent = (input.absentees ?? []).filter((a) => a.date === input.day);
+  if (dayAbsent.length) {
+    ensureSpace(40 + dayAbsent.length * LINE);
+    y -= 6;
+    page.drawText('Abwesend (genehmigt)', { x: MARGIN, y, size: 10, font: bold });
+    y -= LINE;
+    for (const row of dayAbsent) {
+      const name = input.employeeNames?.[row.userId] ?? row.userId.slice(0, 8);
+      page.drawText(`· ${name} (${row.leaveType})`, { x: MARGIN + 8, y, size: 9, font });
+      y -= LINE;
+    }
+  }
 
   return pdfDoc.save();
 }
@@ -70,7 +169,7 @@ export async function buildScheduleWeekPdf(input: {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const page = pdfDoc.addPage([...LANDSCAPE]);
+  const page = pdfDoc.addPage([841.89, 595.28]);
   const { width, height } = page.getSize();
 
   const labels = weekDayLabels();
@@ -78,45 +177,60 @@ export async function buildScheduleWeekPdf(input: {
   const colWidth = (width - MARGIN * 2) / dayCount;
   let y = height - MARGIN;
 
-  page.drawText('Wochenplan', { x: MARGIN, y, size: 18, font: bold });
+  page.drawText('Wochenübersicht', { x: MARGIN, y, size: 18, font: bold });
   page.drawText(`${input.tenantName} · KW ab ${input.weekStart}`, { x: MARGIN, y: y - 18, size: 10, font });
 
-  y -= 48;
+  y -= 44;
   input.weekDays.forEach((day, i) => {
     const x = MARGIN + i * colWidth;
     page.drawText(labels[i], { x, y, size: 10, font: bold });
-    page.drawText(day.slice(8, 10) + '.' + day.slice(5, 7), { x, y: y - 12, size: 9, font });
+    page.drawText(`${day.slice(8, 10)}.${day.slice(5, 7)}`, { x, y: y - 12, size: 9, font });
   });
 
-  const rowHeight = 58;
-  let row = 0;
+  const siteIds = [...new Set(input.entries.map((e) => e.site_id))];
+  const sites = siteIds
+    .map((id) => input.entries.find((e) => e.site_id === id)?.site)
+    .filter(Boolean) as ScheduleEntryView['site'][];
+  sites.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+  const bySiteDay = new Map<string, ScheduleEntryView[]>();
   for (const entry of input.entries) {
-    const startIdx = input.weekDays.indexOf(entry.start_date);
-    const endIdx = input.weekDays.indexOf(entry.end_date);
-    const from = startIdx >= 0 ? startIdx : 0;
-    const to = endIdx >= 0 ? endIdx : from;
-    const span = Math.max(to - from + 1, 1);
-    const x = MARGIN + from * colWidth + 2;
-    const w = span * colWidth - 4;
-    const ry = y - 28 - row * rowHeight;
-    const boxHeight = entry.equipmentLabel ? 46 : 40;
-    page.drawRectangle({ x, y: ry - boxHeight + 4, width: w, height: boxHeight, borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 1 });
-    page.drawText(`${entry.leaderLabel} · ${entry.site.name}`.slice(0, 48), {
-      x: x + 4,
-      y: ry - 14,
-      size: 8,
-      font: bold,
-      maxWidth: w - 8,
+    const key = `${entry.site_id}:${entry.start_date}`;
+    const list = bySiteDay.get(key) ?? [];
+    list.push(entry);
+    bySiteDay.set(key, list);
+  }
+
+  let rowY = y - 28;
+  const rowHeight = 52;
+  for (const site of sites) {
+    if (rowY - rowHeight < MARGIN) break;
+    page.drawText(site.name.slice(0, 36), { x: MARGIN - 2, y: rowY - 12, size: 8, font: bold, maxWidth: 80 });
+    input.weekDays.forEach((day, i) => {
+      const x = MARGIN + i * colWidth + 2;
+      const cellEntries = bySiteDay.get(`${site.id}:${day}`) ?? [];
+      if (!cellEntries.length) return;
+      const cellH = 44;
+      page.drawRectangle({
+        x,
+        y: rowY - cellH + 4,
+        width: colWidth - 4,
+        height: cellH,
+        borderColor: rgb(0.8, 0.8, 0.8),
+        borderWidth: 0.5,
+      });
+      const e = cellEntries[0];
+      page.drawText(`${e.leaderLabel}`, { x: x + 4, y: rowY - 12, size: 7, font: bold });
+      page.drawText(memberNames(e).slice(0, 72), {
+        x: x + 4,
+        y: rowY - 24,
+        size: 6,
+        font,
+        maxWidth: colWidth - 10,
+      });
+      page.drawText(`${e.start_time}–${e.end_time}`, { x: x + 4, y: rowY - 34, size: 6, font });
     });
-    page.drawText(`${entry.start_time}–${entry.end_time}`, { x: x + 4, y: ry - 26, size: 7, font });
-    let textY = ry - 36;
-    page.drawText(memberNames(entry).slice(0, 60), { x: x + 4, y: textY, size: 7, font, maxWidth: w - 8 });
-    if (entry.equipmentLabel) {
-      textY -= 10;
-      page.drawText(entry.equipmentLabel.slice(0, 60), { x: x + 4, y: textY, size: 6, font, maxWidth: w - 8 });
-    }
-    row += 1;
-    if (ry - 60 < MARGIN) break;
+    rowY -= rowHeight;
   }
 
   return pdfDoc.save();
