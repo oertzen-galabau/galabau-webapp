@@ -40,6 +40,7 @@ export const PERMISSION_KEYS = [
   'orders.manage_catalog',
   'orders.manage',
   'orders.manage_budget',
+  'orders.share',
   'partners.view',
   'partners.manage',
   'team.view',
@@ -138,6 +139,12 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     implies: ['nav.bestellungen'],
   },
   {
+    key: 'orders.share',
+    label: 'Bestellformular teilen',
+    group: 'Bestellungen',
+    implies: ['orders.manage'],
+  },
+  {
     key: 'partners.view',
     label: 'Subunternehmer & Lieferanten einsehen',
     group: 'Geschäftspartner',
@@ -206,6 +213,7 @@ const ADMIN_EXTRA: PermissionKey[] = [
   'orders.manage_catalog',
   'orders.manage',
   'orders.manage_budget',
+  'orders.share',
   'partners.manage',
 ];
 

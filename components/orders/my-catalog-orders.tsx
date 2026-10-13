@@ -1,7 +1,8 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { cancelCatalogOrder } from '@/lib/actions/orders';
+import { downloadOrderPdf } from '@/lib/orders/download-pdf-client';
 import { formatOrderEuro, ORDER_STATUS_LABELS } from '@/lib/orders/labels';
 import type { CatalogOrder, CatalogOrderItem, ClothingOrder } from '@/lib/types/database';
 
@@ -12,10 +13,12 @@ export type CatalogOrderWithItems = CatalogOrder & {
 type Props = {
   orders: CatalogOrderWithItems[];
   legacyOrders: ClothingOrder[];
+  canDownloadPdf?: boolean;
 };
 
-export function MyCatalogOrders({ orders, legacyOrders }: Props) {
+export function MyCatalogOrders({ orders, legacyOrders, canDownloadPdf = false }: Props) {
   const [pending, startTransition] = useTransition();
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   function cancel(orderId: string) {
     const formData = new FormData();
@@ -57,6 +60,20 @@ export function MyCatalogOrders({ orders, legacyOrders }: Props) {
                 ))}
             </ul>
             {order.notes && <p className="muted">Notiz: {order.notes}</p>}
+            {canDownloadPdf ? (
+              <button
+                type="button"
+                className="secondary-button secondary-button--compact"
+                style={{ marginTop: 8 }}
+                onClick={async () => {
+                  setPdfError(null);
+                  const err = await downloadOrderPdf([order.id]);
+                  if (err) setPdfError(err);
+                }}
+              >
+                Bestellformular PDF
+              </button>
+            ) : null}
             {order.status === 'pending' && (
               <button
                 type="button"
@@ -69,6 +86,7 @@ export function MyCatalogOrders({ orders, legacyOrders }: Props) {
             )}
           </details>
         ))}
+        {pdfError ? <p className="form-error" style={{ marginTop: 8 }}>{pdfError}</p> : null}
       </section>
 
       {legacyOrders.length > 0 && (

@@ -141,14 +141,22 @@ export default async function BestellungenPage({ searchParams }: PageProps) {
             />
           </div>
           <div style={{ marginTop: 16 }}>
-            <MyCatalogOrders orders={myCatalogOrders} legacyOrders={legacyOrders} />
+            <MyCatalogOrders
+              orders={myCatalogOrders}
+              legacyOrders={legacyOrders}
+              canDownloadPdf={canAccess(ctx, 'orders.create')}
+            />
           </div>
         </div>
       )}
 
       {activeTab === 'alle' && canAccess(ctx, 'orders.manage') && (
         <div style={{ marginTop: tabs.length > 1 ? 16 : 0 }}>
-          <OrderAdminPanel orders={adminOrders} />
+          <OrderAdminPanel
+            orders={adminOrders}
+            canShare={canAccess(ctx, 'orders.share')}
+            canManage={canAccess(ctx, 'orders.manage')}
+          />
         </div>
       )}
 
