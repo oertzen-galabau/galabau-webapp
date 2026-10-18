@@ -2,11 +2,37 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   blockDurationMinutes,
+  fillFirstTimelineGap,
+  findTimelineGaps,
   getStatutoryBreakWarning,
   segmentsToPayrollTravel,
   validateTimeline,
 } from './timeline';
 import { evaluateBreakCompliance, DEFAULT_TIME_TRACKING_RULES } from './break-rules';
+
+describe('findTimelineGaps', () => {
+  it('finds gap between blocks and day bounds', () => {
+    const gaps = findTimelineGaps(
+      [{ block_type: 'site_work', start_time: '09:00', end_time: '12:00', site_id: 'a' }],
+      '07:00',
+      '16:00',
+    );
+    assert.equal(gaps.length, 2);
+    assert.deepEqual(gaps[0], { start_time: '07:00', end_time: '09:00' });
+    assert.deepEqual(gaps[1], { start_time: '12:00', end_time: '16:00' });
+  });
+
+  it('fillFirstTimelineGap closes the first hole', () => {
+    const next = fillFirstTimelineGap(
+      [{ block_type: 'site_work', start_time: '09:00', end_time: '12:00', site_id: 'a' }],
+      '07:00',
+      '16:00',
+      { siteId: 'b' },
+    );
+    assert.equal(findTimelineGaps(next, '07:00', '16:00').length, 1);
+    assert.equal(next.some((b) => b.start_time === '07:00' && b.end_time === '09:00'), true);
+  });
+});
 
 describe('validateTimeline', () => {
   it('accepts a full day without gaps', () => {

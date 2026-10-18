@@ -10,9 +10,19 @@ type AppDialogProps = {
   children: React.ReactNode;
   titleId?: string;
   panelClassName?: string;
+  /** Aktionen und Fehler — außerhalb des scrollbaren Bereichs (z. B. Handy). */
+  footer?: React.ReactNode;
 };
 
-export function AppDialog({ open, onClose, title, children, titleId, panelClassName }: AppDialogProps) {
+export function AppDialog({
+  open,
+  onClose,
+  title,
+  children,
+  titleId,
+  panelClassName,
+  footer,
+}: AppDialogProps) {
   const autoId = useId();
   const headingId = titleId ?? autoId;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -45,6 +55,7 @@ export function AppDialog({ open, onClose, title, children, titleId, panelClassN
       >
         <h2 id={headingId}>{title}</h2>
         <div className="dialog-panel-body">{children}</div>
+        {footer}
       </div>
     </div>,
     document.body,

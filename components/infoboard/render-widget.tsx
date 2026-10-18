@@ -7,6 +7,7 @@ import { MetricCompletedWidget } from '@/components/infoboard/widgets/metric-com
 import { MetricHoursWidget } from '@/components/infoboard/widgets/metric-hours-widget';
 import { MetricOpenSitesWidget } from '@/components/infoboard/widgets/metric-open-sites-widget';
 import { MetricReportsWidget } from '@/components/infoboard/widgets/metric-reports-widget';
+import { EquipmentUvvDueWidget } from '@/components/infoboard/widgets/equipment-uvv-due-widget';
 import { PendingApprovalWidget } from '@/components/infoboard/widgets/pending-approval-widget';
 import { TodayScheduleWidget } from '@/components/infoboard/widgets/today-schedule-widget';
 
@@ -73,6 +74,13 @@ export function RenderWidget({ widgetId, data }: Props) {
       return <MessagesUnreadWidget count={data.unreadMessagesCount} />;
     case 'site_weather':
       return <p className="muted infoboard-widget-empty">Wetter-Widget folgt in Kürze.</p>;
+    case 'equipment_uvv_due':
+      return (
+        <EquipmentUvvDueWidget
+          rows={data.equipmentUvvDue.rows}
+          totalCount={data.equipmentUvvDue.totalCount}
+        />
+      );
     default:
       return null;
   }

@@ -116,17 +116,17 @@ export function SyncSplitSection() {
   );
 }
 
-export function GalabauUseCases() {
+export function ProductUseCases() {
   const cases = [
     {
       icon: MapPin,
       title: 'Baustellen & Projekte',
-      text: 'Außenanlagen, Neuanlagen und Baustellen — mit Subunternehmern, Lieferungen und Tagesrapporten an einem Ort.',
+      text: 'Neubau, Umbau und laufende Baustellen — mit Subunternehmern, Lieferungen und Tagesrapporten an einem Ort.',
     },
     {
       icon: FileText,
-      title: 'Pflege & Gestaltung',
-      text: 'Projektakten, Termine und Fotodokumentation für Pflege-, Pflanz- und Gestaltungsarbeiten.',
+      title: 'Planung & Abwicklung',
+      text: 'Projektakten, Termine und Fotodokumentation für alle Phasen Ihrer Baustellen.',
     },
     {
       icon: Users,

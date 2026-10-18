@@ -44,8 +44,8 @@ export function EmployeeInvitationPanel({
     : 'none';
 
   return (
-    <div className="employee-invitation-panel" style={{ marginTop: 16 }}>
-      <h3>Einladung & Erstlogin</h3>
+    <div className="employee-invitation-panel">
+      <h4 className="employee-invitation-title">Einladung & Erstlogin</h4>
 
       {mustChangePassword ? (
         <p className="muted">

@@ -89,6 +89,7 @@ export function TimeEntryFormFields({
     <>
       <div className="input-form-span-full">
         <TimeEntryTimelineFields
+          variant="compact"
           sites={sites}
           dayStart={startTime}
           dayEnd={endTime}
@@ -128,7 +129,7 @@ export function TimeEntryFormFields({
         <div className="input-form-core input-form-core--time">{timeInputs}</div>
         <div className="input-form-checkboxes">{checkboxes}</div>
         <details className="input-form-extra">
-          <summary>Tagesaufteilung, Pausengründe & Notiz</summary>
+          <summary>Baustellen-Aufteilung, Pausengründe & Notiz</summary>
           <div className="input-form-extra-grid">{extraFields}</div>
         </details>
         <div className="input-form-actions">
@@ -143,7 +144,7 @@ export function TimeEntryFormFields({
       <div className="input-form-core input-form-core--time">{timeInputs}</div>
       <div className="input-form-checkboxes">{checkboxes}</div>
       <details className="input-form-extra" open>
-        <summary>Tagesaufteilung, Pausengründe & Notiz</summary>
+        <summary>Baustellen-Aufteilung, Pausengründe & Notiz</summary>
         <div className="input-form-extra-grid">{extraFields}</div>
       </details>
       <div className="input-form-actions">

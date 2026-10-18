@@ -6,7 +6,8 @@ import { AppSidePanel } from '@/components/ui/app-side-panel';
 import {
   EQUIPMENT_KIND_LABELS,
   EQUIPMENT_STATUS_LABELS,
-  isUvvOverdue,
+  uvvUrgency,
+  uvvUrgencyCssClass,
 } from '@/lib/equipment/labels';
 import { todayIsoInBerlin } from '@/lib/schedule/week';
 import type { TenantEquipment, TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
@@ -55,7 +56,7 @@ export function EquipmentListClient({ items, canManage }: Props) {
 
       <div className="equipment-list">
         {filtered.map((item) => {
-          const uvvOverdue = isUvvOverdue(item.uvv_due_date, today);
+          const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
           return (
             <div key={item.id} className={`equipment-list-row${!item.is_active ? ' equipment-list-row-inactive' : ''}`}>
               <button
@@ -90,9 +91,15 @@ export function EquipmentListClient({ items, canManage }: Props) {
                   {' · '}
                   {item.build_year ?? '—'}
                   {' · '}
-                  <span className={uvvOverdue ? 'equipment-uvv-overdue' : undefined}>
+                  <span className={uvvClass}>
                     UVV {item.uvv_due_date ?? '—'}
                   </span>
+                  {item.booking_number ? (
+                    <>
+                      {' · '}
+                      Buch.-Nr. {item.booking_number}
+                    </>
+                  ) : null}
                 </span>
               </button>
             </div>
@@ -159,7 +166,7 @@ function EquipmentDetailPanel({
   onSubmit: (fd: FormData) => void;
   onToggleActive: () => void;
 }) {
-  const uvvOverdue = isUvvOverdue(item.uvv_due_date, today);
+  const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
 
   return (
     <div className="equipment-detail">
@@ -189,8 +196,8 @@ function EquipmentDetailPanel({
           <dd>{item.inventory_number ?? '—'}</dd>
         </div>
         <div>
-          <dt className={uvvOverdue ? 'equipment-uvv-overdue' : undefined}>UVV fällig</dt>
-          <dd className={uvvOverdue ? 'equipment-uvv-overdue' : undefined}>{item.uvv_due_date ?? '—'}</dd>
+          <dt className={uvvClass}>UVV fällig</dt>
+          <dd className={uvvClass}>{item.uvv_due_date ?? '—'}</dd>
         </div>
         {item.license_plate ? (
           <div>
@@ -226,6 +233,12 @@ function EquipmentDetailPanel({
           <div>
             <dt>Führerschein</dt>
             <dd>{item.license_class_required}</dd>
+          </div>
+        ) : null}
+        {item.booking_number ? (
+          <div>
+            <dt>Buchungsnummer</dt>
+            <dd>{item.booking_number}</dd>
           </div>
         ) : null}
         {item.notes ? (
@@ -306,6 +319,16 @@ function EquipmentDetailPanel({
               <label>
                 Führerscheinklasse
                 <input name="license_class_required" defaultValue={item.license_class_required ?? ''} disabled={pending} />
+              </label>
+              <label>
+                Buchungsnummer
+                <input
+                  name="booking_number"
+                  defaultValue={item.booking_number ?? ''}
+                  maxLength={50}
+                  disabled={pending}
+                  placeholder="z. B. 2001"
+                />
               </label>
               <label>
                 Status

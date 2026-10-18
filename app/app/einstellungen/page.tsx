@@ -19,6 +19,8 @@ import { TenantTimeTrackingForm } from '@/components/settings/tenant-time-tracki
 import { TenantOrderBudgetForm } from '@/components/settings/tenant-order-budget-form';
 import { TenantReportLabelsForm } from '@/components/settings/tenant-report-labels-form';
 import { TenantBadWeatherAllowanceForm } from '@/components/settings/tenant-bad-weather-allowance-form';
+import { TenantLeaveCarryExpiryForm } from '@/components/settings/tenant-leave-carry-expiry-form';
+import { TenantWorkAreasPanel } from '@/components/settings/tenant-work-areas-panel';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
 
@@ -113,6 +115,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                   ? 'Standard-Jahresbudget für Arbeitskleidung pro Mitarbeiter.'
                   : activeTab === 'stammdaten'
                     ? 'Subunternehmer, Lieferanten und Fahrzeuge & Geräte für Dokumentation und Einsatzplanung.'
+                    : activeTab === 'bereiche'
+                      ? 'Bereiche für Mitarbeiter (Baustelle, Verwaltung …) und Filter in der Einsatzplanung.'
                     : activeTab === 'berichte'
                       ? 'Anzeigenamen für Tagesbericht und Std.-Lohn-Rapport in der App und in PDFs.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
@@ -151,6 +155,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
       {activeTab === 'stammdaten' ? (
         <BusinessPartnersPanel ctx={ctx} activePartnerTab={activePartnerTab} />
       ) : null}
+
+      {activeTab === 'bereiche' ? <TenantWorkAreasPanel ctx={ctx} /> : null}
 
       {activeTab === 'berichte' && canAccess(ctx, 'settings.branding') && tenant ? (
         <TenantReportLabelsForm tenant={tenant} />
@@ -216,11 +222,15 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
           </section>
 
           {canAccess(ctx, 'settings.holidays') && tenant ? (
-            <TenantBadWeatherAllowanceForm
-              allowanceDays={
-                tenant.bad_weather_allowance_days ?? 5
-              }
-            />
+            <>
+              <TenantLeaveCarryExpiryForm
+                expireMonth={tenant.leave_carry_expire_month ?? null}
+                expireDay={tenant.leave_carry_expire_day ?? null}
+              />
+              <TenantBadWeatherAllowanceForm
+                allowanceDays={tenant.bad_weather_allowance_days ?? 5}
+              />
+            </>
           ) : null}
         </>
       ) : null}

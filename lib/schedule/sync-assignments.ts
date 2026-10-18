@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { memberUserIdsIncludingForeman } from '@/lib/schedule/foreman-daily-report';
 import { addDays } from '@/lib/schedule/week';
 
 export type EntryForSync = {
@@ -8,6 +9,7 @@ export type EntryForSync = {
   end_date: string;
   start_time: string;
   memberUserIds: string[];
+  foremanUserId?: string | null;
 };
 
 /** Erster Einsatz pro Mitarbeiter und Tag → daily_assignments (für Zeiterfassung). */
@@ -24,7 +26,10 @@ export async function syncDailyAssignmentsFromSchedule(
     let day = entry.start_date;
     while (day <= entry.end_date && day <= weekEnd) {
       if (day >= weekStart) {
-        for (const userId of entry.memberUserIds) {
+        for (const userId of memberUserIdsIncludingForeman(
+          entry.memberUserIds,
+          entry.foremanUserId,
+        )) {
           const key = `${userId}:${day}`;
           const existing = byUserDay.get(key);
           if (!existing || entry.start_time < existing.startTime) {

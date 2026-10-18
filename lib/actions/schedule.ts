@@ -5,6 +5,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { insertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
 import { loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
+import { validatePublishPlanDate } from '@/lib/schedule/foreman-daily-report';
 import { syncDailyAssignmentsFromSchedule } from '@/lib/schedule/sync-assignments';
 import { addDays, mondayOfWeek } from '@/lib/schedule/week';
 import { createClient } from '@/lib/supabase/server';
@@ -349,6 +350,10 @@ async function publishDaysAndSync(
   const weekStart = mondayOfWeek(uniqueDays[0]);
   const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
 
+  for (const planDate of uniqueDays) {
+    await validatePublishPlanDate(supabase, ctx.tenantId, planDate);
+  }
+
   const now = new Date().toISOString();
   for (const planDate of uniqueDays) {
     await supabase.from('schedule_day_publications').upsert({
@@ -373,6 +378,7 @@ async function publishDaysAndSync(
         end_date: e.end_date,
         start_time: e.start_time,
         memberUserIds: e.members.map((m) => m.user_id),
+        foremanUserId: e.foreman_user_id,
       })),
     );
   }

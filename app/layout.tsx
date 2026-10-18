@@ -9,7 +9,7 @@ const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
 const barlow = Barlow({ variable: '--font-barlow', subsets: ['latin'], weight: ['500', '600', '700', '800', '900'] });
 
 export const metadata: Metadata = {
-  title: 'Værkflow · Baustellenmanagement',
+  title: 'BauDiggi · Baustellenmanagement',
   description: 'Multi-Tenant Web App für Mitarbeiter- und Baustellenmanagement.',
 };
 

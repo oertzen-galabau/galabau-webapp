@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
+import { listMyLeaveRequestsPreview } from '@/lib/leave/queries';
 import { ProfilePageHeader } from '@/components/profile/profile-page-header';
 import { ProfileRequestsOverview } from '@/components/profile/profile-requests-overview';
 import { ProfilePersonalForm } from '@/components/profile/profile-personal-form';
@@ -14,14 +15,12 @@ export default async function ProfilPage() {
   const canChangeEmail = canAccess(ctx, 'profile.change_email');
   const canChangePassword = canAccess(ctx, 'profile.change_password');
 
+  const tenantId = await getTenantIdForSession(ctx);
   const supabase = await createClient();
   const [{ data: leaveRequests }, { data: catalogOrders }, { data: clothingOrders }] = await Promise.all([
-    supabase
-      .from('leave_requests')
-      .select('id, leave_type, start_date, end_date, status, notes')
-      .eq('user_id', ctx.userId)
-      .order('created_at', { ascending: false })
-      .limit(5),
+    tenantId
+      ? listMyLeaveRequestsPreview(supabase, tenantId, ctx.userId, 5)
+      : Promise.resolve({ data: [], error: null }),
     supabase
       .from('catalog_orders')
       .select('id, created_at, total_eur, own_share_eur, status')

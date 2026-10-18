@@ -1,19 +1,38 @@
 # Aktueller Stand
 
 ## Letzte Änderungen
-- **Bestellformular PDF + Mail**: VO-Vorlage (`docs/VO Bestellformular.pdf`) — Einzel-PDF pro `catalog_order`, Sammel-PDF mit Übersichtsseite; ohne Eigenanteil; `lib/orders/pdf.ts`, `GET /api/orders/pdf`, `POST /api/orders/send` (SMTP); Permission `orders.share`; Admin-Tab „Alle Bestellungen“ (PDF/Mail, Mehrfachauswahl, Status „Bestellt“ nach Versand); Mitarbeiter eigener PDF-Download. Migration `074` auf Supabase galabau angewendet.
-- **Einsatzplanung (Tagesmodell)**: Migration `073` — Tag pro Einsatz, `schedule_day_publications`, Tages-PDF/Druck/Teilen/E-Mail.
-- **Dokumentation**: Subunternehmer Std.-Lohn-Rapport; Wetter-Vorlage; Tagesbericht Lieferblöcke; Geschäftspartner-Stammdaten.
+- **Einsatzplan Tagesansicht**: Timeline 06–20 Uhr, ein Tag ohne Mo–So-Leiste; Tag-Pfeile in Toolbar.
+- **Einsatzplan Mitarbeiter-Bereiche**: Tabelle `tenant_work_areas`, `profiles.work_area_id`, Migration `076`; Tab Einstellungen „Mitarbeiter-Bereiche“; Filter nur im Einsatz-Dialog (Chips/Suche); Plan-Ansicht ohne Filterleiste; Permission `settings.work_areas`.
+- **Infoboard Tablet (761–1080 px)**: 2-Spalten-Grid (`INFOBOARD_TABLET_COLS`), `layoutForTabletDisplay` (Freigabe volle Breite untereinander, Metriken 2 pro Zeile); Hook `use-infoboard-tablet.ts`; Drag/Resize im Bearbeiten-Modus auf Tablet aus (DB-Layout bleibt 4 Spalten); CSS in `globals.css` (Panel-Kopf, Metrik-Schatten, Job-Zeilen). Tests in `layout.test.ts`.
+- **Rebrand BauDiggi** (Code, uncommitted): Metadata, Landing, Footer `contact@baudiggi.de`; npm `baudiggi-baustellenmanagement`; Env-Beispiele `baudiggi.de`.
+- **Zeiterfassung Feierabend**: `ClockOutDialog`, kompakte Timeline, Gap-Hilfen in `lib/time-tracking/timeline.ts`.
+- **Infoboard UVV**: Widget `equipment_uvv_due`; Migration `075` (`booking_number`).
 
 ## Fokus
-Nach Deploy: Bestell-PDF einzeln/Sammel + E-Mail an Lieferant; Einsatzplan Tag veröffentlichen → PDF. Dokumentation/Wetter kurz gegenprüfen.
+Production-Rebrand (**baudiggi.de**) und Deploy der offenen Feature-Änderungen; Infoboard auf Tablet kurz visuell prüfen (~900 px).
 
 ## Nächste Schritte
-- Hostinger-Deploy + Hard-Refresh; `074` auf Prod-DB falls Mandant noch ohne `orders.share` in der Matrix.
-- SMTP live testen (Bestellungen nutzen dieselbe Konfiguration wie Einsatzplan/Rapporte).
-- Einsatzplan Mitarbeiter-Sicht (nur veröffentlichte Tage).
+- Rebrand + Features committen/deployen (Hostinger Build).
+- GitHub: `galabau-webapp` → `baudiggi-webapp` (**offen** — `gh` lokal nicht eingeloggt; SSH-Push auf altes Repo funktioniert); danach `git remote set-url` + Hostinger Git-Deploy.
+- Hostinger: DNS `baudiggi.de`/`www`; Env `NEXT_PUBLIC_ROOT_DOMAIN=baudiggi.de`, `NEXT_PUBLIC_PLATFORM_NAME=BauDiggi` (vollständiger Replace + Rebuild).
+- SMTP `@baudiggi.de`; 301 `vaerkflow.de` → `baudiggi.de`; Mandanten-URLs `slug.baudiggi.de` kommunizieren.
+- Prod-DB Migration `075`; **`076` auf Supabase (galabau) angewendet**; Smoke Einladung/Passwort-Reset; Infoboard UVV aktivieren; Bereiche den Mitarbeitern zuweisen.
 
 ## Offene Punkte
-- SMTP/Impressum/Datenschutz auf Live unvollständig.
-- Optional später: Standard-Lieferanten-E-Mail als Mandanten-Einstellung.
-- Build-Typecheck: gelegentlich `.next` Duplicate `LayoutProps` (lokal `rm -rf .next`).
+- Lokale `.env.local` manuell (BauDiggi, Domain localhost) — nicht committen.
+- Deployment-Checkliste GitHub/Hostinger siehe Tabelle unten.
+- Feierabend: Start/Ende nur über „Tagesaufteilung anpassen“ — Feedback abwarten.
+- SMTP/Impressum/Datenschutz live unvollständig.
+- `booking_number`: noch keine Lohnbuchungs-Anbindung.
+
+## Deployment-Checkliste (GitHub + Hostinger)
+
+| # | Aktion |
+|---|--------|
+| 1 | GitHub Repository rename → `baudiggi-webapp` |
+| 2 | Hostinger Git-Deploy auf neue Repo-URL |
+| 3 | DNS `baudiggi.de` / `www` → App |
+| 4 | Env-Variablen ersetzen + Rebuild |
+| 5 | SMTP `@baudiggi.de` |
+| 6 | 301 `vaerkflow.de` → `baudiggi.de` |
+| 7 | Smoke-Tests Mandanten-Subdomain |

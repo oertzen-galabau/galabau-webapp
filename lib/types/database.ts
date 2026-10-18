@@ -23,6 +23,8 @@ export type Tenant = {
   daily_report_label: string | null;
   hourly_wage_rapport_label: string | null;
   bad_weather_allowance_days: number;
+  leave_carry_expire_month: number | null;
+  leave_carry_expire_day: number | null;
   status: TenantStatus;
   plan: string;
   created_at: string;
@@ -48,6 +50,7 @@ export type Profile = {
   entry_date: string | null;
   exit_date: string | null;
   job_title: string | null;
+  work_area_id: string | null;
   leader_code: string | null;
   is_active: boolean;
   must_change_password: boolean;
@@ -529,6 +532,17 @@ export type ScheduleEntryMember = {
   created_at: string;
 };
 
+export type TenantWorkArea = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  schedule_assignable: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TenantEquipmentKind = 'vehicle' | 'equipment' | 'trailer';
 export type TenantEquipmentStatus = 'active' | 'workshop' | 'retired';
 
@@ -548,6 +562,7 @@ export type TenantEquipment = {
   operating_hours: number | null;
   mileage_km: number | null;
   license_class_required: string | null;
+  booking_number: string | null;
   status: TenantEquipmentStatus;
   notes: string | null;
   is_active: boolean;

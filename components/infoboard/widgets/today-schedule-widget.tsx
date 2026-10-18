@@ -26,7 +26,8 @@ export function TodayScheduleWidget({ dateLabel, rows }: Props) {
             <span className={`job-marker ${job.tone}`} />
             <span className="job-copy">
               <strong>{job.title}</strong>
-              <small>{job.place}</small>
+              <small>{job.subtitle ?? job.place}</small>
+              {job.subtitle ? <small className="muted">{job.place}</small> : null}
             </span>
             <ChevronRight size={18} />
           </Link>

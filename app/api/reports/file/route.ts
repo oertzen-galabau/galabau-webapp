@@ -79,11 +79,17 @@ export async function GET(request: Request) {
   const reportType = parseDailyLogReportType(dailyLog?.report_type);
   const filename = `${pdfFilenameStem(reportType, dailyLog?.custom_title ?? null, report.report_date, reportLabels)}.pdf`;
 
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.length === 0) {
+    return NextResponse.json({ error: 'PDF-Datei ist leer' }, { status: 400 });
+  }
+
   const headers = new Headers({
     'Content-Type': 'application/pdf',
     'Content-Disposition': `${disposition}; filename="${filename.replace(/"/g, '')}"`,
+    'Content-Length': String(buffer.length),
     'Cache-Control': 'private, no-store',
   });
 
-  return new NextResponse(file.stream(), { status: 200, headers });
+  return new NextResponse(buffer, { status: 200, headers });
 }

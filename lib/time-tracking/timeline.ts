@@ -258,6 +258,80 @@ export function buildDefaultTimeline(params: {
   return mergeAdjacentBlocks(blocks);
 }
 
+export type TimelineGap = {
+  start_time: string;
+  end_time: string;
+};
+
+const minutesToTime = (minutes: number) =>
+  `${Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}`;
+
+/** Lücken zwischen Blöcken und zum Tagesbeginn/-ende (für UI-Hinweise). */
+export function findTimelineGaps(
+  blocks: TimelineBlockInput[],
+  dayStart: string,
+  dayEnd: string,
+): TimelineGap[] {
+  const startBound = parseTime(dayStart);
+  const endBound = parseTime(dayEnd);
+  if (startBound == null || endBound == null || endBound <= startBound) return [];
+
+  const normalized = normalizeTimelineBlocks(blocks.filter((b) => b.start_time && b.end_time));
+  const gaps: TimelineGap[] = [];
+
+  if (normalized.length === 0) {
+    gaps.push({ start_time: dayStart, end_time: dayEnd });
+    return gaps;
+  }
+
+  const firstStart = parseTime(normalized[0].start_time)!;
+  if (firstStart > startBound) {
+    gaps.push({ start_time: dayStart, end_time: minutesToTime(firstStart) });
+  }
+
+  for (let i = 0; i < normalized.length - 1; i++) {
+    const currentEnd = parseTime(normalized[i].end_time)!;
+    const nextStart = parseTime(normalized[i + 1].start_time)!;
+    if (nextStart > currentEnd) {
+      gaps.push({
+        start_time: minutesToTime(currentEnd),
+        end_time: minutesToTime(nextStart),
+      });
+    }
+  }
+
+  const lastEnd = parseTime(normalized[normalized.length - 1].end_time)!;
+  if (lastEnd < endBound) {
+    gaps.push({ start_time: minutesToTime(lastEnd), end_time: dayEnd });
+  }
+
+  return gaps;
+}
+
+/** Fügt einen Block ein, der die erste Lücke mit site_work oder other_work füllt. */
+export function fillFirstTimelineGap(
+  blocks: TimelineBlockInput[],
+  dayStart: string,
+  dayEnd: string,
+  options: { siteId?: string | null; blockType?: 'site_work' | 'other_work' | 'travel' } = {},
+): TimelineBlockInput[] {
+  const gaps = findTimelineGaps(blocks, dayStart, dayEnd);
+  if (gaps.length === 0) return blocks;
+
+  const gap = gaps[0];
+  const blockType = options.blockType ?? (options.siteId ? 'site_work' : 'other_work');
+  const newBlock: TimelineBlockInput = {
+    block_type: blockType,
+    start_time: gap.start_time,
+    end_time: gap.end_time,
+    site_id: blockType === 'site_work' ? options.siteId ?? null : null,
+  };
+
+  return mergeAdjacentBlocks(normalizeTimelineBlocks([...blocks, newBlock]));
+}
+
 export function mergeAdjacentBlocks(blocks: TimelineBlockInput[]): TimelineBlockInput[] {
   if (blocks.length === 0) return blocks;
   const merged: TimelineBlockInput[] = [{ ...blocks[0] }];

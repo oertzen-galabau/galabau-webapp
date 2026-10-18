@@ -129,12 +129,29 @@ describe('computeLeaveBalanceBreakdown', () => {
     assert.equal(result.mandatoryDays, 1);
     assert.equal(result.badWeatherDays, 1);
     assert.equal(result.badWeatherAllowanceDays, 5);
-    assert.equal(result.badWeatherDeductionFromVacation, 5);
-    assert.equal(result.totalExtraDeduction, 6);
-    assert.equal(result.remaining, 30 - 5 - 6);
+    assert.equal(result.badWeatherDeductionFromVacation, 1);
+    assert.equal(result.totalExtraDeduction, 2);
+    assert.equal(result.remaining, 30 - 5 - 2);
+    assert.equal(result.effectiveCarriedOver, 0);
+    assert.equal(result.totalAvailable, 30);
   });
 
-  it('reserves SW allowance as buffer when none booked', () => {
+  it('rechnet Resturlaub Vorjahr in Gesamt und Rest ein', () => {
+    const result = computeLeaveBalanceBreakdown({
+      balance: { entitlement_days: 30, carried_over_days: 5, used_days: 2 },
+      year: 2026,
+      companyHolidays: [],
+      bridgeDays: [],
+      tenantBadWeatherDays: [],
+      timeEntries: [],
+      badWeatherAllowanceDays: 0,
+      badWeatherRuleEnabled: false,
+    });
+    assert.equal(result.totalAvailable, 35);
+    assert.equal(result.remaining, 35 - 2 - 0);
+  });
+
+  it('does not reserve SW allowance when none booked', () => {
     const result = computeLeaveBalanceBreakdown({
       balance: { entitlement_days: 30, carried_over_days: 0, used_days: 0 },
       year: 2025,
@@ -145,8 +162,8 @@ describe('computeLeaveBalanceBreakdown', () => {
       badWeatherAllowanceDays: 5,
     });
     assert.equal(result.badWeatherDays, 0);
-    assert.equal(result.badWeatherDeductionFromVacation, 5);
-    assert.equal(result.remaining, 25);
+    assert.equal(result.badWeatherDeductionFromVacation, 0);
+    assert.equal(result.remaining, 30);
   });
 
   it('deducts SW from rest above allowance on top of buffer', () => {
@@ -174,7 +191,27 @@ describe('computeLeaveBalanceBreakdown', () => {
     });
     assert.equal(result.badWeatherDays, 6);
     assert.equal(result.badWeatherDeductionFromVacation, 6);
-    assert.equal(result.remaining, 24);
+    assert.equal(result.remaining, 30 - 6);
+  });
+
+  it('uses stored manual carry without automatic inflation', () => {
+    const result = computeLeaveBalanceBreakdown({
+      balance: {
+        entitlement_days: 30,
+        carried_over_days: 0,
+        used_days: 0,
+        carried_over_source: 'manual',
+      },
+      year: 2026,
+      companyHolidays: [],
+      bridgeDays: [],
+      tenantBadWeatherDays: [],
+      timeEntries: [],
+      badWeatherAllowanceDays: 5,
+    });
+    assert.equal(result.effectiveCarriedOver, 0);
+    assert.equal(result.totalAvailable, 30);
+    assert.equal(result.remaining, 30);
   });
 
   it('does not double-count SW on mandatory day', () => {
@@ -200,7 +237,7 @@ describe('computeLeaveBalanceBreakdown', () => {
     });
     assert.equal(result.mandatoryDays, 1);
     assert.equal(result.badWeatherDays, 0);
-    assert.equal(result.badWeatherDeductionFromVacation, 5);
-    assert.equal(result.remaining, 24);
+    assert.equal(result.badWeatherDeductionFromVacation, 0);
+    assert.equal(result.remaining, 29);
   });
 });

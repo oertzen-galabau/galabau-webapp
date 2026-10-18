@@ -39,3 +39,5 @@ next-env.d.ts
 DESIGN_SYSTEM.md
 Anforderungskatalog_Web_App_Baustellenmanagement_5000_EUR.pdf
 docs/
+.agents
+.cursor

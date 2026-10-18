@@ -1,7 +1,7 @@
-# Projekt: Værkflow – Baustellenmanagement (SaaS)
+# Projekt: BauDiggi – Baustellenmanagement (SaaS)
 
 ## Ziel
-Cloud-SaaS für GaLaBau-/Bau-Betriebe: mandantenfähige Web-App für Arbeitszeiterfassung, Tagesdokumentation, Urlaubsverwaltung, Baustellenakten und PDF-Rapporte. Zielgruppe: Bauunternehmen (Mitarbeiter, Vorarbeiter, Verwaltung) sowie Plattform-Betreiber (Superadmin). Vertrieb über Marketing-Landingpage mit **7-Tage-Test** und Self-Service-Registrierung (`/register`).
+Cloud-SaaS für Bau-Betriebe: mandantenfähige Web-App für Arbeitszeiterfassung, Tagesdokumentation, Urlaubsverwaltung, Baustellenakten und PDF-Rapporte. Zielgruppe: Bauunternehmen (Mitarbeiter, Vorarbeiter, Verwaltung) sowie Plattform-Betreiber (Superadmin). Vertrieb über Marketing-Landingpage mit **7-Tage-Test** und Self-Service-Registrierung (`/register`).
 
 ## Tech-Stack
 - **Next.js 16** (App Router), React 19, TypeScript, Tailwind CSS v4.
@@ -26,14 +26,16 @@ Cloud-SaaS für GaLaBau-/Bau-Betriebe: mandantenfähige Web-App für Arbeitszeit
 - **Mandanten-Branding**: `tenants.logo_url` + Farbfelder; Upload in public Bucket `tenant-logos`; Theme-Overrides in `lib/tenant/resolve.ts`; UI `components/settings/tenant-branding-form.tsx`; Permission `settings.branding`.
 - **Mandanten-Startpasswort**: `tenants.default_start_password`; Tab `/app/einstellungen?tab=startpasswort`; bei Anlage neuer Mitarbeiter und bei Änderung für alle Mandanten-User; Permission `settings.start_password`; Lesen nur über Admin-Client (Spalten-Privileg).
 - **Mitarbeiter-Stammdaten**: `profiles.job_title` (Berufbezeichnung); Anlage unter `/app/team`, Pflege in Stammdaten; Übernahme in Tagesrapport/PDF.
+- **Mitarbeiter-Bereiche**: `tenant_work_areas` (pro Mandant, Flag `schedule_assignable`); `profiles.work_area_id`; Pflege `/app/einstellungen?tab=bereiche` (`settings.work_areas`); Filter im Einsatz-Dialog beim Mitarbeiter-Picker.
 - **Baustellendokumentation**: `daily_logs` mit `report_type` (Tagesbericht vs. Std.-Lohn-Rapport) und optionalem `custom_title`; Unique pro Mandant/Baustelle/Datum/**Art**; schlankes Formular für Tagesbericht (ohne Stunden/Unterschriften); PDF/Labels über `lib/documentation/report-labels.ts`. Std.-Lohn-Rapport: Subunternehmer (`subcontractor_entries`, Gruppen `group_key` + Personenzeilen); Tagesbericht optional Lieferblöcke (`delivery_notes`). Submit für Subs aus React-State → `FormData` (`lib/documentation/subcontractor-groups.ts`).
 - **Geschäftspartner (Stammdaten)**: `tenant_business_partners`; UI `/app/geschaeftspartner`; Permissions `nav.partners`, `partners.view/manage`; Verknüpfung in Subunternehmer-, Lieferanten- und Baustellen-Lieferanten-Feldern (`resolvePartnerName` in Actions).
 - **Bestellkatalog & Bestellungen**: Katalog + Warenkorb/Budget (`catalog_orders`, `lib/orders/*`); Lieferanten-Bestellformular PDF (`lib/orders/pdf.ts`), `GET /api/orders/pdf`, Versand `POST /api/orders/send`; Permissions `orders.create`, `orders.manage`, `orders.share` (PDF/Mail Verwaltung), `orders.manage_budget`.
 - **Einsatzplanung**: Tageseinsätze (`schedule_entries`, ein Tag pro Zeile), Veröffentlichung pro Tag (`schedule_day_publications`); Wochenansicht abgeleitet. Tages-/Wochen-PDF und E-Mail `/api/schedule/pdf`, `/api/schedule/send`. Permissions `schedule.view/manage/publish/share`.
 
 ## Entscheidungen & Constraints
+- **Plattform-Marke**: Produktname **BauDiggi**; Default `lib/tenant/config.ts`, Override `NEXT_PUBLIC_PLATFORM_NAME`; Root-Domain `NEXT_PUBLIC_ROOT_DOMAIN` (Prod: **baudiggi.de**). UI/E-Mails über `getPlatformName()` — keine hardcodierten Produktnamen.
 - **Pflicht bei jeder neuen Funktion**: Neue Features müssen immer in Rollen & Berechtigungen hinterlegt werden — Permission-Key in `lib/auth/permissions.ts` (Katalog + ggf. Default-Sets), Guards via `canAccess()` auf Seiten/Actions/APIs, optional Nav-Eintrag mit eigenem Key. Ohne Permission-Integration gilt ein Feature als nicht fertig.
 - Permission-Keys im Code (versionierbar); Matrix speichert nur Zuordnungen in der DB.
 - Mindestens eine Rolle behält `roles.manage`; System-Rollen nicht löschbar.
 - Superadmin: voller Zugriff ohne Impersonation; Enum `profiles.role` vorerst für Sync/Legacy.
-- Deployment-Ziel: Node.js-Hosting (Hostinger), Git-Auto-Deploy von `oertzen-galabau/galabau-webapp` (Branch `main`); Production-Build **Webpack** (`scripts/build.mjs --webpack`), Turbopack auf Hostinger instabil. Domain-Ziel `vaerkflow.de`.
+- Deployment-Ziel: Node.js-Hosting (Hostinger), Git-Auto-Deploy (Branch `main`; Repo-Umbenennung geplant: `baudiggi-webapp`); Production-Build **Webpack** (`scripts/build.mjs --webpack`), Turbopack auf Hostinger instabil. Domain-Ziel **baudiggi.de** (`NEXT_PUBLIC_ROOT_DOMAIN`, `NEXT_PUBLIC_PLATFORM_NAME=BauDiggi`).

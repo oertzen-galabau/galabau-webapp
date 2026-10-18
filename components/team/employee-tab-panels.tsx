@@ -3,17 +3,19 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import {
   updateEmployeeProfile,
   updateLeaveEntitlement,
+  recalculateLeaveCarryFromPreviousYear,
   updateMemberRole,
   setMemberActive,
   sendEmployeePasswordReset,
   saveEmployeeNote,
 } from '@/lib/actions/admin';
+import { formatCarryExpiryLabel } from '@/lib/leave/carry-over';
 import { updateLeaveStatus } from '@/lib/actions/employee';
 import { updateEmployeeClothingOrderBudget } from '@/lib/actions/orders';
 import { canAccess } from '@/lib/auth/session';
 import { LeaveBalanceMetrics } from '@/components/leave/leave-balance-metrics';
 import { formatLeaveType } from '@/lib/leave/labels';
-import type { LeaveBalanceBreakdown } from '@/lib/leave/balance';
+import type { LeaveBalanceBreakdown, LeaveBalanceRow } from '@/lib/leave/balance';
 import type { BudgetBreakdown } from '@/lib/orders/budget';
 import { OrderBudgetMetrics } from '@/components/orders/order-budget-metrics';
 import { formatOrderEuro, ORDER_STATUS_LABELS } from '@/lib/orders/labels';
@@ -27,6 +29,7 @@ import type {
   LeaveRequest,
   Profile,
   TenantRole,
+  TenantWorkArea,
   TimeEntry,
 } from '@/lib/types/database';
 import { EmployeeInvitationPanel } from '@/components/team/employee-invitation-panel';
@@ -36,6 +39,7 @@ import {
 } from '@/lib/team/member-access-status';
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
+import { WorkAreaSelect } from '@/components/team/work-area-select';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 
 const SALUTATION_OPTIONS = [
@@ -64,12 +68,10 @@ type Props = {
   ctx: PermCtx & { userId: string };
   year: number;
   month: string;
-  balance: {
-    entitlement_days: number;
-    carried_over_days: number;
-    used_days: number;
-  } | null;
+  balance: LeaveBalanceRow | null;
   leaveBreakdown: LeaveBalanceBreakdown;
+  carriedOverSource: 'manual' | 'automatic';
+  carryExpiry: { month: number; day: number } | null;
   leaveRequests: LeaveRequest[];
   timeEntries: TimeEntry[];
   assignments: AssignmentRow[];
@@ -82,6 +84,7 @@ type Props = {
   pendingLeaveCount: number;
   todayAssignment: AssignmentRow | null;
   invitation: EmployeeInvitation | null;
+  workAreas: Pick<TenantWorkArea, 'id' | 'name' | 'is_active'>[];
 };
 
 function can(ctx: PermCtx, key: PermissionKey) {
@@ -200,7 +203,7 @@ function OverviewTab({
   );
 }
 
-function StammdatenTab({ member, ctx }: Props) {
+function StammdatenTab({ member, ctx, workAreas }: Props) {
   const editable = can(ctx, 'team.edit_profile');
 
   return (
@@ -226,6 +229,14 @@ function StammdatenTab({ member, ctx }: Props) {
           <label>E-Mail<input name="email" type="email" defaultValue={member.email} required disabled={!editable} /></label>
           <label>Telefon<input name="phone" type="tel" defaultValue={member.phone ?? ''} disabled={!editable} /></label>
           <label>Berufbezeichnung<input name="job_title" defaultValue={member.job_title ?? ''} disabled={!editable} placeholder="z.B. Vorarbeiter, Gärtner" /></label>
+          <label>
+            Bereich (Einsatzplan)
+            <WorkAreaSelect
+              areas={workAreas}
+              defaultValue={member.work_area_id}
+              disabled={!editable}
+            />
+          </label>
           <label>Bauleiter-Kürzel<input name="leader_code" defaultValue={member.leader_code ?? ''} disabled={!editable} placeholder="z.B. LG, MS" maxLength={8} /></label>
           <label>Straße<input name="address" defaultValue={member.address ?? ''} disabled={!editable} /></label>
           <label>PLZ<input name="zip_code" defaultValue={member.zip_code ?? ''} disabled={!editable} /></label>
@@ -261,15 +272,18 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
   const canViewRoles = can(ctx, 'roles.manage');
 
   return (
-    <section className="panel form-panel employee-section">
+    <section className="panel form-panel form-panel--compact employee-section employee-access-panel">
       <h2>Rolle & Zugriff</h2>
-      <p className="muted">Aktuelle Rolle: <strong>{roleName}</strong></p>
+      <p className="employee-access-lead muted">
+        Aktuelle Rolle: <strong>{roleName}</strong>
+      </p>
 
       {canAssign && (
-        <form action={updateMemberRole} className="input-form" style={{ marginTop: 16 }}>
+        <form action={updateMemberRole} className="input-form employee-role-form">
           <input type="hidden" name="user_id" value={member.id} />
-          <div className="input-form-core">
-            <label>Mandanten-Rolle
+          <div className="employee-role-assign-row">
+            <label>
+              Mandanten-Rolle
               <AppSelect
                 name="tenant_role_id"
                 defaultValue={member.tenant_role_id ?? ''}
@@ -279,79 +293,107 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
                 options={(tenantRoles ?? []).map((role) => ({ value: role.id, label: role.name }))}
               />
             </label>
+            {!isSelf && (
+              <button type="submit" className="primary-button primary-button--compact">
+                Rolle speichern
+              </button>
+            )}
           </div>
-          {isSelf && <p className="muted">Eigene Rolle kann nicht geändert werden.</p>}
-          {!isSelf && (
-            <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Rolle speichern</button>
-            </div>
-          )}
+          {isSelf && <p className="muted employee-access-hint">Eigene Rolle kann nicht geändert werden.</p>}
         </form>
       )}
 
       {canViewRoles && member.tenant_role_id && (
-        <p style={{ marginTop: 12 }}>
+        <p className="employee-access-link-row">
           <Link href={`/app/rollen?role=${member.tenant_role_id}`} className="text-button">
             Berechtigungen dieser Rolle anzeigen
           </Link>
         </p>
       )}
 
-      <div className="employee-section-divider" />
+      <div className="employee-section-divider employee-section-divider--compact" />
 
-      <h3>Status & Zugang</h3>
-      <p>
-        Aktuell:{' '}
-        {memberAccessStatusLabel(getMemberAccessStatus({
-          is_active: member.is_active,
-          must_change_password: member.must_change_password,
-        }))}
-      </p>
-      <div className="inline-actions" style={{ marginTop: 8 }}>
-        {canDeactivate && !isSelf && (
-          <form action={setMemberActive}>
-            <input type="hidden" name="user_id" value={member.id} />
-            <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
-            <button type="submit" className="primary-button">
-              {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
-            </button>
-          </form>
-        )}
-        {canReset && (
-          <form action={sendEmployeePasswordReset}>
-            <input type="hidden" name="user_id" value={member.id} />
-            <button type="submit" className="text-button">Passwort-Reset senden</button>
-          </form>
-        )}
+      <div className="employee-access-block">
+        <h3>Status & Zugang</h3>
+        <div className="employee-access-status-row">
+          <p className="employee-access-status-label">
+            Aktuell:{' '}
+            <strong>
+              {memberAccessStatusLabel(getMemberAccessStatus({
+                is_active: member.is_active,
+                must_change_password: member.must_change_password,
+              }))}
+            </strong>
+          </p>
+          <div className="inline-actions employee-access-actions">
+            {canDeactivate && !isSelf && (
+              <form action={setMemberActive}>
+                <input type="hidden" name="user_id" value={member.id} />
+                <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
+                <button type="submit" className="primary-button primary-button--compact">
+                  {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                </button>
+              </form>
+            )}
+            {canReset && (
+              <form action={sendEmployeePasswordReset}>
+                <input type="hidden" name="user_id" value={member.id} />
+                <button type="submit" className="text-button">
+                  Passwort-Reset senden
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
+        <EmployeeInvitationPanel
+          memberId={member.id}
+          memberName={`${member.first_name} ${member.last_name}`}
+          mustChangePassword={member.must_change_password ?? false}
+          invitation={invitation}
+          canManageInvites={can(ctx, 'team.manage_invites')}
+        />
       </div>
-
-      <EmployeeInvitationPanel
-        memberId={member.id}
-        memberName={`${member.first_name} ${member.last_name}`}
-        mustChangePassword={member.must_change_password ?? false}
-        invitation={invitation}
-        canManageInvites={can(ctx, 'team.manage_invites')}
-      />
     </section>
   );
 }
 
-function UrlaubTab({ member, ctx, year, balance, leaveRequests, leaveBreakdown }: Props) {
+function UrlaubTab({
+  member,
+  ctx,
+  year,
+  balance,
+  leaveRequests,
+  leaveBreakdown,
+  carriedOverSource,
+  carryExpiry,
+}: Props) {
   const canEditEntitlement = can(ctx, 'team.leave_entitlement');
   const canApprove = can(ctx, 'urlaub.approve');
+  const totalGross =
+    leaveBreakdown.entitlementDays + Number(balance?.carried_over_days ?? 0);
 
   return (
     <>
-      <LeaveBalanceMetrics breakdown={leaveBreakdown} />
+      <LeaveBalanceMetrics
+        breakdown={leaveBreakdown}
+        carryExpiry={carryExpiry}
+        layout="grouped"
+      />
 
       {canEditEntitlement && (
-        <section className="panel form-panel employee-section">
+        <section className="panel form-panel form-panel--compact employee-section leave-entitlement-panel">
           <h2>Urlaubsanspruch {year}</h2>
-          <form action={updateLeaveEntitlement} className="input-form">
+          <form
+            id={`leave-entitlement-${member.id}-${year}`}
+            action={updateLeaveEntitlement}
+            className="input-form leave-entitlement-form"
+          >
             <input type="hidden" name="user_id" value={member.id} />
             <input type="hidden" name="year" value={year} />
-            <div className="input-form-core">
-              <label>Tage
+            <div className="input-form-core input-form-core--split">
+              <label>
+                Jahresanspruch (Tage)
                 <input
                   type="number"
                   name="entitlement_days"
@@ -360,11 +402,54 @@ function UrlaubTab({ member, ctx, year, balance, leaveRequests, leaveBreakdown }
                   defaultValue={balance?.entitlement_days ?? 30}
                 />
               </label>
+              <label>
+                Resturlaub Vorjahr (Tage)
+                <input
+                  type="number"
+                  name="carried_over_days"
+                  min={0}
+                  step={0.5}
+                  defaultValue={balance?.carried_over_days ?? 0}
+                />
+              </label>
             </div>
-            <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Speichern</button>
-            </div>
+            <p className="muted leave-entitlement-hint">
+              {carriedOverSource === 'manual'
+                ? 'Resturlaub manuell gesetzt.'
+                : `Resturlaub automatisch aus ${year - 1} übernommen.`}
+              {carryExpiry && (
+                <>
+                  {' '}
+                  {leaveBreakdown.beforeCarryExpiry
+                    ? `Verfällt am ${formatCarryExpiryLabel(carryExpiry)}.`
+                    : leaveBreakdown.forfeitedCarry > 0
+                      ? `${leaveBreakdown.forfeitedCarry.toFixed(1)} Tag(e) Resturlaub verfallen.`
+                      : null}
+                </>
+              )}
+            </p>
           </form>
+          <div className="leave-entitlement-footer">
+            <form action={recalculateLeaveCarryFromPreviousYear} className="leave-recalc-form">
+              <input type="hidden" name="user_id" value={member.id} />
+              <input type="hidden" name="year" value={year} />
+              <button type="submit" className="text-button">
+                Resturlaub aus {year - 1} neu berechnen
+              </button>
+            </form>
+            <p className="leave-entitlement-total">
+              Gesamt verfügbar (brutto): <strong>{totalGross.toFixed(1)}</strong> Tage
+            </p>
+            <div className="input-form-actions">
+              <button
+                type="submit"
+                form={`leave-entitlement-${member.id}-${year}`}
+                className="primary-button primary-button--compact"
+              >
+                Speichern
+              </button>
+            </div>
+          </div>
         </section>
       )}
 

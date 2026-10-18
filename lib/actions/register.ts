@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { seedTenantRoles } from '@/lib/tenant/roles';
 import { seedPayrollDefaults } from '@/lib/payroll/tenant-rules';
+import { seedTenantWorkAreas } from '@/lib/tenant/work-areas';
 
 export type RegisterPlan = 'solo' | 'team' | 'max';
 
@@ -110,6 +111,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
 
     try {
       await seedPayrollDefaults(admin, tenant.id);
+      await seedTenantWorkAreas(admin, tenant.id);
       const roleIds = await seedTenantRoles(admin, tenant.id);
       const adminRoleId = roleIds.get('administrator');
       if (!adminRoleId) {

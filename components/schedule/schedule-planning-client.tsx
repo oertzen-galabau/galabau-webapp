@@ -16,10 +16,18 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import Link from 'next/link';
+import { ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import { ScheduleDayTimeline } from '@/components/schedule/schedule-day-timeline';
 import { ScheduleEntryDialog } from '@/components/schedule/schedule-entry-dialog';
-import { PromptDialog } from '@/components/ui/app-dialogs';
+import { AppDialog, PromptDialog } from '@/components/ui/app-dialogs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   copyScheduleDay,
   copyScheduleWeek,
@@ -39,7 +47,7 @@ import {
   weekDayLabels,
   formatGermanWeekdayDate,
 } from '@/lib/schedule/week';
-import type { Profile, Site } from '@/lib/types/database';
+import type { Site } from '@/lib/types/database';
 
 type Props = {
   plan: SchedulePlanData;
@@ -285,6 +293,8 @@ export function SchedulePlanningClient({
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailPending, setEmailPending] = useState(false);
+  const [printDayDialogOpen, setPrintDayDialogOpen] = useState(false);
+  const [printDayDate, setPrintDayDate] = useState(selectedDay);
   const [actionError, setActionError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [weekendExpanded, setWeekendExpanded] = useState(false);
@@ -303,11 +313,20 @@ export function SchedulePlanningClient({
   );
 
   const sites = plan.sites as Pick<Site, 'id' | 'name'>[];
-  const employees = plan.employees as Pick<Profile, 'id' | 'first_name' | 'last_name'>[];
+  const employees = plan.employees as SchedulePlanData['employees'];
+  const workAreas = plan.workAreas;
 
   const visibleDayCount = weekendExpanded ? plan.weekDays.length : SCHEDULE_DEFAULT_VISIBLE_DAYS;
 
-  const { conflictEntryIds, entriesByDay, weekendHasEntries, unplannedSites, plannedSites } = useMemo(() => {
+  const {
+    conflictEntryIds,
+    entriesByDay,
+    weekendHasEntries,
+    unplannedSites,
+    plannedSites,
+    unplannedWeekSites,
+    plannedWeekSites,
+  } = useMemo(() => {
     const conflictIds = new Set<string>();
     for (const c of plan.scheduleConflicts) {
       conflictIds.add(c.entryIds[0]);
@@ -331,21 +350,34 @@ export function SchedulePlanningClient({
     const unplanned = sites.filter((s) => !daySiteIds.has(s.id));
     const planned = (byDay.get(selectedDay) ?? []).map((e) => e.site);
 
+    const weekSiteIds = new Set<string>();
+    for (const entry of plan.entries) {
+      if (plan.weekDays.includes(entry.start_date)) {
+        weekSiteIds.add(entry.site_id);
+      }
+    }
+    const unplannedWeek = sites.filter((s) => !weekSiteIds.has(s.id));
+    const plannedWeek = sites.filter((s) => weekSiteIds.has(s.id));
+
     return {
       conflictEntryIds: conflictIds,
       entriesByDay: byDay,
       weekendHasEntries: weekendEntries,
       unplannedSites: unplanned,
       plannedSites: planned,
+      unplannedWeekSites: unplannedWeek,
+      plannedWeekSites: plannedWeek,
     };
   }, [plan.scheduleConflicts, plan.entries, plan.weekDays, sites, selectedDay]);
+
+  const siteBarUnplanned = view === 'day' ? unplannedSites : unplannedWeekSites;
+  const siteBarPlanned = view === 'day' ? plannedSites : plannedWeekSites;
 
   const visibleWeekDays = plan.weekDays.slice(0, visibleDayCount);
 
   const dayEntries = plan.entries.filter((e) => e.start_date === selectedDay);
   const selectedDayPublished = plan.publishedByDay[selectedDay] ?? false;
 
-  const dayLabels = weekDayLabels();
   const today = todayIsoInBerlin();
   const weekOfToday = mondayOfWeek(today);
   const tomorrow = addDays(today, 1);
@@ -386,6 +418,12 @@ export function SchedulePlanningClient({
     const iso = d.toISOString().slice(0, 10);
     const dayParam = view === 'day' ? `&day=${addDays(selectedDay, offset * 7)}` : '';
     router.push(`/app/einsatzplanung?week=${iso}&view=${view}${dayParam}`);
+  }
+
+  function navigateDay(offset: number) {
+    const nextDay = addDays(selectedDay, offset);
+    const week = mondayOfWeek(nextDay);
+    router.push(`/app/einsatzplanung?week=${week}&view=day&day=${nextDay}`);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -458,11 +496,16 @@ export function SchedulePlanningClient({
     }
   }
 
-  async function fetchSchedulePdf(mode: 'day' | 'week', disposition: 'attachment' | 'inline' = 'attachment') {
+  async function fetchSchedulePdf(
+    mode: 'day' | 'week',
+    disposition: 'attachment' | 'inline' = 'attachment',
+    dayDate?: string,
+  ) {
+    const date = dayDate ?? selectedDay;
     const base =
       mode === 'week'
         ? `/api/schedule/pdf?mode=week&week_start=${plan.weekStart}`
-        : `/api/schedule/pdf?mode=day&date=${selectedDay}`;
+        : `/api/schedule/pdf?mode=day&date=${date}`;
     const url = `${base}&disposition=${disposition}`;
     const res = await fetch(url);
     if (!res.ok) {
@@ -473,14 +516,33 @@ export function SchedulePlanningClient({
     return res.blob();
   }
 
-  async function sharePdf(mode: 'day' | 'week') {
+  function pdfFileName(mode: 'day' | 'week', dayDate?: string) {
+    return mode === 'week'
+      ? `wochenplan-${plan.weekStart}.pdf`
+      : `einsatzplan-${dayDate ?? selectedDay}.pdf`;
+  }
+
+  async function downloadSchedulePdf(mode: 'day' | 'week', dayDate?: string) {
+    setActionError(null);
+    const blob = await fetchSchedulePdf(mode, 'attachment', dayDate);
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = pdfFileName(mode, dayDate);
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function openPrintDayDialog() {
+    setPrintDayDate(view === 'day' ? selectedDay : todayIsoInBerlin());
+    setPrintDayDialogOpen(true);
+  }
+
+  async function shareScheduleWhatsApp() {
+    const mode = view === 'week' ? 'week' : 'day';
     const blob = await fetchSchedulePdf(mode);
     if (!blob) return;
-    const file = new File(
-      [blob],
-      mode === 'week' ? `wochenplan-${plan.weekStart}.pdf` : `einsatzplan-${selectedDay}.pdf`,
-      { type: 'application/pdf' },
-    );
+    const file = new File([blob], pdfFileName(mode), { type: 'application/pdf' });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({
         files: [file],
@@ -488,23 +550,12 @@ export function SchedulePlanningClient({
       });
       return;
     }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = file.name;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    if (mode === 'day') {
-      const text = encodeURIComponent(`Einsatztafel ${selectedDay}`);
-      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
-    }
-  }
-
-  async function printDayPdf() {
-    const blob = await fetchSchedulePdf('day', 'inline');
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    await downloadSchedulePdf(mode);
+    const text =
+      mode === 'week'
+        ? encodeURIComponent(`Wochenplan ab ${plan.weekStart}`)
+        : encodeURIComponent(`Einsatztafel ${selectedDay}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
   return (
@@ -523,138 +574,169 @@ export function SchedulePlanningClient({
           </p>
         </div>
         <div className="schedule-toolbar">
-          <div className="schedule-toolbar-view" role="group" aria-label="Ansicht">
-            <Link
-              href={`/app/einsatzplanung?week=${plan.weekStart}&view=week`}
-              className={view === 'week' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
-            >
-              Woche
-            </Link>
-            <Link
-              href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${selectedDay}`}
-              className={view === 'day' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
-            >
-              Tag
-            </Link>
-            <Link
-              href={heuteHref}
-              className={
-                heuteIsCurrent
-                  ? 'secondary-button secondary-button--compact schedule-toolbar-heute is-current'
-                  : 'secondary-button secondary-button--compact schedule-toolbar-heute'
-              }
-              aria-current={heuteIsCurrent ? 'true' : undefined}
-            >
-              Heute
-            </Link>
-            <Link
-              href={morgenHref}
-              className={
-                morgenIsCurrent
-                  ? 'secondary-button secondary-button--compact schedule-toolbar-heute is-current'
-                  : 'secondary-button secondary-button--compact schedule-toolbar-heute'
-              }
-              aria-current={morgenIsCurrent ? 'true' : undefined}
-            >
-              Morgen
-            </Link>
-          </div>
-          <div className="schedule-toolbar-nav" role="group" aria-label="Woche wechseln">
-            <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(-1)} aria-label="Vorherige Woche">
-              ←
-            </button>
-            <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(1)} aria-label="Nächste Woche">
-              →
-            </button>
-          </div>
-          {canManage ? (
-            <>
-              <button type="button" className="secondary-button secondary-button--compact" disabled={pending} onClick={() => openCreate()}>
-                + Einsatz
-              </button>
-              <button
-                type="button"
-                className="secondary-button secondary-button--compact"
-                disabled={pending}
-                onClick={() => startTransition(async () => {
-                  const fd = new FormData();
-                  fd.set('week_start', plan.weekStart);
-                  await copyScheduleWeek(fd);
-                  router.refresh();
-                })}
+          <div className="schedule-toolbar-row schedule-toolbar-row--nav">
+            <div className="schedule-toolbar-view" role="group" aria-label="Ansicht">
+              <Link
+                href={`/app/einsatzplanung?week=${plan.weekStart}&view=week`}
+                className={view === 'week' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
               >
-                Vorwoche kopieren
-              </button>
-              {view === 'day' ? (
+                Woche
+              </Link>
+              <Link
+                href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${selectedDay}`}
+                className={view === 'day' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
+              >
+                Tag
+              </Link>
+              <Link
+                href={heuteHref}
+                className={
+                  heuteIsCurrent
+                    ? 'secondary-button secondary-button--compact schedule-toolbar-heute is-current'
+                    : 'secondary-button secondary-button--compact schedule-toolbar-heute'
+                }
+                aria-current={heuteIsCurrent ? 'true' : undefined}
+              >
+                Heute
+              </Link>
+              <Link
+                href={morgenHref}
+                className={
+                  morgenIsCurrent
+                    ? 'secondary-button secondary-button--compact schedule-toolbar-heute is-current'
+                    : 'secondary-button secondary-button--compact schedule-toolbar-heute'
+                }
+                aria-current={morgenIsCurrent ? 'true' : undefined}
+              >
+                Morgen
+              </Link>
+            </div>
+            {view === 'day' ? (
+              <div className="schedule-toolbar-nav" role="group" aria-label="Tag wechseln">
+                <button
+                  type="button"
+                  className="secondary-button secondary-button--compact schedule-toolbar-icon"
+                  onClick={() => navigateDay(-1)}
+                  aria-label="Vorheriger Tag"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button secondary-button--compact schedule-toolbar-icon"
+                  onClick={() => navigateDay(1)}
+                  aria-label="Nächster Tag"
+                >
+                  →
+                </button>
+              </div>
+            ) : null}
+            {view === 'week' ? (
+              <div className="schedule-toolbar-nav" role="group" aria-label="Woche wechseln">
+                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(-1)} aria-label="Vorherige Woche">
+                  ←
+                </button>
+                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(1)} aria-label="Nächste Woche">
+                  →
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="schedule-toolbar-row schedule-toolbar-row--actions">
+            {canManage ? (
+              <div className="schedule-toolbar-group">
                 <button
                   type="button"
                   className="secondary-button secondary-button--compact"
                   disabled={pending}
                   onClick={() => startTransition(async () => {
                     const fd = new FormData();
-                    fd.set('target_day', selectedDay);
-                    await copyScheduleDay(fd);
-                    router.refresh();
-                  })}
-                >
-                  Vortag übernehmen
-                </button>
-              ) : null}
-            </>
-          ) : null}
-          {canPublish ? (
-            <>
-              {view === 'day' ? (
-                <button
-                  type="button"
-                  className="primary-button primary-button--compact"
-                  disabled={pending || selectedDayPublished || dayEntries.length === 0}
-                  onClick={() => startTransition(async () => {
-                    const fd = new FormData();
-                    fd.set('plan_date', selectedDay);
-                    await publishScheduleDay(fd);
-                    router.refresh();
-                  })}
-                >
-                  Tag veröffentlichen
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="secondary-button secondary-button--compact"
-                  disabled={pending || plan.published}
-                  onClick={() => startTransition(async () => {
-                    const fd = new FormData();
                     fd.set('week_start', plan.weekStart);
-                    await publishScheduleWeek(fd);
+                    await copyScheduleWeek(fd);
                     router.refresh();
                   })}
                 >
-                  Woche veröffentlichen
+                  Vorwoche kopieren
                 </button>
-              )}
-            </>
-          ) : null}
-          {canShare ? (
-            <>
-              <button
-                type="button"
-                className="primary-button primary-button--compact"
-                onClick={() => sharePdf('day')}
-              >
-                Tagesplan PDF
-              </button>
-              <button type="button" className="secondary-button secondary-button--compact" onClick={() => printDayPdf()}>
-                Drucken
-              </button>
-              <button type="button" className="secondary-button secondary-button--compact" onClick={() => sharePdf('week')}>
-                Wochenplan PDF
-              </button>
-              <button type="button" className="secondary-button secondary-button--compact" onClick={() => setEmailDialogOpen(true)}>
-                E-Mail
-              </button>
-            </>
-          ) : null}
+                {view === 'day' ? (
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button--compact"
+                    disabled={pending}
+                    onClick={() => startTransition(async () => {
+                      const fd = new FormData();
+                      fd.set('target_day', selectedDay);
+                      await copyScheduleDay(fd);
+                      router.refresh();
+                    })}
+                  >
+                    Vortag kopieren
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {canPublish ? (
+              <div className="schedule-toolbar-group">
+                {view === 'day' ? (
+                  <button
+                    type="button"
+                    className="primary-button primary-button--compact"
+                    disabled={pending || selectedDayPublished || dayEntries.length === 0}
+                    onClick={() => startTransition(async () => {
+                      const fd = new FormData();
+                      fd.set('plan_date', selectedDay);
+                      await publishScheduleDay(fd);
+                      router.refresh();
+                    })}
+                  >
+                    Tag veröffentlichen
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="primary-button primary-button--compact"
+                    disabled={pending || plan.published}
+                    onClick={() => startTransition(async () => {
+                      const fd = new FormData();
+                      fd.set('week_start', plan.weekStart);
+                      await publishScheduleWeek(fd);
+                      router.refresh();
+                    })}
+                  >
+                    Woche veröffentlichen
+                  </button>
+                )}
+              </div>
+            ) : null}
+            {canShare ? (
+              <div className="schedule-toolbar-group">
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger">
+                    PDF erstellen
+                    <ChevronDown size={16} aria-hidden />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => void downloadSchedulePdf('week')}>
+                      Wochenplan
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openPrintDayDialog}>Tagesplan…</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger">
+                    Teilen
+                    <ChevronDown size={16} aria-hidden />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => void shareScheduleWhatsApp()}>
+                      WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEmailDialogOpen(true)}>E-Mail</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -683,35 +765,29 @@ export function SchedulePlanningClient({
               <span className="schedule-sites-bar-chevron" aria-hidden="true">{sitesCollapsed ? '▸' : '▾'}</span>
             </button>
             <div className="schedule-sites-bar-groups">
-              {view === 'day' ? (
-                <>
-                  {unplannedSites.length > 0 ? (
-                    <section className="schedule-sites-bar-group">
-                      <h3 className="schedule-sidebar-group-title">
-                        Noch nicht eingeplant
-                        <span className="schedule-sidebar-group-count">{unplannedSites.length}</span>
-                      </h3>
-                      <div className="schedule-chip-list">{unplannedSites.map((s) => renderSiteChip(s))}</div>
-                    </section>
-                  ) : null}
-                  {plannedSites.length > 0 ? (
-                    <section className="schedule-sites-bar-group">
-                      <h3 className="schedule-sidebar-group-title">
-                        An diesem Tag eingeplant
-                        <span className="schedule-sidebar-group-count">{plannedSites.length}</span>
-                      </h3>
-                      <div className="schedule-chip-list">
-                        {plannedSites.map((site) => renderSiteChip(site, { planned: true }))}
-                      </div>
-                    </section>
-                  ) : null}
-                </>
-              ) : (
-                <p className="muted schedule-sites-bar-empty">
-                  Baustellen per Drag-and-drop in der Wochenansicht auf einen Tag ziehen oder in der Tagesansicht planen.
-                </p>
-              )}
-              {view === 'day' && unplannedSites.length === 0 && plannedSites.length === 0 ? (
+              {siteBarUnplanned.length > 0 ? (
+                <section className="schedule-sites-bar-group">
+                  <h3 className="schedule-sidebar-group-title">
+                    {view === 'day' ? 'Noch nicht eingeplant' : 'Noch nicht diese Woche eingeplant'}
+                    <span className="schedule-sidebar-group-count">{siteBarUnplanned.length}</span>
+                  </h3>
+                  <div className="schedule-chip-list">
+                    {siteBarUnplanned.map((s) => renderSiteChip(s))}
+                  </div>
+                </section>
+              ) : null}
+              {siteBarPlanned.length > 0 ? (
+                <section className="schedule-sites-bar-group">
+                  <h3 className="schedule-sidebar-group-title">
+                    {view === 'day' ? 'An diesem Tag eingeplant' : 'Diese Woche eingeplant'}
+                    <span className="schedule-sidebar-group-count">{siteBarPlanned.length}</span>
+                  </h3>
+                  <div className="schedule-chip-list">
+                    {siteBarPlanned.map((site) => renderSiteChip(site, { planned: true }))}
+                  </div>
+                </section>
+              ) : null}
+              {sites.length === 0 ? (
                 <p className="muted schedule-sites-bar-empty">Keine aktiven Baustellen.</p>
               ) : null}
             </div>
@@ -797,61 +873,21 @@ export function SchedulePlanningClient({
             </div>
           </div>
         ) : (
-          <>
-          <nav className="schedule-day-tabs" aria-label="Tag wählen">
-            {plan.weekDays.map((day, i) => {
-              const count = (entriesByDay.get(day) ?? []).length;
-              return (
-                <Link
-                  key={day}
-                  href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${day}`}
-                  className={`schedule-day-tab${day === selectedDay ? ' is-active' : ''}`}
-                  aria-current={day === selectedDay ? 'date' : undefined}
-                >
-                  <span>{dayLabels[i]}</span>
-                  <small>{formatGermanDate(day, { day: '2-digit', month: '2-digit' })}</small>
-                  {count > 0 ? <span className="schedule-day-tab-count">{count}</span> : null}
-                </Link>
-              );
-            })}
-          </nav>
           <DroppableDay
             id={`day-${selectedDay}`}
             data={{ scheduleDay: selectedDay }}
             markDay
-            className="schedule-day-board"
+            className="schedule-day-timeline-drop"
           >
-            {dayEntries.length === 0 ? (
-              <p className="muted">Keine Einsätze an diesem Tag.</p>
-            ) : (
-              dayEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`schedule-day-column ${entryCardClassName(entry, conflictEntryIds.has(entry.id), now)}`}
-                >
-                  <div className="schedule-day-column-head">
-                    <span className="schedule-entry-code">{entry.leaderLabel}</span>
-                    <strong>{entry.site.name}</strong>
-                    <small>{entry.start_time}–{entry.end_time}</small>
-                  </div>
-                  <ul>
-                    {entry.members.map((m) => (
-                      <li key={m.user_id}>{m.first_name} {m.last_name}</li>
-                    ))}
-                    {entry.external_workers_text ? <li>{entry.external_workers_text}</li> : null}
-                    {entry.equipmentLabel ? <li>{entry.equipmentLabel}</li> : null}
-                  </ul>
-                  {entry.notes ? <p className="muted">{entry.notes}</p> : null}
-                  {canManage ? (
-                    <button type="button" className="secondary-button secondary-button--compact" onClick={() => openEdit(entry)}>
-                      Bearbeiten
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
+            <ScheduleDayTimeline
+              entries={dayEntries}
+              selectedDay={selectedDay}
+              now={now}
+              canManage={canManage}
+              conflictEntryIds={conflictEntryIds}
+              onEdit={openEdit}
+            />
           </DroppableDay>
-          </>
         )}
         <DragOverlay dropAnimation={null}>
           {activeDrag?.kind === 'site' ? (
@@ -867,11 +903,45 @@ export function SchedulePlanningClient({
       </DndContext>
 
       {canShare ? (
+        <AppDialog
+          open={printDayDialogOpen}
+          onClose={() => setPrintDayDialogOpen(false)}
+          title="Tagesplan als PDF"
+          footer={
+            <div className="dialog-actions">
+              <button type="button" className="text-button" onClick={() => setPrintDayDialogOpen(false)}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="primary-button primary-button--compact"
+                onClick={() => {
+                  void downloadSchedulePdf('day', printDayDate);
+                  setPrintDayDialogOpen(false);
+                }}
+              >
+                PDF erstellen
+              </button>
+            </div>
+          }
+        >
+          <label className="schedule-print-day-field">
+            Datum
+            <input
+              type="date"
+              value={printDayDate}
+              onChange={(e) => setPrintDayDate(e.target.value)}
+            />
+          </label>
+        </AppDialog>
+      ) : null}
+
+      {canShare ? (
         <PromptDialog
           open={emailDialogOpen}
           onClose={() => setEmailDialogOpen(false)}
           onSubmit={sendEmail}
-          title="Einsatzplan per E-Mail"
+          title={view === 'week' ? 'Wochenplan per E-Mail' : 'Tagesplan per E-Mail'}
           message="PDF wird als Anhang versendet."
           label="Empfänger-Adresse"
           defaultValue=""
@@ -888,7 +958,7 @@ export function SchedulePlanningClient({
           entry={dialogEntry}
           sites={sites}
           employees={employees}
-          foremen={plan.foremen}
+          workAreas={workAreas}
           subcontractors={plan.subcontractors}
           equipment={plan.equipment}
           defaultSiteId={dialogDefaults.siteId}

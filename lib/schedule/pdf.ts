@@ -1,55 +1,310 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFFont, type PDFPage } from 'pdf-lib';
+import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { formatSiteAddress } from '@/lib/sites/format-address';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import type { LeaveDay } from '@/lib/schedule/conflicts';
-import { formatGermanWeekdayDate, weekDayLabels } from '@/lib/schedule/week';
+import { formatGermanWeekdayDate } from '@/lib/schedule/week';
 
-const A4 = [595.28, 841.89] as const;
-const MARGIN = 48;
-const LINE = 14;
+const A4_LANDSCAPE = [841.89, 595.28] as const;
+const MARGIN = 36;
+const MAX_COLS = 7;
+const BORDER = rgb(0.12, 0.12, 0.12);
+const HEADER_GREEN = rgb(0.79, 0.9, 0.58);
+const HIGHLIGHT_YELLOW = rgb(1, 0.98, 0.55);
+const LINE_H = 11;
+const FONT_SM = 8;
+const FONT_MD = 9;
+const FONT_LG = 10;
 
-function memberNames(entry: ScheduleEntryView): string {
-  const internal = entry.members.map((m) => `${m.first_name} ${m.last_name}`.trim()).join(', ');
-  const external = entry.external_workers_text?.trim();
-  if (internal && external) return `${internal}; ${external}`;
-  return internal || external || '—';
-}
+export type TenantLogoBytes = {
+  bytes: Uint8Array;
+  contentType: string;
+};
 
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = text.replace(/\s+/g, ' ').trim().split(' ');
-  if (!words.length || words[0] === '') return ['—'];
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
-      current = next;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
+export async function loadTenantLogoBytes(logoUrl: string | null | undefined): Promise<TenantLogoBytes | null> {
+  if (!logoUrl?.trim()) return null;
+  try {
+    const res = await fetch(logoUrl, { cache: 'force-cache' });
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') ?? 'image/png';
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!bytes.length) return null;
+    return { bytes, contentType };
+  } catch {
+    return null;
   }
-  if (current) lines.push(current);
-  return lines.length ? lines : ['—'];
 }
 
-function drawWrapped(
+function sortEntries(entries: ScheduleEntryView[]): ScheduleEntryView[] {
+  return [...entries].sort(
+    (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
+  );
+}
+
+function memberPdfName(m: ScheduleEntryView['members'][number]): string {
+  const last = m.last_name?.trim() ?? '';
+  const first = m.first_name?.trim() ?? '';
+  if (last && first) return `${last}, ${first}`;
+  return `${last}${first}`.trim() || '—';
+}
+
+function equipmentBottomLabel(entry: ScheduleEntryView): string {
+  if (!entry.equipment.length) return '';
+  return entry.equipment
+    .map((eq) => eq.license_plate?.trim() || eq.inventory_number?.trim() || equipmentScheduleLabel(eq))
+    .join(', ');
+}
+
+function drawCenteredText(
   page: PDFPage,
   text: string,
-  x: number,
+  cellX: number,
+  cellW: number,
   y: number,
   font: PDFFont,
   size: number,
-  maxWidth: number,
-  lineHeight = LINE,
-): number {
-  const lines = wrapText(text, font, size, maxWidth);
-  let cy = y;
-  for (const line of lines) {
-    page.drawText(line, { x, y: cy, size, font, maxWidth });
-    cy -= lineHeight;
+) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  const w = font.widthOfTextAtSize(trimmed, size);
+  page.drawText(trimmed, { x: cellX + Math.max(2, (cellW - w) / 2), y, size, font });
+}
+
+function drawYellowTag(
+  page: PDFPage,
+  text: string,
+  cellX: number,
+  cellW: number,
+  y: number,
+  font: PDFFont,
+) {
+  const trimmed = text.trim();
+  if (!trimmed) return y;
+  const size = FONT_MD;
+  const tw = font.widthOfTextAtSize(trimmed, size);
+  const boxW = Math.min(cellW - 10, tw + 10);
+  const boxH = 14;
+  const boxX = cellX + (cellW - boxW) / 2;
+  page.drawRectangle({
+    x: boxX,
+    y: y - 2,
+    width: boxW,
+    height: boxH,
+    color: HIGHLIGHT_YELLOW,
+    borderColor: BORDER,
+    borderWidth: 0.4,
+  });
+  page.drawText(trimmed, { x: boxX + (boxW - tw) / 2, y: y + 2, size, font });
+  return y - boxH - 4;
+}
+
+async function embedTenantLogo(
+  pdfDoc: PDFDocument,
+  logo?: TenantLogoBytes | null,
+): Promise<PDFImage | null> {
+  if (!logo?.bytes?.length) return null;
+  const ct = logo.contentType.toLowerCase();
+  try {
+    if (ct.includes('png')) return await pdfDoc.embedPng(logo.bytes);
+    if (ct.includes('jpeg') || ct.includes('jpg')) return await pdfDoc.embedJpg(logo.bytes);
+  } catch {
+    return null;
   }
-  return cy;
+  return null;
+}
+
+function drawPageHeader(
+  page: PDFPage,
+  day: string,
+  draft: boolean,
+  font: PDFFont,
+  bold: PDFFont,
+  logoImage: PDFImage | null,
+) {
+  const { width, height } = page.getSize();
+  let y = height - MARGIN;
+
+  page.drawText('Einsatztafel', { x: MARGIN, y, size: 20, font: bold });
+  y -= 22;
+  page.drawText(formatGermanWeekdayDate(day), { x: MARGIN, y, size: 12, font: bold });
+  y -= 16;
+
+  if (draft) {
+    page.drawText('ENTWURF – noch nicht veröffentlicht', {
+      x: MARGIN,
+      y,
+      size: 9,
+      font: bold,
+      color: rgb(0.65, 0.2, 0.15),
+    });
+    y -= 14;
+  }
+
+  if (logoImage) {
+    const maxW = 72;
+    const scale = maxW / logoImage.width;
+    const h = logoImage.height * scale;
+    page.drawImage(logoImage, {
+      x: width - MARGIN - maxW,
+      y: height - MARGIN - h + 4,
+      width: maxW,
+      height: h,
+    });
+  }
+
+  return y - 8;
+}
+
+function drawEinsatztafelTable(
+  page: PDFPage,
+  entries: ScheduleEntryView[],
+  tableTopY: number,
+  font: PDFFont,
+  bold: PDFFont,
+) {
+  const { width } = page.getSize();
+  const tableWidth = width - MARGIN * 2;
+  const colW = tableWidth / entries.length;
+  const colXs = entries.map((_, i) => MARGIN + i * colW);
+
+  const leaderH = 16;
+  const siteH = 22;
+  const addrH = 16;
+
+  const teamHeights = entries.map((entry) => {
+    const memberLines = entry.members.length ? entry.members.map(memberPdfName) : [];
+    const external = entry.external_workers_text?.trim();
+    let h = 8 + Math.max(memberLines.length, external && !memberLines.length ? 1 : 0) * LINE_H;
+    if (external) h += 22;
+    return Math.max(h, 36);
+  });
+  const teamH = Math.max(...teamHeights, 40);
+  const equipH = 18;
+
+  const totalH = leaderH + siteH + addrH + teamH + equipH;
+  const tableBottomY = tableTopY - totalH;
+
+  for (let i = 0; i <= entries.length; i++) {
+    const x = MARGIN + i * colW;
+    page.drawLine({
+      start: { x, y: tableTopY },
+      end: { x, y: tableBottomY },
+      thickness: 0.8,
+      color: BORDER,
+    });
+  }
+
+  const rowTops = [
+    tableTopY,
+    tableTopY - leaderH,
+    tableTopY - leaderH - siteH,
+    tableTopY - leaderH - siteH - addrH,
+    tableTopY - leaderH - siteH - addrH - teamH,
+    tableBottomY,
+  ];
+  for (const rowY of rowTops) {
+    page.drawLine({
+      start: { x: MARGIN, y: rowY },
+      end: { x: MARGIN + tableWidth, y: rowY },
+      thickness: 0.8,
+      color: BORDER,
+    });
+  }
+
+  entries.forEach((entry, i) => {
+    const cellX = colXs[i];
+    const leaderY = tableTopY - leaderH + 5;
+    drawCenteredText(page, entry.leaderLabel, cellX, colW, leaderY, bold, FONT_LG);
+
+    page.drawRectangle({
+      x: cellX + 0.4,
+      y: tableTopY - leaderH - siteH + 0.4,
+      width: colW - 0.8,
+      height: siteH - 0.8,
+      color: HEADER_GREEN,
+    });
+    const siteY = tableTopY - leaderH - siteH + 7;
+    drawCenteredText(page, entry.site.name, cellX, colW, siteY, bold, FONT_LG);
+
+    const addr = formatSiteAddress(entry.site);
+    const addrY = tableTopY - leaderH - siteH - addrH + 5;
+    if (addr) {
+      drawCenteredText(page, addr, cellX, colW, addrY, font, FONT_SM);
+    }
+
+    let teamY = tableTopY - leaderH - siteH - addrH - 10;
+    for (const name of entry.members.map(memberPdfName)) {
+      drawCenteredText(page, name, cellX, colW, teamY, font, FONT_MD);
+      teamY -= LINE_H;
+    }
+    const external = entry.external_workers_text?.trim();
+    if (external) {
+      if (!entry.members.length) teamY -= 2;
+      drawYellowTag(page, external, cellX, colW, teamY, font);
+    }
+
+    const equip = equipmentBottomLabel(entry);
+    const equipY = tableBottomY + 5;
+    if (equip) {
+      drawCenteredText(page, equip, cellX, colW, equipY, font, FONT_MD);
+    }
+  });
+}
+
+async function buildEinsatztafelPdfPages(
+  pdfDoc: PDFDocument,
+  day: string,
+  entries: ScheduleEntryView[],
+  options: { draft?: boolean; logo?: TenantLogoBytes | null },
+): Promise<void> {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const logoImage = await embedTenantLogo(pdfDoc, options.logo);
+  const sorted = sortEntries(entries);
+  const draft = options.draft ?? false;
+
+  if (!sorted.length) {
+    const page = pdfDoc.addPage([...A4_LANDSCAPE]);
+    const tableTopY = drawPageHeader(page, day, draft, font, bold, logoImage);
+    page.drawText('Keine Einsätze an diesem Tag.', { x: MARGIN, y: tableTopY - 12, size: 11, font });
+    return;
+  }
+
+  for (let offset = 0; offset < sorted.length; offset += MAX_COLS) {
+    const chunk = sorted.slice(offset, offset + MAX_COLS);
+    const page = pdfDoc.addPage([...A4_LANDSCAPE]);
+    const tableTopY = drawPageHeader(page, day, draft, font, bold, logoImage);
+    drawEinsatztafelTable(page, chunk, tableTopY, font, bold);
+    if (sorted.length > MAX_COLS && offset + MAX_COLS < sorted.length) {
+      page.drawText('Fortsetzung folgt', {
+        x: MARGIN,
+        y: MARGIN - 4,
+        size: 8,
+        font,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+    }
+  }
+}
+
+function drawAbsenteesFooter(
+  page: PDFPage,
+  day: string,
+  absentees: LeaveDay[],
+  employeeNames: Record<string, string> | undefined,
+  font: PDFFont,
+  bold: PDFFont,
+) {
+  const dayAbsent = absentees.filter((a) => a.date === day);
+  if (!dayAbsent.length) return;
+  let y = MARGIN + 24;
+  page.drawText('Abwesend (genehmigt):', { x: MARGIN, y, size: 9, font: bold });
+  y -= 12;
+  for (const row of dayAbsent.slice(0, 8)) {
+    const name = employeeNames?.[row.userId] ?? row.userId.slice(0, 8);
+    page.drawText(`· ${name} (${row.leaveType})`, { x: MARGIN + 6, y, size: 8, font });
+    y -= 10;
+  }
 }
 
 export async function buildScheduleDayPdf(input: {
@@ -59,102 +314,21 @@ export async function buildScheduleDayPdf(input: {
   draft?: boolean;
   absentees?: LeaveDay[];
   employeeNames?: Record<string, string>;
+  logo?: TenantLogoBytes | null;
 }): Promise<Uint8Array> {
+  void input.tenantName;
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  await buildEinsatztafelPdfPages(pdfDoc, input.day, input.entries, {
+    draft: input.draft,
+    logo: input.logo,
+  });
 
-  let page = pdfDoc.addPage([...A4]);
-  let { width, height } = page.getSize();
-  let y = height - MARGIN;
-
-  page.drawText('Tageseinsatzplan', { x: MARGIN, y, size: 16, font: bold });
-  y -= 18;
-  page.drawText(input.tenantName, { x: MARGIN, y, size: 10, font });
-  y -= 16;
-  page.drawText(formatGermanWeekdayDate(input.day), { x: MARGIN, y, size: 11, font: bold });
-  y -= 20;
-
-  if (input.draft) {
-    page.drawText('ENTWURF – noch nicht veröffentlicht', {
-      x: MARGIN,
-      y,
-      size: 9,
-      font: bold,
-      color: rgb(0.65, 0.2, 0.15),
-    });
-    y -= 18;
-  }
-
-  const sorted = [...input.entries].sort(
-    (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
-  );
-  const contentWidth = width - MARGIN * 2;
-
-  const ensureSpace = (needed: number) => {
-    if (y - needed >= MARGIN) return;
-    page = pdfDoc.addPage([...A4]);
-    ({ width, height } = page.getSize());
-    y = height - MARGIN;
-  };
-
-  if (!sorted.length) {
-    page.drawText('Keine Einsätze an diesem Tag.', { x: MARGIN, y, size: 10, font });
-  }
-
-  for (const entry of sorted) {
-    const address = formatSiteAddress(entry.site);
-    const blockEstimate = 90;
-    ensureSpace(blockEstimate);
-
-    page.drawLine({
-      start: { x: MARGIN, y: y + 4 },
-      end: { x: width - MARGIN, y: y + 4 },
-      thickness: 0.5,
-      color: rgb(0.85, 0.85, 0.85),
-    });
-    y -= 8;
-
-    page.drawText(`${entry.leaderLabel} · ${entry.site.name}`, {
-      x: MARGIN,
-      y,
-      size: 11,
-      font: bold,
-      maxWidth: contentWidth,
-    });
-    y -= LINE;
-
-    if (address) {
-      y = drawWrapped(page, address, MARGIN, y, font, 9, contentWidth) - 2;
-    }
-
-    page.drawText(`Zeit: ${entry.start_time}–${entry.end_time}`, { x: MARGIN, y, size: 9, font });
-    y -= LINE;
-
-    y = drawWrapped(page, `Team: ${memberNames(entry)}`, MARGIN, y, font, 9, contentWidth) - 2;
-
-    if (entry.equipmentLabel) {
-      y = drawWrapped(page, `Fahrzeuge/Geräte: ${entry.equipmentLabel}`, MARGIN, y, font, 9, contentWidth) - 2;
-    }
-
-    if (entry.notes?.trim()) {
-      y = drawWrapped(page, `Hinweis: ${entry.notes.trim()}`, MARGIN, y, font, 9, contentWidth) - 2;
-    }
-
-    y -= 10;
-  }
-
-  const dayAbsent = (input.absentees ?? []).filter((a) => a.date === input.day);
-  if (dayAbsent.length) {
-    ensureSpace(40 + dayAbsent.length * LINE);
-    y -= 6;
-    page.drawText('Abwesend (genehmigt)', { x: MARGIN, y, size: 10, font: bold });
-    y -= LINE;
-    for (const row of dayAbsent) {
-      const name = input.employeeNames?.[row.userId] ?? row.userId.slice(0, 8);
-      page.drawText(`· ${name} (${row.leaveType})`, { x: MARGIN + 8, y, size: 9, font });
-      y -= LINE;
-    }
+  if (input.absentees?.length) {
+    const pages = pdfDoc.getPages();
+    const last = pages[pages.length - 1];
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    drawAbsenteesFooter(last, input.day, input.absentees, input.employeeNames, font, bold);
   }
 
   return pdfDoc.save();
@@ -165,72 +339,21 @@ export async function buildScheduleWeekPdf(input: {
   weekStart: string;
   weekDays: string[];
   entries: ScheduleEntryView[];
+  logo?: TenantLogoBytes | null;
 }): Promise<Uint8Array> {
+  void input.tenantName;
+  void input.weekStart;
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const page = pdfDoc.addPage([841.89, 595.28]);
-  const { width, height } = page.getSize();
 
-  const labels = weekDayLabels();
-  const dayCount = Math.max(input.weekDays.length, 1);
-  const colWidth = (width - MARGIN * 2) / dayCount;
-  let y = height - MARGIN;
-
-  page.drawText('Wochenübersicht', { x: MARGIN, y, size: 18, font: bold });
-  page.drawText(`${input.tenantName} · KW ab ${input.weekStart}`, { x: MARGIN, y: y - 18, size: 10, font });
-
-  y -= 44;
-  input.weekDays.forEach((day, i) => {
-    const x = MARGIN + i * colWidth;
-    page.drawText(labels[i], { x, y, size: 10, font: bold });
-    page.drawText(`${day.slice(8, 10)}.${day.slice(5, 7)}`, { x, y: y - 12, size: 9, font });
-  });
-
-  const siteIds = [...new Set(input.entries.map((e) => e.site_id))];
-  const sites = siteIds
-    .map((id) => input.entries.find((e) => e.site_id === id)?.site)
-    .filter(Boolean) as ScheduleEntryView['site'][];
-  sites.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-
-  const bySiteDay = new Map<string, ScheduleEntryView[]>();
-  for (const entry of input.entries) {
-    const key = `${entry.site_id}:${entry.start_date}`;
-    const list = bySiteDay.get(key) ?? [];
-    list.push(entry);
-    bySiteDay.set(key, list);
+  for (const day of input.weekDays) {
+    const dayEntries = input.entries.filter((e) => e.start_date === day);
+    await buildEinsatztafelPdfPages(pdfDoc, day, dayEntries, { logo: input.logo });
   }
 
-  let rowY = y - 28;
-  const rowHeight = 52;
-  for (const site of sites) {
-    if (rowY - rowHeight < MARGIN) break;
-    page.drawText(site.name.slice(0, 36), { x: MARGIN - 2, y: rowY - 12, size: 8, font: bold, maxWidth: 80 });
-    input.weekDays.forEach((day, i) => {
-      const x = MARGIN + i * colWidth + 2;
-      const cellEntries = bySiteDay.get(`${site.id}:${day}`) ?? [];
-      if (!cellEntries.length) return;
-      const cellH = 44;
-      page.drawRectangle({
-        x,
-        y: rowY - cellH + 4,
-        width: colWidth - 4,
-        height: cellH,
-        borderColor: rgb(0.8, 0.8, 0.8),
-        borderWidth: 0.5,
-      });
-      const e = cellEntries[0];
-      page.drawText(`${e.leaderLabel}`, { x: x + 4, y: rowY - 12, size: 7, font: bold });
-      page.drawText(memberNames(e).slice(0, 72), {
-        x: x + 4,
-        y: rowY - 24,
-        size: 6,
-        font,
-        maxWidth: colWidth - 10,
-      });
-      page.drawText(`${e.start_time}–${e.end_time}`, { x: x + 4, y: rowY - 34, size: 6, font });
-    });
-    rowY -= rowHeight;
+  if (!pdfDoc.getPageCount()) {
+    const page = pdfDoc.addPage([...A4_LANDSCAPE]);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    page.drawText('Keine Einsätze in dieser Woche.', { x: MARGIN, y: 400, size: 12, font });
   }
 
   return pdfDoc.save();

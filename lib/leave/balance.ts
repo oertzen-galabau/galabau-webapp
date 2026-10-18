@@ -1,4 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  automaticCarryFromPreviousRemaining,
+  computeEffectiveCarriedOver,
+  countMandatoryDaysBeforeExpiry,
+  countUrlaubDaysBeforeExpiry,
+  type ApprovedUrlaubRange,
+  type LeaveCarryExpiry,
+} from '@/lib/leave/carry-over';
 import { isBadWeatherForBooking } from '@/lib/payroll/bad-weather-entry';
 import { isBadWeatherSeason } from '@/lib/payroll/constants';
 import {
@@ -6,6 +14,7 @@ import {
   loadTenantPayrollConfig,
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
+import { todayIsoInBerlin } from '@/lib/schedule/week';
 
 export const DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS = 5;
 import { calculateWorkMinutes } from '@/lib/utils/time';
@@ -14,6 +23,7 @@ export type LeaveBalanceRow = {
   entitlement_days?: number | null;
   carried_over_days?: number | null;
   used_days?: number | null;
+  carried_over_source?: 'manual' | 'automatic' | null;
 };
 
 export type CompanyHolidayRow = {
@@ -45,6 +55,11 @@ export type TimeEntryForBadWeather = {
 export type LeaveBalanceBreakdown = {
   entitlementDays: number;
   carriedOverDays: number;
+  /** Resturlaub nach Verfall (Stichtag). */
+  effectiveCarriedOver: number;
+  forfeitedCarry: number;
+  /** Jahresanspruch + wirksamer Resturlaub Vorjahr. */
+  totalAvailable: number;
   usedFromRequests: number;
   /** Betriebsurlaub + Brückentage (Werktage, dedupliziert). */
   mandatoryDays: number;
@@ -52,10 +67,12 @@ export type LeaveBalanceBreakdown = {
   badWeatherDays: number;
   /** Mandanten-Kontingent Schlechwetter pro Jahr (Einstellungen → Allgemein). */
   badWeatherAllowanceDays: number;
-  /** Vom Resturlaub reserviert: Puffer (Kontingent) plus genutzte Tage darüber. */
+  /** Vom Resturlaub abgezogene Schlechwetter-Tage (gebucht, ohne Betrieb/Brücke). */
   badWeatherDeductionFromVacation: number;
   totalExtraDeduction: number;
   remaining: number;
+  carryExpiresOn: string | null;
+  beforeCarryExpiry: boolean;
 };
 
 const DEFAULT_ENTITLEMENT = 30;
@@ -173,10 +190,35 @@ export function computeLeaveBalanceBreakdown(input: {
   badWeatherConfig?: BadWeatherConfig;
   badWeatherRuleEnabled?: boolean;
   badWeatherAllowanceDays?: number;
+  approvedUrlaub?: ApprovedUrlaubRange[];
+  carryExpiry?: LeaveCarryExpiry | null;
+  today?: string;
 }): LeaveBalanceBreakdown {
   const entitlementDays = Number(input.balance?.entitlement_days ?? DEFAULT_ENTITLEMENT);
   const carriedOverDays = Number(input.balance?.carried_over_days ?? 0);
   const usedFromRequests = Number(input.balance?.used_days ?? 0);
+  const today = input.today ?? todayIsoInBerlin();
+  const expiry = input.carryExpiry ?? null;
+  const urlaubBefore = expiry
+    ? countUrlaubDaysBeforeExpiry(input.approvedUrlaub ?? [], input.year, expiry)
+    : 0;
+  const mandatoryBefore = expiry
+    ? countMandatoryDaysBeforeExpiry(
+        input.year,
+        input.companyHolidays,
+        input.bridgeDays,
+        expiry,
+      )
+    : 0;
+  const carryEffect = computeEffectiveCarriedOver({
+    carriedOver: carriedOverDays,
+    year: input.year,
+    expiry,
+    urlaubDaysBeforeExpiry: urlaubBefore,
+    mandatoryDaysBeforeExpiry: mandatoryBefore,
+    today,
+  });
+  const effectiveCarriedOver = carryEffect.effectiveCarriedOver;
 
   const mandatoryDates = collectMandatoryLeaveDates(
     input.year,
@@ -202,21 +244,20 @@ export function computeLeaveBalanceBreakdown(input: {
       ? Math.max(0, Number(allowanceRaw))
       : DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS;
 
-  // Kontingent ist Puffer: immer vom Resturlaub abziehen, auch ohne gebuchte SW-Tage.
-  // Zusätzlich Tage über dem Kontingent.
-  const badWeatherDeductionFromVacation = Math.max(
-    badWeatherAllowanceDays,
-    badWeatherDaysUsed,
-  );
+  /** Nur tatsächlich gebuchte SW-Tage (ohne Betrieb/Brücke) reduzieren den Resturlaub. */
+  const badWeatherDeductionFromVacation = badWeatherDaysUsed;
 
   const mandatoryDays = mandatoryDates.size;
   const totalExtraDeduction = mandatoryDays + badWeatherDeductionFromVacation;
-  const remaining =
-    entitlementDays + carriedOverDays - usedFromRequests - totalExtraDeduction;
+  const totalAvailable = entitlementDays + effectiveCarriedOver;
+  const remaining = totalAvailable - usedFromRequests - totalExtraDeduction;
 
   return {
     entitlementDays,
     carriedOverDays,
+    effectiveCarriedOver,
+    forfeitedCarry: carryEffect.forfeitedCarry,
+    totalAvailable,
     usedFromRequests,
     mandatoryDays,
     badWeatherDays: badWeatherDaysUsed,
@@ -224,10 +265,12 @@ export function computeLeaveBalanceBreakdown(input: {
     badWeatherDeductionFromVacation,
     totalExtraDeduction,
     remaining,
+    carryExpiresOn: carryEffect.carryExpiresOn,
+    beforeCarryExpiry: carryEffect.beforeExpiry,
   };
 }
 
-export async function loadLeaveBalanceContext(
+async function fetchLeaveYearInputs(
   supabase: SupabaseClient,
   tenantId: string,
   userId: string,
@@ -243,11 +286,12 @@ export async function loadLeaveBalanceContext(
     { data: tenantBadWeatherDays },
     { data: timeEntries },
     { data: tenantRow },
+    { data: approvedUrlaub },
     tenantConfig,
   ] = await Promise.all([
     supabase
       .from('leave_balances')
-      .select('entitlement_days, carried_over_days, used_days')
+      .select('entitlement_days, carried_over_days, used_days, carried_over_source')
       .eq('tenant_id', tenantId)
       .eq('user_id', userId)
       .eq('year', year)
@@ -281,32 +325,135 @@ export async function loadLeaveBalanceContext(
       .lte('work_date', yearEnd),
     supabase
       .from('tenants')
-      .select('bad_weather_allowance_days')
+      .select('bad_weather_allowance_days, leave_carry_expire_month, leave_carry_expire_day')
       .eq('id', tenantId)
       .single(),
+    supabase
+      .from('leave_requests')
+      .select('start_date, end_date')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', userId)
+      .eq('leave_type', 'urlaub')
+      .eq('status', 'approved')
+      .lte('start_date', yearEnd)
+      .gte('end_date', yearStart),
     loadTenantPayrollConfig(supabase, tenantId),
   ]);
 
-  const badWeatherRule = tenantConfig.rules.get('bad_weather');
-  const badWeatherConfig = badWeatherRule?.config as BadWeatherConfig | undefined;
+  const carryExpiry =
+    tenantRow?.leave_carry_expire_month != null && tenantRow?.leave_carry_expire_day != null
+      ? {
+          month: tenantRow.leave_carry_expire_month,
+          day: tenantRow.leave_carry_expire_day,
+        }
+      : null;
 
-  const breakdown = computeLeaveBalanceBreakdown({
-    balance,
-    year,
+  return {
+    balance: (balance ?? null) as LeaveBalanceRow | null,
     companyHolidays: companyHolidays ?? [],
     bridgeDays: bridgeDays ?? [],
     tenantBadWeatherDays: tenantBadWeatherDays ?? [],
     timeEntries: timeEntries ?? [],
+    tenantRow,
+    approvedUrlaub: (approvedUrlaub ?? []) as ApprovedUrlaubRange[],
+    tenantConfig,
+    carryExpiry,
+  };
+}
+
+function breakdownFromYearInputs(
+  year: number,
+  inputs: Awaited<ReturnType<typeof fetchLeaveYearInputs>>,
+): LeaveBalanceBreakdown {
+  const badWeatherRule = inputs.tenantConfig.rules.get('bad_weather');
+  const badWeatherConfig = badWeatherRule?.config as BadWeatherConfig | undefined;
+
+  return computeLeaveBalanceBreakdown({
+    balance: inputs.balance,
+    year,
+    companyHolidays: inputs.companyHolidays,
+    bridgeDays: inputs.bridgeDays,
+    tenantBadWeatherDays: inputs.tenantBadWeatherDays,
+    timeEntries: inputs.timeEntries,
     badWeatherConfig,
     badWeatherRuleEnabled: badWeatherRule?.enabled === true,
     badWeatherAllowanceDays:
-      tenantRow?.bad_weather_allowance_days ?? DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS,
+      inputs.tenantRow?.bad_weather_allowance_days ?? DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS,
+    approvedUrlaub: inputs.approvedUrlaub,
+    carryExpiry: inputs.carryExpiry,
   });
+}
+
+/** Nur lesen: Resturlaub aus Vorjahr, wenn dort ein Saldo existiert. */
+export async function computeAutomaticCarriedOverDays(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+  year: number,
+): Promise<number> {
+  const prevInputs = await fetchLeaveYearInputs(supabase, tenantId, userId, year - 1);
+  if (!prevInputs.balance) return 0;
+  const prevBreakdown = breakdownFromYearInputs(year - 1, prevInputs);
+  return automaticCarryFromPreviousRemaining(prevBreakdown.remaining);
+}
+
+/** Schreibt automatischen Resturlaub (Admin-Aktion „neu berechnen“). */
+export async function syncAutomaticCarriedOverToDb(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+  year: number,
+): Promise<LeaveBalanceRow | null> {
+  const inputs = await fetchLeaveYearInputs(supabase, tenantId, userId, year);
+  const carry = await computeAutomaticCarriedOverDays(supabase, tenantId, userId, year);
+
+  const { data: updated, error } = await supabase
+    .from('leave_balances')
+    .upsert(
+      {
+        tenant_id: tenantId,
+        user_id: userId,
+        year,
+        entitlement_days: inputs.balance?.entitlement_days ?? DEFAULT_ENTITLEMENT,
+        carried_over_days: carry,
+        used_days: inputs.balance?.used_days ?? 0,
+        carried_over_source: 'automatic',
+      },
+      { onConflict: 'tenant_id,user_id,year' },
+    )
+    .select('entitlement_days, carried_over_days, used_days, carried_over_source')
+    .single();
+
+  if (error) {
+    console.error('[leave] syncAutomaticCarriedOverToDb failed', error.message);
+    return inputs.balance;
+  }
+  return updated as LeaveBalanceRow;
+}
+
+export async function loadLeaveBalanceContext(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+  year: number,
+) {
+  let inputs = await fetchLeaveYearInputs(supabase, tenantId, userId, year);
+  let balance = inputs.balance;
+
+  if (balance?.carried_over_source === 'automatic') {
+    const carry = await computeAutomaticCarriedOverDays(supabase, tenantId, userId, year);
+    balance = { ...balance, carried_over_days: carry };
+    inputs = { ...inputs, balance };
+  }
+
+  const breakdown = breakdownFromYearInputs(year, inputs);
 
   return {
     balance,
     breakdown,
-    companyHolidays: companyHolidays ?? [],
-    bridgeDays: bridgeDays ?? [],
+    companyHolidays: inputs.companyHolidays,
+    bridgeDays: inputs.bridgeDays,
+    carryExpiry: inputs.carryExpiry,
+    carriedOverSource: balance?.carried_over_source ?? 'manual',
   };
 }

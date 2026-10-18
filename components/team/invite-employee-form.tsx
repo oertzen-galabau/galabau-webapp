@@ -5,12 +5,20 @@ import { useActionState } from 'react';
 import { inviteEmployee, type EmployeeInviteResult } from '@/lib/actions/admin';
 import { AppSelect } from '@/components/ui/app-select';
 import { EmployeeInviteCredentials } from '@/components/team/employee-invite-credentials';
+import { WorkAreaSelect } from '@/components/team/work-area-select';
+import type { TenantWorkArea } from '@/lib/types/database';
 
 type RoleOption = { value: string; label: string };
 
 const initialState: EmployeeInviteResult | null = null;
 
-export function InviteEmployeeForm({ roles }: { roles: RoleOption[] }) {
+export function InviteEmployeeForm({
+  roles,
+  workAreas,
+}: {
+  roles: RoleOption[];
+  workAreas: Pick<TenantWorkArea, 'id' | 'name' | 'is_active'>[];
+}) {
   const [state, action, pending] = useActionState(inviteEmployee, initialState);
 
   return (
@@ -44,6 +52,10 @@ export function InviteEmployeeForm({ roles }: { roles: RoleOption[] }) {
           <label>Vorname<input name="first_name" required /></label>
           <label>Nachname<input name="last_name" required /></label>
           <label>Berufbezeichnung<input name="job_title" placeholder="z.B. Vorarbeiter, Gärtner" /></label>
+          <label>
+            Bereich (Einsatzplan)
+            <WorkAreaSelect areas={workAreas} />
+          </label>
           <label>E-Mail<input name="email" type="email" required autoComplete="off" /></label>
           <label>Rolle
             <AppSelect

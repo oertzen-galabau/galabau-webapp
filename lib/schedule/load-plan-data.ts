@@ -10,7 +10,7 @@ import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { leaderCodeForProfile } from '@/lib/schedule/leader-code';
 import { isWeekFullyPublished } from '@/lib/schedule/day-publication';
 import { addDays, mondayOfWeek, weekDaysFromMonday } from '@/lib/schedule/week';
-import type { Profile, ScheduleEntry, Site } from '@/lib/types/database';
+import type { Profile, ScheduleEntry, Site, TenantWorkArea } from '@/lib/types/database';
 
 export type ScheduleMemberRow = {
   user_id: string;
@@ -46,7 +46,8 @@ export type SchedulePlanData = {
   publishedByDay: Record<string, boolean>;
   publishedAtByDay: Record<string, string | null>;
   sites: Pick<Site, 'id' | 'name' | 'responsible_user_id'>[];
-  employees: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code' | 'is_active'>[];
+  employees: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code' | 'is_active' | 'work_area_id'>[];
+  workAreas: Pick<TenantWorkArea, 'id' | 'name' | 'sort_order' | 'is_active' | 'schedule_assignable'>[];
   foremen: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code'>[];
   subcontractors: { id: string; name: string; contact_person: string | null }[];
   equipment: {
@@ -87,6 +88,7 @@ export async function loadSchedulePlanData(
     { data: leaveRows },
     { data: subcontractorsRaw },
     { data: equipmentCatalog },
+    { data: workAreasRaw },
   ] = await Promise.all([
     supabase
       .from('schedule_entries')
@@ -118,7 +120,7 @@ export async function loadSchedulePlanData(
       .order('name'),
     supabase
       .from('profiles')
-      .select('id, first_name, last_name, leader_code, is_active')
+      .select('id, first_name, last_name, leader_code, is_active, work_area_id')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .order('last_name'),
@@ -143,6 +145,12 @@ export async function loadSchedulePlanData(
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .neq('status', 'retired')
+      .order('name'),
+    supabase
+      .from('tenant_work_areas')
+      .select('id, name, sort_order, is_active, schedule_assignable')
+      .eq('tenant_id', tenantId)
+      .order('sort_order')
       .order('name'),
   ]);
 
@@ -308,6 +316,7 @@ export async function loadSchedulePlanData(
     publishedAtByDay,
     sites: sites ?? [],
     employees: employees ?? [],
+    workAreas: workAreasRaw ?? [],
     foremen,
     subcontractors: subcontractorsRaw ?? [],
     equipment: equipmentCatalog ?? [],

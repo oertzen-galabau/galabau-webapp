@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActionContext, SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
+import { foremanSiteIdsForDate, isUserForemanOnSiteDate } from '@/lib/schedule/foreman-daily-report';
 import type { UserRole } from '@/lib/types/database';
 
 export type SiteAccessContext = Pick<
@@ -85,10 +86,26 @@ export async function resolveAssignedSiteIds(
   return [...ids];
 }
 
+/** Baustellen für neues Tagesdokument (Team-Zuweisung + Einsatz-Vorarbeiter am Datum). */
+export async function resolveSitesForDailyReportCreate(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  logDate: string,
+): Promise<string[] | null> {
+  if (canViewAllSites(ctx) && canAccess(ctx, 'documentation.manage')) {
+    return null;
+  }
+  const assigned = await resolveAssignedSiteIds(supabase, ctx);
+  const { tenantId } = asSiteAccessContext(ctx);
+  const foremanSites = await foremanSiteIdsForDate(supabase, tenantId, ctx.userId, logDate);
+  return [...new Set([...assigned, ...foremanSites])];
+}
+
 export async function userCanAccessSite(
   supabase: SupabaseClient,
   ctx: SessionContext | ActionContext,
   siteId: string,
+  options?: { planDate?: string },
 ): Promise<boolean> {
   if (ctx.isSuperadminBypass) {
     const { tenantId } = asSiteAccessContext(ctx);
@@ -101,6 +118,12 @@ export async function userCanAccessSite(
     return !!data;
   }
   if (canViewAllSites(ctx)) return true;
+  if (options?.planDate) {
+    const { tenantId } = asSiteAccessContext(ctx);
+    if (await isUserForemanOnSiteDate(supabase, tenantId, ctx.userId, siteId, options.planDate)) {
+      return true;
+    }
+  }
   const allowed = await resolveAccessibleSiteIds(supabase, ctx);
   return allowed?.includes(siteId) ?? false;
 }
@@ -109,10 +132,22 @@ export async function requireSiteAccess(
   supabase: SupabaseClient,
   ctx: SessionContext | ActionContext,
   siteId: string,
+  options?: { planDate?: string },
 ): Promise<void> {
-  if (!(await userCanAccessSite(supabase, ctx, siteId))) {
+  if (!(await userCanAccessSite(supabase, ctx, siteId, options))) {
     throw new Error('Keine Berechtigung für diese Baustelle');
   }
+}
+
+export async function userCanCreateDailyReportOnSite(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  siteId: string,
+  logDate: string,
+): Promise<boolean> {
+  const allowed = await resolveSitesForDailyReportCreate(supabase, ctx, logDate);
+  if (allowed === null) return true;
+  return allowed.includes(siteId);
 }
 
 export type SiteListFilter = {

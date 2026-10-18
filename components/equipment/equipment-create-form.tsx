@@ -99,6 +99,10 @@ export function EquipmentCreateForm() {
             Führerscheinklasse
             <input name="license_class_required" disabled={pending} placeholder="z. B. B, T" />
           </label>
+          <label>
+            Buchungsnummer
+            <input name="booking_number" disabled={pending} maxLength={50} placeholder="z. B. 2001" />
+          </label>
           <label className="input-form-span-full">
             Notiz
             <textarea name="notes" rows={3} disabled={pending} />

@@ -7,6 +7,7 @@ import {
   type InvitationPreview,
 } from '@/lib/actions/employee-invitation';
 import { AuthBrandHeader } from '@/components/auth/auth-brand-header';
+import { getPlatformName } from '@/lib/tenant/config';
 
 type Props = {
   token: string;
@@ -25,12 +26,13 @@ function ActionFeedback({ state }: { state: InvitationActionResult | null }) {
 
 export function InvitationActivationForm({ token, preview }: Props) {
   const [state, action, pending] = useActionState(activateInvitation, initialState);
+  const platform = getPlatformName();
 
   return (
     <div className="auth-page">
       <div className="auth-card">
         <AuthBrandHeader />
-        <h1 style={{ marginTop: 0 }}>Willkommen bei Værkflow</h1>
+        <h1 style={{ marginTop: 0 }}>Willkommen bei {platform}</h1>
         <p className="muted">
           Hallo {preview.firstName} {preview.lastName}, bitte aktivieren Sie Ihr Konto.
         </p>

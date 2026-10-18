@@ -1,8 +1,9 @@
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
+import { LeaveTabs } from '@/components/leave/leave-tabs';
 import { updateLeaveStatus } from '@/lib/actions/employee';
 import { formatLeaveType } from '@/lib/leave/labels';
+import { listPendingLeaveForApproval } from '@/lib/leave/queries';
 import { businessDaysBetween } from '@/lib/utils/time';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 
@@ -12,29 +13,30 @@ export default async function UrlaubFreigabePage() {
     return <p className="muted">Keine Berechtigung.</p>;
   }
 
+  const tenantId = await getTenantIdForSession(ctx);
+  if (!tenantId) return <p className="muted">Kein Mandant.</p>;
+
   const supabase = await createClient();
-  const { data: requests } = await supabase
-    .from('leave_requests')
-    .select('*, profiles(first_name, last_name)')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true });
+  const { data: requests, error: loadError } = await listPendingLeaveForApproval(supabase, tenantId);
+
+  const showTeamCalendar = canAccess(ctx, 'urlaub.team_calendar');
 
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Urlaub & Fehlzeiten</span>
+          <span className="eyebrow">Abwesenheit</span>
           <h1>Anträge zur Freigabe</h1>
           <p>Offene Urlaubs- und Fehlzeitanträge aller Mitarbeitenden.</p>
         </div>
-        <Link href="/app/urlaub" className="text-button">
-          Mein Urlaubskonto →
-        </Link>
       </div>
 
+      {showTeamCalendar && <LeaveTabs activeTab="freigabe" showFreigabe />}
+
       <section className="panel">
-        <h2>Offen ({(requests ?? []).length})</h2>
-        {(requests ?? []).length === 0 ? (
+        <h2>Offen ({requests.length})</h2>
+        {loadError && <p className="form-error">Anträge konnten nicht geladen werden.</p>}
+        {!loadError && requests.length === 0 ? (
           <p className="muted">Keine offenen Anträge.</p>
         ) : (
           <div className="data-table-wrap">
@@ -50,7 +52,7 @@ export default async function UrlaubFreigabePage() {
                 </tr>
               </thead>
               <tbody>
-                {(requests ?? []).map((req) => (
+                {requests.map((req) => (
                   <tr key={req.id}>
                     <td>
                       {req.profiles?.first_name} {req.profiles?.last_name}

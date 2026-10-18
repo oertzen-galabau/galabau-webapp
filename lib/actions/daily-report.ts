@@ -23,11 +23,23 @@ import {
   parseDailyLogReportType,
   type DailyLogReportType,
 } from '@/lib/documentation/report-labels';
-import { requireSiteAccess, resolveAssignedSiteIds } from '@/lib/sites/access';
-import { userCanEditDailyLog } from '@/lib/documentation/report-access';
+import { requireSiteAccess } from '@/lib/sites/access';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
+}
+
+async function requireCanManageDailyReportForSiteDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ctx: Awaited<ReturnType<typeof getActionContext>>,
+  siteId: string,
+  logDate: string,
+  existingLog?: { created_by: string | null } | null,
+) {
+  const { requireCanManageDailyReportForSiteDate: requireManage } = await import(
+    '@/lib/documentation/report-access'
+  );
+  await requireManage(supabase, ctx, siteId, logDate, existingLog);
 }
 
 async function replaceChildRows(
@@ -200,7 +212,6 @@ async function saveSignatures(
 
 export async function saveDailyReport(formData: FormData) {
   const ctx = await getActionContext();
-  requirePerm(ctx, 'documentation.manage');
   const { tenantId, userId } = ctx;
 
   const supabase = await createClient();
@@ -210,16 +221,7 @@ export async function saveDailyReport(formData: FormData) {
 
   if (!siteId || !logDate) throw new Error('Baustelle und Datum sind erforderlich');
 
-  await requireSiteAccess(supabase, ctx, siteId);
-
-  // Neue Berichte nur für zugewiesene Baustellen (Verantwortlicher / Baustellen-Team)
-  const assertAssignedSite = async () => {
-    const assignedIds = await resolveAssignedSiteIds(supabase, ctx);
-    if (!assignedIds.includes(siteId)) {
-      throw new Error('Diese Baustelle ist dir nicht zugewiesen');
-    }
-  };
-  if (!existingLogId) await assertAssignedSite();
+  await requireSiteAccess(supabase, ctx, siteId, { planDate: logDate });
 
   let reportType = parseDailyLogReportType(String(formData.get('report_type') ?? ''));
 
@@ -238,11 +240,17 @@ export async function saveDailyReport(formData: FormData) {
       .single();
     if (loadError || !existingLog) throw new Error('Tageseintrag nicht gefunden');
     if (existingLog.tenant_id !== tenantId) throw new Error('Keine Berechtigung');
-    if (!userCanEditDailyLog(ctx, { created_by: existingLog.created_by as string | null })) {
-      throw new Error('Keine Berechtigung');
+    await requireCanManageDailyReportForSiteDate(
+      supabase,
+      ctx,
+      existingLog.site_id,
+      logDate,
+      { created_by: existingLog.created_by as string | null },
+    );
+    await requireSiteAccess(supabase, ctx, existingLog.site_id, { planDate: logDate });
+    if (siteId !== existingLog.site_id) {
+      await requireCanManageDailyReportForSiteDate(supabase, ctx, siteId, logDate, null);
     }
-    await requireSiteAccess(supabase, ctx, existingLog.site_id);
-    if (siteId !== existingLog.site_id) await assertAssignedSite();
     reportType = parseDailyLogReportType(existingLog.report_type as string);
 
     const { data: activePhotos } = await supabase
@@ -295,6 +303,7 @@ export async function saveDailyReport(formData: FormData) {
         .eq('id', photoId);
     }
   } else {
+    await requireCanManageDailyReportForSiteDate(supabase, ctx, siteId, logDate, null);
     validatePhotoCount(0, photoFiles.length, 0);
 
     const { data: log, error } = await supabase
@@ -349,5 +358,7 @@ export async function saveDailyReport(formData: FormData) {
   }
 
   revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
+  revalidatePath(`/app/baustellen/${siteId}`);
   return { logId };
 }

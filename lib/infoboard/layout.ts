@@ -7,10 +7,13 @@ import {
   INFOBOARD_GRID_COLS,
   INFOBOARD_MAX_W,
   INFOBOARD_MIN_W,
+  INFOBOARD_TABLET_COLS,
   isLegacyGridLayout,
   scaleLegacyLayoutItem,
   WIDGET_REGISTRY,
 } from '@/lib/infoboard/widgets';
+
+const TABLET_FREIGABE_WIDGETS = new Set<InfoboardWidgetId>(['pending_approval', 'leave_pending']);
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   version: 1,
@@ -40,7 +43,8 @@ function defaultItemFor(id: InfoboardWidgetId, y: number): DashboardLayoutItem {
   };
 }
 
-function toGridItems(items: DashboardLayoutItem[]): Layout {
+function toGridItems(items: DashboardLayoutItem[], cols: number = INFOBOARD_GRID_COLS): Layout {
+  const maxW = Math.min(INFOBOARD_MAX_W, cols);
   return items
     .filter((item) => item.visible)
     .map((item) => {
@@ -53,17 +57,20 @@ function toGridItems(items: DashboardLayoutItem[]): Layout {
         h: item.h,
         minW: INFOBOARD_MIN_W,
         minH: def.minH,
-        maxW: INFOBOARD_MAX_W,
+        maxW,
         maxH: def.maxH,
       };
     });
 }
 
-export function compactDashboardLayout(layout: DashboardLayout): DashboardLayout {
-  const gridItems = toGridItems(layout.items);
+export function compactDashboardLayout(
+  layout: DashboardLayout,
+  cols: number = INFOBOARD_GRID_COLS,
+): DashboardLayout {
+  const gridItems = toGridItems(layout.items, cols);
   if (gridItems.length === 0) return layout;
 
-  const compacted = verticalCompactor.compact([...gridItems], INFOBOARD_GRID_COLS);
+  const compacted = verticalCompactor.compact([...gridItems], cols);
   return mergeGridLayoutChange(
     layout,
     compacted.map((item) => ({
@@ -142,8 +149,36 @@ export function findNextPosition(
   return { x: 0, y: maxY, w: def.defaultW, h: def.defaultH };
 }
 
-export function layoutToGridLayout(items: DashboardLayoutItem[]) {
-  return toGridItems(items);
+export function layoutToGridLayout(
+  items: DashboardLayoutItem[],
+  cols: number = INFOBOARD_GRID_COLS,
+) {
+  return toGridItems(items, cols);
+}
+
+function scaleItemToTabletCols(item: DashboardLayoutItem): DashboardLayoutItem {
+  if (!item.visible) return item;
+
+  const def = WIDGET_REGISTRY[item.id];
+  const cols = INFOBOARD_TABLET_COLS;
+
+  if (TABLET_FREIGABE_WIDGETS.has(item.id)) {
+    return { ...item, w: cols, x: 0 };
+  }
+
+  if (def.category === 'metric') {
+    return { ...item, w: 1, x: 0 };
+  }
+
+  const w = Math.max(1, Math.min(cols, Math.round(item.w / 2)));
+  const x = Math.min(cols - w, Math.max(0, Math.round(item.x / 2)));
+  return { ...item, w, x };
+}
+
+/** Nur für die Tablet-Anzeige — gespeichertes Layout bleibt unverändert. */
+export function layoutForTabletDisplay(layout: DashboardLayout): DashboardLayout {
+  const items = layout.items.map(scaleItemToTabletCols);
+  return compactDashboardLayout({ version: 1, items }, INFOBOARD_TABLET_COLS);
 }
 
 export function mergeGridLayoutChange(

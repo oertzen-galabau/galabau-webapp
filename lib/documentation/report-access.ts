@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActionContext, SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
+import { isUserForemanOnSiteDate } from '@/lib/schedule/foreman-daily-report';
+import { userCanCreateDailyReportOnSite } from '@/lib/sites/access';
 
 export type ReportAccessContext = Pick<
   SessionContext | ActionContext,
@@ -79,4 +81,43 @@ export function userCanEditDailyLog(
 ): boolean {
   if (!canAccess(ctx, 'documentation.manage')) return false;
   return userCanViewDailyLog(ctx, log);
+}
+
+function tenantIdOf(ctx: SessionContext | ActionContext): string {
+  return 'tenantId' in ctx ? ctx.tenantId : ctx.tenant!.id;
+}
+
+/** Anlegen oder Bearbeiten inkl. Einsatz-Vorarbeiter ohne Dauer-Recht documentation.manage. */
+export async function canManageDailyReportForSiteDate(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  siteId: string,
+  logDate: string,
+  existingLog?: DailyLogOwnershipRow | null,
+): Promise<boolean> {
+  if (existingLog) {
+    if (userCanEditDailyLog(ctx, existingLog)) return true;
+    if (existingLog.created_by === ctx.userId) {
+      return isUserForemanOnSiteDate(supabase, tenantIdOf(ctx), ctx.userId, siteId, logDate);
+    }
+    return false;
+  }
+
+  if (canAccess(ctx, 'documentation.manage')) {
+    return userCanCreateDailyReportOnSite(supabase, ctx, siteId, logDate);
+  }
+
+  return isUserForemanOnSiteDate(supabase, tenantIdOf(ctx), ctx.userId, siteId, logDate);
+}
+
+export async function requireCanManageDailyReportForSiteDate(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  siteId: string,
+  logDate: string,
+  existingLog?: DailyLogOwnershipRow | null,
+): Promise<void> {
+  if (!(await canManageDailyReportForSiteDate(supabase, ctx, siteId, logDate, existingLog))) {
+    throw new Error('Keine Berechtigung für diesen Tagesbericht');
+  }
 }

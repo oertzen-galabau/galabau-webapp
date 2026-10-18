@@ -32,6 +32,11 @@ export const SETTINGS_TABS = [
     label: 'Bestellbudget',
     permission: 'orders.manage_budget' as PermissionKey,
   },
+  {
+    id: 'bereiche',
+    label: 'Mitarbeiter-Bereiche',
+    permission: 'settings.work_areas' as PermissionKey,
+  },
 ] as const;
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];

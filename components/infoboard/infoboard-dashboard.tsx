@@ -10,18 +10,24 @@ import { RenderWidget } from '@/components/infoboard/render-widget';
 import { saveDashboardLayout } from '@/lib/actions/infoboard';
 import {
   compactDashboardLayout,
+  layoutForTabletDisplay,
   layoutToGridLayout,
   mergeGridLayoutChange,
   setWidgetVisibility,
 } from '@/lib/infoboard/layout';
 import { useInfoboardMobile } from '@/lib/infoboard/use-infoboard-mobile';
+import { useInfoboardTablet } from '@/lib/infoboard/use-infoboard-tablet';
 import type {
   DashboardLayout,
   InfoboardWidgetData,
   InfoboardWidgetId,
 } from '@/lib/infoboard/types';
 import { isWidgetLocked } from '@/lib/infoboard/layout';
-import { INFOBOARD_GRID_COLS, INFOBOARD_ROW_HEIGHT } from '@/lib/infoboard/widgets';
+import {
+  INFOBOARD_GRID_COLS,
+  INFOBOARD_ROW_HEIGHT,
+  INFOBOARD_TABLET_COLS,
+} from '@/lib/infoboard/widgets';
 
 type Props = {
   initialLayout: DashboardLayout;
@@ -37,6 +43,7 @@ export function InfoboardDashboard({
   canCustomize,
 }: Props) {
   const isMobile = useInfoboardMobile();
+  const isTablet = useInfoboardTablet();
   const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
   const [savedLayout, setSavedLayout] = useState(initialLayout);
   const [draftLayout, setDraftLayout] = useState(initialLayout);
@@ -45,10 +52,16 @@ export function InfoboardDashboard({
   const [isSaving, startSaveTransition] = useTransition();
 
   const activeLayout = isEditing ? draftLayout : savedLayout;
+  const gridCols = isTablet ? INFOBOARD_TABLET_COLS : INFOBOARD_GRID_COLS;
+
+  const displayLayout = useMemo(
+    () => (isTablet ? layoutForTabletDisplay(activeLayout) : activeLayout),
+    [activeLayout, isTablet],
+  );
 
   const gridLayout = useMemo(
-    () => layoutToGridLayout(activeLayout.items),
-    [activeLayout],
+    () => layoutToGridLayout(displayLayout.items, gridCols),
+    [displayLayout, gridCols],
   );
 
   const stackItems = useMemo(
@@ -82,18 +95,18 @@ export function InfoboardDashboard({
 
   const handleLayoutChange = useCallback(
     (nextLayout: Layout) => {
-      if (!isEditing || isMobile) return;
+      if (!isEditing || isMobile || isTablet) return;
       applyGridLayout(nextLayout, false);
     },
-    [isEditing, isMobile, applyGridLayout],
+    [isEditing, isMobile, isTablet, applyGridLayout],
   );
 
   const handleInteractionStop = useCallback(
     (nextLayout: Layout) => {
-      if (!isEditing || isMobile) return;
+      if (!isEditing || isMobile || isTablet) return;
       applyGridLayout(nextLayout, true);
     },
-    [isEditing, isMobile, applyGridLayout],
+    [isEditing, isMobile, isTablet, applyGridLayout],
   );
 
   const handleToggleWidget = useCallback((widgetId: InfoboardWidgetId, visible: boolean) => {
@@ -205,19 +218,19 @@ export function InfoboardDashboard({
               layout={gridLayout}
               compactor={verticalCompactor}
               gridConfig={{
-                cols: INFOBOARD_GRID_COLS,
+                cols: gridCols,
                 rowHeight: INFOBOARD_ROW_HEIGHT,
                 margin: [12, 12] as const,
                 containerPadding: [0, 0] as const,
               }}
               dragConfig={{
-                enabled: isEditing,
+                enabled: isEditing && !isTablet,
                 handle: '.infoboard-widget-chrome',
                 cancel: '.infoboard-widget-remove',
                 bounded: true,
               }}
               resizeConfig={{
-                enabled: isEditing,
+                enabled: isEditing && !isTablet,
                 handles: ['se'] as const,
               }}
               onLayoutChange={handleLayoutChange}

@@ -101,14 +101,15 @@ export async function saveSiteAction(
 
 export async function saveDailyLog(formData: FormData) {
   const ctx = await getActionContext();
-  requirePerm(ctx, 'documentation.manage');
   const { tenantId, userId } = ctx;
 
   const supabase = await createClient();
   const siteId = formData.get('site_id') as string;
   const logDate = formData.get('log_date') as string;
 
-  await requireSiteAccess(supabase, ctx, siteId);
+  const { requireCanManageDailyReportForSiteDate } = await import('@/lib/documentation/report-access');
+  await requireCanManageDailyReportForSiteDate(supabase, ctx, siteId, logDate, null);
+  await requireSiteAccess(supabase, ctx, siteId, { planDate: logDate });
 
   const { data: log, error } = await supabase.from('daily_logs').upsert({
     tenant_id: tenantId,
@@ -170,6 +171,7 @@ export async function saveDailyLog(formData: FormData) {
   }
 
   revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
 }
 
 export async function saveDeliveryNote(formData: FormData) {
@@ -188,7 +190,18 @@ export async function saveDeliveryNote(formData: FormData) {
   }
   await insertDeliveryNote(supabase, tenantId, dailyLogId, block);
 
+  const { data: logRow } = await supabase
+    .from('daily_logs')
+    .select('site_id')
+    .eq('id', dailyLogId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
   revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
+  if (logRow?.site_id) {
+    revalidatePath(`/app/baustellen/${logRow.site_id}`);
+  }
 }
 
 export async function saveSubcontractorEntry(formData: FormData) {
@@ -220,6 +233,7 @@ export async function saveSubcontractorEntry(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
 }
 
 async function softDeleteDocumentationEntry(
@@ -248,6 +262,7 @@ async function softDeleteDocumentationEntry(
 
   if (error) throw new Error(error.message);
   revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
 }
 
 export async function softDeleteDeliveryNote(formData: FormData) {
@@ -641,6 +656,8 @@ export async function deleteSiteDocument(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath(`/app/baustellen/${data.site_id}`);
+  revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
 }
 
 export async function uploadSiteDocument(formData: FormData) {
@@ -670,6 +687,8 @@ export async function uploadSiteDocument(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/app/baustellen/${siteId}`);
+  revalidatePath('/app/dokumentation');
+  revalidatePath('/app/rapporte');
 }
 
 export async function uploadSiteDocumentAction(
@@ -780,19 +799,98 @@ export async function updateLeaveEntitlement(formData: FormData) {
   requirePerm(ctx, 'team.leave_entitlement');
   const { tenantId } = ctx;
 
+  const { parseHalfDayField } = await import('@/lib/leave/carry-over');
   const supabase = await createClient();
   const targetUserId = formData.get('user_id') as string;
   const year = Number(formData.get('year') ?? new Date().getFullYear());
-  const entitlementDays = Number(formData.get('entitlement_days') ?? 30);
+  const entitlementDays = parseHalfDayField(formData.get('entitlement_days'), 30);
+  const carriedOverDays = parseHalfDayField(formData.get('carried_over_days'), 0);
 
-  const { error } = await supabase.from('leave_balances').upsert({
-    tenant_id: tenantId,
-    user_id: targetUserId,
-    year,
-    entitlement_days: entitlementDays,
-  }, { onConflict: 'tenant_id,user_id,year' });
+  const { data: existing } = await supabase
+    .from('leave_balances')
+    .select('used_days')
+    .eq('tenant_id', tenantId)
+    .eq('user_id', targetUserId)
+    .eq('year', year)
+    .maybeSingle();
+
+  const { error } = await supabase.from('leave_balances').upsert(
+    {
+      tenant_id: tenantId,
+      user_id: targetUserId,
+      year,
+      entitlement_days: entitlementDays,
+      carried_over_days: carriedOverDays,
+      used_days: existing?.used_days ?? 0,
+      carried_over_source: 'manual',
+    },
+    { onConflict: 'tenant_id,user_id,year' },
+  );
   if (error) throw new Error(error.message);
   revalidateEmployeePaths(targetUserId);
+  revalidatePath('/app/urlaub/konto');
+}
+
+export async function recalculateLeaveCarryFromPreviousYear(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'team.leave_entitlement');
+  const { tenantId } = ctx;
+
+  const supabase = await createClient();
+  const targetUserId = formData.get('user_id') as string;
+  const year = Number(formData.get('year') ?? new Date().getFullYear());
+
+  const { syncAutomaticCarriedOverToDb } = await import('@/lib/leave/balance');
+  await syncAutomaticCarriedOverToDb(supabase, tenantId, targetUserId, year);
+
+  revalidateEmployeePaths(targetUserId);
+  revalidatePath('/app/urlaub/konto');
+}
+
+export async function updateTenantLeaveCarryExpiry(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'settings.holidays');
+  const { tenantId } = ctx;
+
+  const monthRaw = (formData.get('leave_carry_expire_month') as string)?.trim();
+  const dayRaw = (formData.get('leave_carry_expire_day') as string)?.trim();
+
+  let leave_carry_expire_month: number | null = null;
+  let leave_carry_expire_day: number | null = null;
+
+  if (monthRaw || dayRaw) {
+    if (!monthRaw || !dayRaw) {
+      throw new Error('Monat und Tag für den Verfall müssen zusammen gesetzt oder leer sein.');
+    }
+    leave_carry_expire_month = Number(monthRaw);
+    leave_carry_expire_day = Number(dayRaw);
+    if (
+      Number.isNaN(leave_carry_expire_month) ||
+      Number.isNaN(leave_carry_expire_day) ||
+      leave_carry_expire_month < 1 ||
+      leave_carry_expire_month > 12 ||
+      leave_carry_expire_day < 1 ||
+      leave_carry_expire_day > 31
+    ) {
+      throw new Error('Ungültiger Verfallsstichtag.');
+    }
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({
+      leave_carry_expire_month,
+      leave_carry_expire_day,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', tenantId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/app/einstellungen');
+  revalidatePath('/app/urlaub');
+  revalidatePath('/app/urlaub/konto');
+  revalidatePath('/app/team', 'layout');
 }
 
 export async function updateTenantStartPassword(formData: FormData) {
@@ -908,6 +1006,8 @@ export async function inviteEmployee(
     const firstName = ((formData.get('first_name') as string) ?? '').trim();
     const lastName = ((formData.get('last_name') as string) ?? '').trim();
     const jobTitle = ((formData.get('job_title') as string) || '').trim() || null;
+    const workAreaIdRaw = ((formData.get('work_area_id') as string) || '').trim();
+    const workAreaId = workAreaIdRaw || null;
     const tenantRoleId = formData.get('tenant_role_id') as string;
 
     if (!email || !firstName || !lastName) {
@@ -927,6 +1027,17 @@ export async function inviteEmployee(
       .single();
 
     if (!tenantRole) return { ok: false, error: 'Ungültige Rolle' };
+
+    if (workAreaId) {
+      const { data: workArea } = await admin
+        .from('tenant_work_areas')
+        .select('id')
+        .eq('id', workAreaId)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!workArea) return { ok: false, error: 'Ungültiger Mitarbeiter-Bereich' };
+    }
 
     const enumRole = await enumRoleFromTenantRoleId(admin, tenantRoleId);
     const tempPassword = generateTempPassword();
@@ -952,6 +1063,7 @@ export async function inviteEmployee(
       first_name: firstName,
       last_name: lastName,
       job_title: jobTitle,
+      work_area_id: workAreaId,
       email,
       must_change_password: true,
     }).eq('id', userId);
@@ -1117,6 +1229,7 @@ export async function updateEmployeeProfile(formData: FormData) {
     entry_date: (formData.get('entry_date') as string) || null,
     exit_date: (formData.get('exit_date') as string) || null,
     job_title: (formData.get('job_title') as string) || null,
+    work_area_id: ((formData.get('work_area_id') as string) || '').trim() || null,
     leader_code: ((formData.get('leader_code') as string) || '').trim().toUpperCase() || null,
   };
 

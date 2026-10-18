@@ -83,7 +83,7 @@ export function RegisterForm() {
         <form onSubmit={onSubmit} className="auth-form">
           <label className="auth-field">
             Firma
-            <input name="company_name" required placeholder="z. B. Mustermann GaLaBau" />
+            <input name="company_name" required placeholder="z. B. Mustermann Bau GmbH" />
           </label>
           <label className="auth-field">
             Subdomain

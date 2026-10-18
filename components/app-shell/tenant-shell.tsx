@@ -7,14 +7,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BriefcaseBusiness, CalendarRange, Clock3, FileText, HardHat as HardHatIcon, LayoutDashboard,
+  BriefcaseBusiness, CalendarRange, Clock3, FileText, FolderOpen, HardHat as HardHatIcon, LayoutDashboard,
   Menu, MessageSquare, Settings, Shield, Shirt, Users, X,
 } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { SidebarUnreadNotifications } from '@/components/messages/sidebar-unread-notifications';
+import { useEffect, useMemo, useState } from 'react';
 import { getPendingOrderCount } from '@/lib/actions/orders';
-import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
-import type { UnreadInboxSummary } from '@/lib/messages/unread-inbox';
+import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { createClient } from '@/lib/supabase/client';
 import { LogoutButton } from '@/components/auth/logout-button';
 import { RoleSwitcher } from '@/components/dev/role-switcher';
@@ -37,7 +35,7 @@ const navItems: NavItem[] = [
   { href: '/app/baustellen', label: 'Baustellen', icon: BriefcaseBusiness, permission: 'nav.baustellen' },
   { href: '/app/einsatzplanung', label: 'Einsatzplan', icon: CalendarRange, permission: 'nav.einsatzplanung' },
   { href: '/app/dokumentation', label: 'Dokumentation', icon: FileText, permission: 'nav.dokumentation' },
-  { href: '/app/rapporte', label: 'Rapporte', icon: FileText, permission: 'nav.rapporte' },
+  { href: '/app/rapporte', label: 'Dokumente', icon: FolderOpen, permission: 'nav.rapporte' },
   { href: '/app/nachrichten', label: 'Nachrichten', icon: MessageSquare, permission: 'nav.nachrichten' },
   { href: '/app/bestellungen', label: 'Bestellungen', icon: Shirt, permission: 'nav.bestellungen' },
   { href: '/app/team', label: 'Team', icon: Users, permission: 'nav.team' },
@@ -94,8 +92,8 @@ export function TenantShell({
   todayEntry = null,
   canRecordTime = false,
   initialUnreadCount = 0,
-  initialUnreadSummaries = [],
   initialPendingOrderCount = 0,
+  showDokumentationAsForeman = false,
   children,
 }: {
   theme: TenantTheme;
@@ -110,16 +108,14 @@ export function TenantShell({
   todayEntry?: TimeEntry | null;
   canRecordTime?: boolean;
   initialUnreadCount?: number;
-  initialUnreadSummaries?: UnreadInboxSummary[];
   initialPendingOrderCount?: number;
+  showDokumentationAsForeman?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileMenu, setMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
-  const [unreadSummaries, setUnreadSummaries] = useState(initialUnreadSummaries);
   const [prevInitialUnreadCount, setPrevInitialUnreadCount] = useState(initialUnreadCount);
-  const [prevInitialUnreadSummaries, setPrevInitialUnreadSummaries] = useState(initialUnreadSummaries);
   const [pendingOrderCount, setPendingOrderCount] = useState(initialPendingOrderCount);
   const [prevInitialPendingOrderCount, setPrevInitialPendingOrderCount] = useState(initialPendingOrderCount);
   const permSet = useMemo(() => new Set(permissions), [permissions]);
@@ -142,11 +138,6 @@ export function TenantShell({
     setPrevInitialPendingOrderCount(initialPendingOrderCount);
     setPendingOrderCount(initialPendingOrderCount);
   }
-  if (initialUnreadSummaries !== prevInitialUnreadSummaries) {
-    setPrevInitialUnreadSummaries(initialUnreadSummaries);
-    setUnreadSummaries(initialUnreadSummaries);
-  }
-
   useEffect(() => {
     if (!canViewMessages) return;
 
@@ -154,9 +145,6 @@ export function TenantShell({
     const refreshInbox = () => {
       void getUnreadMessageCount()
         .then(setUnreadCount)
-        .catch(() => undefined);
-      void getUnreadInboxSummaries()
-        .then(setUnreadSummaries)
         .catch(() => undefined);
     };
 
@@ -211,9 +199,10 @@ export function TenantShell({
     };
   }, [canSeeOrderBadge, profile.id, pathname]);
 
-  const visibleNav = navItems.filter(
-    (item) => isSuperadminBypass || permSet.has(item.permission),
-  );
+  const visibleNav = navItems.filter((item) => {
+    if (isSuperadminBypass || permSet.has(item.permission)) return true;
+    return item.href === '/app/dokumentation' && showDokumentationAsForeman;
+  });
   const mobileNav = bottomNavItems(visibleNav);
   const profileActive = pathname === '/app/profil';
 
@@ -266,16 +255,11 @@ export function TenantShell({
               const Icon = item.icon;
               const active = pathname === item.href || (item.href !== '/app' && pathname.startsWith(item.href));
               return (
-                <Fragment key={item.href}>
-                  <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
-                    <Icon size={19} />
-                    <span>{item.label}</span>
-                    <NavUnreadBadge count={navBadgeCount(item.href)} />
-                  </Link>
-                  {item.href === '/app/nachrichten' && canViewMessages && (
-                    <SidebarUnreadNotifications summaries={unreadSummaries} />
-                  )}
-                </Fragment>
+                <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
+                  <Icon size={19} />
+                  <span>{item.label}</span>
+                  <NavUnreadBadge count={navBadgeCount(item.href)} />
+                </Link>
               );
             })}
           </nav>
@@ -346,19 +330,11 @@ export function TenantShell({
                 const Icon = item.icon;
                 const active = pathname === item.href;
                 return (
-                  <Fragment key={item.href}>
-                    <Link href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
-                      <Icon size={20} />
-                      {item.label}
-                      <NavUnreadBadge count={navBadgeCount(item.href)} />
-                    </Link>
-                    {item.href === '/app/nachrichten' && canViewMessages && (
-                      <SidebarUnreadNotifications
-                        summaries={unreadSummaries}
-                        className="sidebar-unread-messages--drawer"
-                      />
-                    )}
-                  </Fragment>
+                  <Link key={item.href} href={item.href} className={active ? 'active' : ''} onClick={() => setMobileMenu(false)}>
+                    <Icon size={20} />
+                    {item.label}
+                    <NavUnreadBadge count={navBadgeCount(item.href)} />
+                  </Link>
                 );
               })}
               <Link

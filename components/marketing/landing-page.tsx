@@ -23,7 +23,7 @@ import { getPlatformName } from '@/lib/tenant/config';
 import {
   OfficeFieldTabs,
   SyncSplitSection,
-  GalabauUseCases,
+  ProductUseCases,
   SupportHighlights,
 } from '@/components/marketing/office-field-tabs';
 
@@ -140,11 +140,12 @@ const pricingPlans = [
   },
 ];
 
-const faqItems = [
+function buildFaqItems(platform: string) {
+  return [
   {
-    question: 'Was kostet Værkflow?',
+    question: `Was kostet ${platform}?`,
     answer:
-      'Solo kostet 79 € pro Monat (1 Nutzer), Team 149 € pro Monat (bis 5 Nutzer) und Max 299 € pro Monat (bis 10 Nutzer). Alle Preise verstehen sich netto. Værkflow fokussiert sich auf Baustellenmanagement — ohne Rechnungswesen oder Buchhaltung.',
+      `Solo kostet 79 € pro Monat (1 Nutzer), Team 149 € pro Monat (bis 5 Nutzer) und Max 299 € pro Monat (bis 10 Nutzer). Alle Preise verstehen sich netto. ${platform} fokussiert sich auf Baustellenmanagement — ohne Rechnungswesen oder Buchhaltung.`,
   },
   {
     question: 'Wie funktioniert die 7-Tage-Testphase?',
@@ -182,6 +183,7 @@ const faqItems = [
       'Ja. Die Oberfläche ist für mobile Geräte optimiert: große Touch-Ziele für Zeiterfassung und Tagesdokumentation direkt auf der Baustelle — als Web-App im Browser.',
   },
 ];
+}
 
 function HeroMockup() {
   return (
@@ -254,6 +256,7 @@ function SectionHead({ eyebrow, title, text }: { eyebrow: string; title: string;
 
 export function MarketingLanding() {
   const platform = getPlatformName();
+  const faqItems = buildFaqItems(platform);
 
   return (
     <div className="marketing-page">
@@ -266,7 +269,7 @@ export function MarketingLanding() {
           <Link href="#produkt">Produkt</Link>
           <Link href="#features">Funktionen</Link>
           <Link href="#pricing">Preise</Link>
-          <Link href="#galabau">GaLaBau</Link>
+          <Link href="#einsatz">Einsatz</Link>
           <Link href="#faq">FAQ</Link>
           <Link href="/register" className="primary-button">Kostenlos testen</Link>
           <Link href="/login">Anmelden</Link>
@@ -277,7 +280,7 @@ export function MarketingLanding() {
         <div className="marketing-shell">
           <div className="marketing-hero-grid">
             <div className="marketing-hero-copy">
-              <span className="eyebrow">Cloud-App für GaLaBau</span>
+              <span className="eyebrow">Cloud-App für Baustellenmanagement</span>
               <h1>
                 <span className="marketing-headline-stack">Baustelle dokumentiert.</span>
                 <span className="marketing-headline-stack">Büro informiert.</span>
@@ -378,7 +381,7 @@ export function MarketingLanding() {
           <SectionHead
             eyebrow="Funktionen"
             title="Einfachheit trifft Effizienz."
-            text="Alles für Baustelle und Team — fokussiert auf das, was GaLaBau-Betriebe wirklich brauchen."
+            text="Alles für Baustelle und Team — fokussiert auf das, was Bauunternehmen wirklich brauchen."
           />
           <div className="marketing-grid">
             {features.map(({ icon: Icon, title, text }) => (
@@ -392,14 +395,14 @@ export function MarketingLanding() {
         </div>
       </section>
 
-      <section id="galabau" className="marketing-section marketing-section-alt">
+      <section id="einsatz" className="marketing-section marketing-section-alt">
         <div className="marketing-shell">
           <SectionHead
-            eyebrow="Branchenfokus"
-            title="Gemacht für GaLaBau."
-            text={`${platform} adressiert die Prozesse in Grünflächen- und Außenanlagenbetrieben — kein generisches Baukastensystem.`}
+            eyebrow="BauDiggi"
+            title="Gemacht für Ihren Betrieb."
+            text={`${platform} verbindet Büro und Baustelle — Zeiten, Doku und Rapporte ohne generisches Baukastensystem.`}
           />
-          <GalabauUseCases />
+          <ProductUseCases />
         </div>
       </section>
 
@@ -530,7 +533,7 @@ export function MarketingLanding() {
               <strong>{platform}</strong>
             </div>
             <p>
-              Cloud-SaaS für Baustellenmanagement im GaLaBau — Zeiten, Doku, Baustellen
+              Cloud-SaaS für Baustellenmanagement — Zeiten, Doku, Baustellen
               und Rapporte in einer App.
             </p>
           </div>
@@ -540,7 +543,7 @@ export function MarketingLanding() {
               <Link href="#produkt">Büro & Baustelle</Link>
               <Link href="#features">Funktionen</Link>
               <Link href="#pricing">Preise</Link>
-              <Link href="#galabau">GaLaBau</Link>
+              <Link href="#einsatz">Einsatz</Link>
             </nav>
           </div>
           <div>
@@ -556,13 +559,15 @@ export function MarketingLanding() {
             <strong>Kontakt</strong>
             <nav>
               <Link href="/register">Registrieren</Link>
-              <a href="https://macario.dev" target="_blank" rel="noopener noreferrer">macario.dev</a>
+              <a href="mailto:contact@baudiggi.de">contact@baudiggi.de</a>
             </nav>
           </div>
         </div>
         <div className="marketing-footer-bottom">
           <span>© {new Date().getFullYear()} {platform}</span>
-          <span>Entwickelt von macario.dev</span>
+          <span>
+            <a href="https://baudiggi.de">baudiggi.de</a>
+          </span>
         </div>
       </footer>
     </div>

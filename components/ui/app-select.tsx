@@ -56,6 +56,7 @@ export function AppSelect({
 
   const selected = options.find((option) => option.value === currentValue);
   const displayLabel = selected?.label ?? (currentValue === '' ? placeholder : currentValue);
+  const hasEmptyOption = options.some((option) => option.value === '');
 
   return (
     <>
@@ -71,7 +72,7 @@ export function AppSelect({
         </DropdownMenuTrigger>
         <DropdownMenuContent className="app-select-content" align="start">
           <DropdownMenuGroup className="flex flex-col gap-0.5">
-            {allowEmpty && !required && (
+            {allowEmpty && !required && !hasEmptyOption && (
               <DropdownMenuItem
                 onClick={() => pick('')}
                 className={cn(
@@ -87,7 +88,7 @@ export function AppSelect({
               const active = currentValue === option.value;
               return (
                 <DropdownMenuItem
-                  key={option.value}
+                  key={option.value === '' ? '__empty' : option.value}
                   disabled={option.disabled}
                   onClick={() => pick(option.value)}
                   className={cn('app-select-item', active && 'app-select-item--active')}

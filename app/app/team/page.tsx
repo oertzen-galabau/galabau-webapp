@@ -13,13 +13,18 @@ export default async function TeamPage() {
 
   const tenantId = ctx.tenant!.id;
   const supabase = await createClient();
-  const [{ data: members }, { data: tenantRoles }] = await Promise.all([
+  const [{ data: members }, { data: tenantRoles }, { data: workAreas }] = await Promise.all([
     supabase
       .from('profiles')
       .select('*, tenant_roles(name)')
       .eq('tenant_id', tenantId)
       .order('last_name'),
     supabase.from('tenant_roles').select('*').eq('tenant_id', tenantId).order('sort_order'),
+    supabase
+      .from('tenant_work_areas')
+      .select('id, name, is_active')
+      .eq('tenant_id', tenantId)
+      .order('sort_order'),
   ]);
 
   const canInvite = canAccess(ctx, 'team.invite');
@@ -40,6 +45,7 @@ export default async function TeamPage() {
       {canInvite && (
         <InviteEmployeeForm
           roles={(tenantRoles ?? []).map((role) => ({ value: role.id, label: role.name }))}
+          workAreas={workAreas ?? []}
         />
       )}
 

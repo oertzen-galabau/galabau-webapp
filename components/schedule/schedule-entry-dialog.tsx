@@ -17,8 +17,10 @@ import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { partnerOptionLabel } from '@/lib/partners/kind';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
 import type { SchedulePlanData } from '@/lib/schedule/load-plan-data';
-import { mondayOfWeek, weekDaysFromMonday } from '@/lib/schedule/week';
-import type { Profile, Site } from '@/lib/types/database';
+import { todayIsoInBerlin } from '@/lib/schedule/week';
+import { ScheduleEntryDayPicker } from '@/components/schedule/schedule-entry-day-picker';
+import { ScheduleMemberPicker } from '@/components/schedule/schedule-member-picker';
+import type { Site } from '@/lib/types/database';
 
 export type ScheduleSubcontractorOption = {
   id: string;
@@ -31,8 +33,8 @@ type Props = {
   onClose: () => void;
   entry: ScheduleEntryView | null;
   sites: Pick<Site, 'id' | 'name'>[];
-  employees: Pick<Profile, 'id' | 'first_name' | 'last_name'>[];
-  foremen: Pick<Profile, 'id' | 'first_name' | 'last_name'>[];
+  employees: SchedulePlanData['employees'];
+  workAreas: SchedulePlanData['workAreas'];
   subcontractors: ScheduleSubcontractorOption[];
   equipment: SchedulePlanData['equipment'];
   defaultSiteId?: string;
@@ -46,7 +48,7 @@ export function ScheduleEntryDialog({
   entry,
   sites,
   employees,
-  foremen,
+  workAreas,
   subcontractors,
   equipment,
   defaultSiteId,
@@ -56,7 +58,7 @@ export function ScheduleEntryDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const memberSet = new Set(entry?.members.map((m) => m.user_id) ?? []);
+  const initialMemberIds = entry?.members.map((m) => m.user_id) ?? [];
   const equipmentSet = new Set(entry?.equipment.map((e) => e.equipment_id) ?? []);
   const externalInitial = useMemo(
     () => parseExternalWorkersText(entry?.external_workers_text, subcontractors),
@@ -71,25 +73,23 @@ export function ScheduleEntryDialog({
   // Beim Wechsel auf einen anderen Einsatz immer mit dem ersten Tab starten.
   const activeTab = tabState.key === formKey ? tabState.tab : 'details';
 
-  const primaryDay = entry?.start_date ?? defaultDay ?? '';
-  const extraDayOptions = useMemo(() => {
-    if (entry) return [];
-    const base = primaryDay || weekDays?.[0];
-    if (!base) return [];
-    const days = weekDays?.length ? weekDays : weekDaysFromMonday(mondayOfWeek(base));
-    return days.filter((d) => d !== primaryDay);
-  }, [entry, primaryDay, weekDays]);
+  const primaryDay = entry?.start_date ?? defaultDay ?? todayIsoInBerlin();
+  const initialPlanDays = entry ? [entry.start_date] : primaryDay ? [primaryDay] : [];
 
   function handleSubmit(formData: FormData) {
     setError(null);
+    const planDate = String(formData.get('start_date') ?? '').trim();
+    if (!entry && !planDate) {
+      setError('Bitte mindestens einen Tag auswählen.');
+      return;
+    }
     const partnerIds = formData.getAll('external_partner_id[]').map(String);
     const extra = String(formData.get('external_workers_extra') ?? '');
     formData.set(
       'external_workers_text',
       buildExternalWorkersText(partnerIds, subcontractors, extra),
     );
-    const planDate = String(formData.get('start_date') ?? primaryDay);
-    formData.set('start_date', planDate);
+    formData.set('start_date', planDate || entry!.start_date);
     startTransition(async () => {
       try {
         if (entry) {
@@ -170,29 +170,11 @@ export function ScheduleEntryDialog({
               ))}
             </select>
           </label>
-          <label>
-            Tag
-            <input
-              type="date"
-              name="start_date"
-              required
-              disabled={pending || Boolean(entry)}
-              defaultValue={entry?.start_date ?? defaultDay ?? ''}
-            />
-          </label>
-          {!entry && extraDayOptions.length > 0 ? (
-            <div className="input-form-span-full schedule-entry-extra-days">
-              <p className="input-form-section-title">Auch an weiteren Tagen eintragen</p>
-              <div className="input-form-checkboxes">
-                {extraDayOptions.map((d) => (
-                  <label key={d} className="input-form-checkbox">
-                    <input type="checkbox" name="extra_plan_date[]" value={d} disabled={pending} />
-                    {d}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <ScheduleEntryDayPicker
+            initialDays={initialPlanDays}
+            readOnly={Boolean(entry)}
+            disabled={pending}
+          />
           <label>
             Von (Uhrzeit)
             <input
@@ -211,37 +193,21 @@ export function ScheduleEntryDialog({
               defaultValue={entry?.end_time ?? '16:00'}
             />
           </label>
-          <label className="input-form-span-full">
-            Vorarbeiter
-            <select name="foreman_user_id" disabled={pending} defaultValue={entry?.foreman_user_id ?? ''}>
-              <option value="">— optional —</option>
-              {foremen.map((f) => (
-                <option key={f.id} value={f.id}>{f.first_name} {f.last_name}</option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="schedule-entry-form-section">
           <p className="input-form-section-title">Mitarbeiter</p>
-          {employees.length === 0 ? (
-            <p className="muted">Keine aktiven Mitarbeiter im Team.</p>
-          ) : (
-            <div className="input-form-checkboxes">
-              {employees.map((e) => (
-                <label key={e.id} className="input-form-checkbox">
-                  <input
-                    type="checkbox"
-                    name="member_user_id[]"
-                    value={e.id}
-                    disabled={pending}
-                    defaultChecked={memberSet.has(e.id)}
-                  />
-                  {e.first_name} {e.last_name}
-                </label>
-              ))}
-            </div>
-          )}
+          <p className="muted schedule-entry-foreman-hint">
+            Der gewählte Vorarbeiter ist für den Tagesbericht an diesem Tag verantwortlich.
+          </p>
+          <ScheduleMemberPicker
+            key={formKey}
+            employees={employees}
+            workAreas={workAreas}
+            initialSelectedIds={initialMemberIds}
+            initialForemanId={entry?.foreman_user_id ?? null}
+            disabled={pending}
+          />
         </div>
 
         </div>

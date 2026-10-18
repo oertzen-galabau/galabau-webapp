@@ -50,6 +50,17 @@ function readOptionalDate(raw: FormDataEntryValue | null): string | null {
   return s || null;
 }
 
+const BOOKING_NUMBER_MAX_LEN = 50;
+
+function readOptionalBookingNumber(raw: FormDataEntryValue | null): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  if (s.length > BOOKING_NUMBER_MAX_LEN) {
+    throw new Error(`Buchungsnummer darf höchstens ${BOOKING_NUMBER_MAX_LEN} Zeichen haben.`);
+  }
+  return s;
+}
+
 function readEquipmentFields(formData: FormData) {
   const name = String(formData.get('name') ?? '').trim();
   if (!name) throw new Error('Bezeichnung ist erforderlich');
@@ -66,6 +77,7 @@ function readEquipmentFields(formData: FormData) {
     operating_hours: readOptionalDecimal(formData.get('operating_hours')),
     mileage_km: readOptionalDecimal(formData.get('mileage_km')),
     license_class_required: String(formData.get('license_class_required') ?? '').trim() || null,
+    booking_number: readOptionalBookingNumber(formData.get('booking_number')),
     status: parseStatus(formData.get('status')),
     notes: String(formData.get('notes') ?? '').trim() || null,
   };

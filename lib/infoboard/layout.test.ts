@@ -4,11 +4,12 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import {
   DEFAULT_DASHBOARD_LAYOUT,
   isWidgetLocked,
+  layoutForTabletDisplay,
   layoutsOverlap,
   resolveEffectiveLayout,
   setWidgetVisibility,
 } from '@/lib/infoboard/layout';
-import { INFOBOARD_GRID_COLS } from '@/lib/infoboard/widgets';
+import { INFOBOARD_GRID_COLS, INFOBOARD_TABLET_COLS } from '@/lib/infoboard/widgets';
 
 const adminPermissions = new Set<PermissionKey>([
   'nav.infoboard',
@@ -93,5 +94,43 @@ describe('resolveEffectiveLayout', () => {
     assert.ok((schedule?.w ?? 0) <= INFOBOARD_GRID_COLS);
     const visible = layout.items.filter((item) => item.visible);
     assert.equal(layoutsOverlap(visible), false);
+  });
+});
+
+describe('layoutForTabletDisplay', () => {
+  it('stacks freigabe widgets full width and metrics two per row without overlap', () => {
+    const sideBySideFreigabe: typeof DEFAULT_DASHBOARD_LAYOUT = {
+      version: 1,
+      items: DEFAULT_DASHBOARD_LAYOUT.items.map((item) => {
+        if (item.id === 'pending_approval') return { ...item, x: 0, y: 0, w: 2, h: 4, visible: true };
+        if (item.id === 'leave_pending') return { ...item, x: 2, y: 0, w: 2, h: 4, visible: true };
+        return item;
+      }),
+    };
+
+    const tablet = layoutForTabletDisplay(sideBySideFreigabe);
+    const visible = tablet.items.filter((item) => item.visible);
+
+    const pending = visible.find((item) => item.id === 'pending_approval');
+    const leavePending = visible.find((item) => item.id === 'leave_pending');
+    assert.equal(pending?.w, INFOBOARD_TABLET_COLS);
+    assert.equal(pending?.x, 0);
+    assert.equal(leavePending?.w, INFOBOARD_TABLET_COLS);
+    assert.equal(leavePending?.x, 0);
+    assert.ok((leavePending?.y ?? 0) > (pending?.y ?? 0));
+
+    const metrics = visible.filter((item) => item.id.startsWith('metric_'));
+    assert.ok(metrics.length > 0);
+    assert.ok(metrics.every((item) => item.w === 1));
+    assert.ok(visible.every((item) => item.x + item.w <= INFOBOARD_TABLET_COLS));
+    assert.equal(layoutsOverlap(visible), false);
+  });
+
+  it('does not mutate the source layout', () => {
+    const source = structuredClone(DEFAULT_DASHBOARD_LAYOUT);
+    layoutForTabletDisplay(source);
+    const pendingBefore = DEFAULT_DASHBOARD_LAYOUT.items.find((item) => item.id === 'pending_approval');
+    const pendingSource = source.items.find((item) => item.id === 'pending_approval');
+    assert.deepEqual(pendingSource, pendingBefore);
   });
 });

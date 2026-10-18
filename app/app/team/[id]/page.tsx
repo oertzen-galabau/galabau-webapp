@@ -82,6 +82,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     { data: todayAssignment },
     { data: orders },
     { data: notesRaw },
+    { data: workAreas },
   ] = await Promise.all([
     supabase.from('tenant_roles').select('*').order('sort_order'),
     loadLeaveBalanceContext(supabase, ctx.tenant!.id, id, year),
@@ -93,6 +94,11 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     supabase.from('daily_assignments').select('id, assignment_date, notes, sites(name)').eq('user_id', id).eq('assignment_date', today).maybeSingle(),
     supabase.from('clothing_orders').select('*').eq('user_id', id).order('created_at', { ascending: false }),
     supabase.from('employee_notes').select('*').eq('user_id', id).order('created_at', { ascending: false }),
+    supabase
+      .from('tenant_work_areas')
+      .select('id, name, is_active')
+      .eq('tenant_id', ctx.tenant!.id)
+      .order('sort_order'),
   ]);
 
   const authorIds = [...new Set((notesRaw ?? []).map((n) => n.created_by).filter(Boolean))] as string[];
@@ -164,6 +170,8 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         month={month}
         balance={leaveContext.balance}
         leaveBreakdown={leaveContext.breakdown}
+        carriedOverSource={leaveContext.carriedOverSource}
+        carryExpiry={leaveContext.carryExpiry}
         leaveRequests={(leaveRequests ?? []) as LeaveRequest[]}
         timeEntries={timeEntries as TimeEntry[]}
         assignments={normalizeAssignments(assignments)}
@@ -176,6 +184,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         pendingLeaveCount={pendingLeaveCount}
         todayAssignment={todayAssignment ? normalizeAssignment(todayAssignment) : null}
         invitation={invitation}
+        workAreas={workAreas ?? []}
       />
     </>
   );

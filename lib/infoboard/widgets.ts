@@ -2,6 +2,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import type { InfoboardWidgetDef, InfoboardWidgetId } from '@/lib/infoboard/types';
 
 export const INFOBOARD_GRID_COLS = 4;
+export const INFOBOARD_TABLET_COLS = 2;
 export const INFOBOARD_MIN_W = 1;
 export const INFOBOARD_MAX_W = INFOBOARD_GRID_COLS;
 export const INFOBOARD_ROW_HEIGHT = 52;
@@ -143,6 +144,17 @@ export const WIDGET_REGISTRY: Record<InfoboardWidgetId, InfoboardWidgetDef> = {
     defaultW: 2,
     defaultH: 3,
     enabled: false,
+  },
+  equipment_uvv_due: {
+    id: 'equipment_uvv_due',
+    label: 'UVV-Fälligkeit',
+    category: 'panel',
+    permissions: ['nav.partners', 'partners.view'],
+    ...GRID_WIDTH,
+    minH: 3,
+    defaultW: 4,
+    defaultH: 4,
+    enabled: true,
   },
 };
 

@@ -1,6 +1,6 @@
 import { hasSiteAddress, type SiteAddressParts } from '@/lib/sites/format-address';
 import type { Site } from '@/lib/types/database';
-import { fetchSiteWeather } from '@/lib/weather/fetch-weather';
+import { fetchSiteWeather, type DailyForecast } from '@/lib/weather/fetch-weather';
 import { WeatherIcon } from '@/components/sites/weather-icon';
 
 type Props = {
@@ -17,6 +17,15 @@ function formatDayLabel(date: string) {
 
 function formatTemperature(value: number) {
   return `${Math.round(value)}°`;
+}
+
+function localDateKey(date = new Date()) {
+  return date.toLocaleDateString('en-CA');
+}
+
+function upcomingForecastDays(daily: DailyForecast[], count = 5) {
+  const todayKey = localDateKey();
+  return daily.filter((day) => day.date > todayKey).slice(0, count);
 }
 
 export async function SiteWeatherSection({ site }: Props) {
@@ -67,7 +76,7 @@ export async function SiteWeatherSection({ site }: Props) {
       </div>
 
       <div className="site-weather-forecast">
-        {weather.daily.map((day) => (
+        {upcomingForecastDays(weather.daily).map((day) => (
             <div key={day.date} className="site-weather-forecast-day">
               <span className="site-weather-forecast-date">{formatDayLabel(day.date)}</span>
               <WeatherIcon kind={day.iconKind} size={20} aria-hidden />

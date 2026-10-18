@@ -1,12 +1,13 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
-import { getUnreadInboxSummaries, getUnreadMessageCount } from '@/lib/actions/employee';
+import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { getPendingOrderCount } from '@/lib/actions/orders';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { getTenantBySlug, tenantThemeStyle } from '@/lib/tenant/resolve';
 import { getTenantRoles } from '@/lib/tenant/roles';
 import { createClient } from '@/lib/supabase/server';
+import { userHasForemanDutyOnDate } from '@/lib/schedule/foreman-daily-report';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 export default async function TenantAppLayout({ children }: { children: React.ReactNode }) {
   const headerList = await headers();
@@ -50,12 +51,14 @@ export default async function TenantAppLayout({ children }: { children: React.Re
   }
 
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
-  const [initialUnreadCount, initialUnreadSummaries] = canViewMessages
-    ? await Promise.all([getUnreadMessageCount(), getUnreadInboxSummaries()])
-    : [0, [] as Awaited<ReturnType<typeof getUnreadInboxSummaries>>];
+  const initialUnreadCount = canViewMessages ? await getUnreadMessageCount() : 0;
 
   const canManageOrders = canAccess(ctx, 'nav.bestellungen') && canAccess(ctx, 'orders.manage');
   const initialPendingOrderCount = canManageOrders ? await getPendingOrderCount() : 0;
+
+  const showDokumentationAsForeman =
+    !canAccess(ctx, 'nav.dokumentation') &&
+    (await userHasForemanDutyOnDate(supabase, tenant.id, ctx.userId, todayWorkDate()));
 
   return (
     <div style={tenantThemeStyle(tenant)}>
@@ -72,8 +75,8 @@ export default async function TenantAppLayout({ children }: { children: React.Re
         todayEntry={todayEntry}
         canRecordTime={canRecordTime}
         initialUnreadCount={initialUnreadCount}
-        initialUnreadSummaries={initialUnreadSummaries}
         initialPendingOrderCount={initialPendingOrderCount}
+        showDokumentationAsForeman={showDokumentationAsForeman}
       >
         {children}
       </TenantShell>

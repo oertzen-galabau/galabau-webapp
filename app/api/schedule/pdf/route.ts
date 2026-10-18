@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { loadScheduleDayData, loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
-import { buildScheduleDayPdf, buildScheduleWeekPdf } from '@/lib/schedule/pdf';
+import { buildScheduleDayPdf, buildScheduleWeekPdf, loadTenantLogoBytes } from '@/lib/schedule/pdf';
 import { mondayOfWeek } from '@/lib/schedule/week';
 import { createClient } from '@/lib/supabase/server';
 
@@ -24,8 +24,9 @@ export async function GET(request: Request) {
   const disposition = dispositionParam === 'inline' ? 'inline' : 'attachment';
 
   const supabase = await createClient();
-  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', ctx.tenantId).single();
+  const { data: tenant } = await supabase.from('tenants').select('name, logo_url').eq('id', ctx.tenantId).single();
   const tenantName = tenant?.name ?? 'Einsatzplan';
+  const logo = await loadTenantLogoBytes(tenant?.logo_url);
 
   let bytes: Uint8Array;
   let filename: string;
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
       weekStart: plan.weekStart,
       weekDays: plan.weekDays,
       entries: plan.entries,
+      logo,
     });
     filename = `wochenplan-${plan.weekStart}.pdf`;
   } else {
@@ -63,6 +65,7 @@ export async function GET(request: Request) {
       draft: canAccess(ctx, 'schedule.manage') && !dayPublished,
       absentees: plan.leaveDays,
       employeeNames,
+      logo,
     });
     filename = `einsatzplan-${day}.pdf`;
   }

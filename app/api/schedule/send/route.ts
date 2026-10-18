@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { loadScheduleDayData, loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
-import { buildScheduleDayPdf, buildScheduleWeekPdf } from '@/lib/schedule/pdf';
+import { buildScheduleDayPdf, buildScheduleWeekPdf, loadTenantLogoBytes } from '@/lib/schedule/pdf';
 import { formatGermanWeekdayDate, mondayOfWeek } from '@/lib/schedule/week';
 import { sendMail, getDefaultMailRecipient, sendMailFailureText } from '@/lib/email/smtp';
 import { createClient } from '@/lib/supabase/server';
@@ -27,8 +27,9 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient();
-  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', ctx.tenantId).single();
+  const { data: tenant } = await supabase.from('tenants').select('name, logo_url').eq('id', ctx.tenantId).single();
   const tenantName = tenant?.name ?? 'Einsatzplan';
+  const logo = await loadTenantLogoBytes(tenant?.logo_url);
 
   const resolvedMode = mode ?? 'day';
   let bytes: Uint8Array;
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       weekStart: plan.weekStart,
       weekDays: plan.weekDays,
       entries: plan.entries,
+      logo,
     });
     subject = `Wochenplan ${weekStart} – ${tenantName}`;
     filename = `wochenplan-${weekStart}.pdf`;
@@ -71,6 +73,7 @@ export async function POST(request: Request) {
       draft: false,
       absentees: plan.leaveDays,
       employeeNames,
+      logo,
     });
     subject = `Tageseinsatzplan ${formatGermanWeekdayDate(day)} – ${tenantName}`;
     filename = `einsatzplan-${day}.pdf`;

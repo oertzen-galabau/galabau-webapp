@@ -3,7 +3,7 @@ export const DEFAULT_ACCENT_COLOR = '#f2c94c';
 export const DEFAULT_SIDEBAR_COLOR = '#202b33';
 export const DEFAULT_SIDEBAR_TEXT_COLOR = '#fff9ef';
 export const DEFAULT_SURFACE_COLOR = '#eeeae3';
-export const DEFAULT_PLATFORM_NAME = 'Værkflow';
+export const DEFAULT_PLATFORM_NAME = 'BauDiggi';
 
 export function getRootDomain() {
   return process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'localhost:3000';

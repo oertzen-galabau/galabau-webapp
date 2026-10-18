@@ -1,4 +1,5 @@
 import type { PermissionKey } from '@/lib/auth/permissions';
+import type { UvvUrgency } from '@/lib/equipment/labels';
 
 export const INFOBOARD_WIDGET_IDS = [
   'rejected_times',
@@ -13,6 +14,7 @@ export const INFOBOARD_WIDGET_IDS = [
   'leave_mine',
   'messages_unread',
   'site_weather',
+  'equipment_uvv_due',
 ] as const;
 
 export type InfoboardWidgetId = (typeof INFOBOARD_WIDGET_IDS)[number];
@@ -57,6 +59,8 @@ export type ScheduleRow = {
   place: string;
   tone: 'active' | 'travel' | 'planned';
   href: string;
+  /** z. B. fehlender Tagesbericht für Vorarbeiter */
+  subtitle?: string | null;
 };
 
 export type PendingApprovalRow = {
@@ -82,6 +86,15 @@ export type MyLeaveRow = {
   endDate: string;
   status: 'pending' | 'approved' | 'rejected';
   businessDays: number;
+};
+
+export type EquipmentUvvRow = {
+  id: string;
+  name: string;
+  kindLabel: string;
+  subtitle: string;
+  dueDate: string;
+  urgency: UvvUrgency;
 };
 
 export type InfoboardPostRow = {
@@ -130,4 +143,8 @@ export type InfoboardWidgetData = {
   showTeamTimeStats: boolean;
   showActiveWorkersLine: boolean;
   ownMinutesToday: number;
+  equipmentUvvDue: {
+    rows: EquipmentUvvRow[];
+    totalCount: number;
+  };
 };

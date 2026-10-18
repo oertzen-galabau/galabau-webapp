@@ -2,13 +2,25 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { allowedWidgetIds } from '@/lib/infoboard/widgets';
 import { resolveEffectiveLayout } from '@/lib/infoboard/layout';
 import type {
+  EquipmentUvvRow,
   InfoboardWidgetData,
   MyLeaveRow,
   PendingApprovalRow,
   PendingLeaveRow,
   ScheduleRow,
 } from '@/lib/infoboard/types';
+import {
+  compareUvvDueEntries,
+  EQUIPMENT_KIND_LABELS,
+  equipmentListSubtitle,
+  uvvUrgency,
+} from '@/lib/equipment/labels';
+import type { TenantEquipmentKind } from '@/lib/types/database';
 import { formatLeaveType } from '@/lib/leave/labels';
+import {
+  listMyLeaveRequestsForInfoboard,
+  listPendingLeavePreview,
+} from '@/lib/leave/queries';
 import { businessDaysBetween } from '@/lib/utils/time';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import type { SessionContext } from '@/lib/auth/session';
@@ -76,6 +88,9 @@ export async function fetchInfoboardPayload(
   const canApproveLeave = canAccess(ctx, 'urlaub.approve');
   const canRequestLeave = canAccess(ctx, 'urlaub.request');
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
+  const canViewEquipment =
+    canAccess(ctx, 'nav.partners') && canAccess(ctx, 'partners.view');
+  const equipmentUvvPreviewLimit = 10;
   const now = new Date();
   const recentLeaveCutoff = new Date(now);
   recentLeaveCutoff.setDate(recentLeaveCutoff.getDate() - 14);
@@ -101,10 +116,11 @@ export async function fetchInfoboardPayload(
     { data: pendingPreview },
     { count: pendingCount },
     { data: posts },
-    { data: leavePendingPreview },
+    leavePendingPreviewResult,
     { count: leavePendingCount },
-    { data: myLeaveRequests },
+    myLeaveRequestsResult,
     { count: unreadMessagesCount },
+    { data: equipmentWithUvv },
   ] = await Promise.all([
     supabase.from('profiles').select('dashboard_layout').eq('id', ctx.userId).single(),
     supabase
@@ -149,7 +165,7 @@ export async function fetchInfoboardPayload(
     canAccess(ctx, 'schedule.view')
       ? supabase
           .from('schedule_entries')
-          .select('id, start_time, end_time, site_id, sites(name, address), schedule_entry_members(user_id)')
+          .select('id, start_time, end_time, site_id, foreman_user_id, sites(name, address), schedule_entry_members(user_id)')
           .eq('tenant_id', tenantId)
           .lte('start_date', today)
           .gte('end_date', today)
@@ -187,14 +203,8 @@ export async function fetchInfoboardPayload(
           .limit(5)
       : Promise.resolve({ data: [] }),
     canApproveLeave
-      ? supabase
-          .from('leave_requests')
-          .select('id, leave_type, start_date, end_date, notes, profiles(first_name, last_name)')
-          .eq('tenant_id', tenantId)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: true })
-          .limit(5)
-      : Promise.resolve({ data: [] }),
+      ? listPendingLeavePreview(supabase, tenantId, 5)
+      : Promise.resolve({ data: [], error: null }),
     canApproveLeave
       ? supabase
           .from('leave_requests')
@@ -203,14 +213,8 @@ export async function fetchInfoboardPayload(
           .eq('status', 'pending')
       : Promise.resolve({ count: 0 }),
     canRequestLeave
-      ? supabase
-          .from('leave_requests')
-          .select('id, leave_type, start_date, end_date, notes, status, reviewed_at, created_at')
-          .eq('tenant_id', tenantId)
-          .eq('user_id', ctx.userId)
-          .order('created_at', { ascending: false })
-          .limit(20)
-      : Promise.resolve({ data: [] }),
+      ? listMyLeaveRequestsForInfoboard(supabase, tenantId, ctx.userId, 20)
+      : Promise.resolve({ data: [], error: null }),
     canViewMessages
       ? supabase
           .from('messages')
@@ -219,7 +223,17 @@ export async function fetchInfoboardPayload(
           .eq('recipient_id', ctx.userId)
           .is('read_at', null)
       : Promise.resolve({ count: 0 }),
+    canViewEquipment
+      ? supabase
+          .from('tenant_equipment')
+          .select('id, name, kind, license_plate, inventory_number, uvv_due_date')
+          .eq('tenant_id', tenantId)
+          .not('uvv_due_date', 'is', null)
+      : Promise.resolve({ data: [] }),
   ]);
+
+  const leavePendingPreview = leavePendingPreviewResult.data;
+  const myLeaveRequests = myLeaveRequestsResult.data;
 
   const totalMinutesToday = (todayEntries ?? []).reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const ownMinutesToday = (todayEntries ?? [])
@@ -236,20 +250,40 @@ export async function fetchInfoboardPayload(
   const canManageSchedule = canAccess(ctx, 'schedule.manage');
   const scheduleRows: ScheduleRow[] = [];
 
+  const { data: todayDailyLogs } = await supabase
+    .from('daily_logs')
+    .select('site_id, created_by')
+    .eq('tenant_id', tenantId)
+    .eq('log_date', today);
+
+  const foremanLogKeys = new Set(
+    (todayDailyLogs ?? [])
+      .filter((row) => row.created_by)
+      .map((row) => `${row.site_id}:${row.created_by}`),
+  );
+
   for (const entry of todayScheduleEntries ?? []) {
     const members = (entry.schedule_entry_members ?? []) as { user_id: string }[];
+    const isForeman = entry.foreman_user_id === ctx.userId;
     const isMine = members.some((m) => m.user_id === ctx.userId);
-    if (!canManageSchedule && !isMine) continue;
+    if (!canManageSchedule && !isMine && !isForeman) continue;
     const site = asSiteRef(entry.sites);
     const start = String(entry.start_time).slice(0, 5);
     const end = String(entry.end_time).slice(0, 5);
+    const siteId = entry.site_id as string;
+    const missingReport =
+      isForeman &&
+      !foremanLogKeys.has(`${siteId}:${ctx.userId}`);
     scheduleRows.push({
       id: entry.id,
       time: `${start}–${end}`,
       title: site?.name ?? 'Einsatz',
       place: site?.address ?? '—',
       tone: 'active',
-      href: `/app/einsatzplanung?view=day&day=${today}`,
+      href: isForeman
+        ? `/app/dokumentation?site=${siteId}&type=daily_report`
+        : `/app/einsatzplanung?view=day&day=${today}`,
+      subtitle: missingReport ? 'Tagesbericht fehlt' : null,
     });
   }
 
@@ -313,6 +347,32 @@ export async function fetchInfoboardPayload(
       if (b.status === 'pending' && a.status !== 'pending') return 1;
       return 0;
     });
+
+  const equipmentUvvSorted: EquipmentUvvRow[] = (equipmentWithUvv ?? [])
+    .map((row) => {
+      const dueDate = String(row.uvv_due_date);
+      const urgency = uvvUrgency(dueDate, today);
+      if (!urgency) return null;
+      const kind = row.kind as TenantEquipmentKind;
+      return {
+        id: row.id,
+        name: row.name,
+        kindLabel: EQUIPMENT_KIND_LABELS[kind] ?? row.kind,
+        subtitle: equipmentListSubtitle(row),
+        dueDate,
+        urgency,
+      };
+    })
+    .filter((row): row is EquipmentUvvRow => row != null)
+    .sort((a, b) =>
+      compareUvvDueEntries(
+        { uvvDueDate: a.dueDate, urgency: a.urgency },
+        { uvvDueDate: b.dueDate, urgency: b.urgency },
+      ),
+    );
+
+  const equipmentUvvTotal = equipmentUvvSorted.length;
+  const equipmentUvvRows = equipmentUvvSorted.slice(0, equipmentUvvPreviewLimit);
 
   const pendingRows: PendingApprovalRow[] = (pendingPreview ?? []).map((entry) => {
     const profile = asProfile(entry.profiles);
@@ -392,6 +452,10 @@ export async function fetchInfoboardPayload(
       showTeamTimeStats,
       showActiveWorkersLine,
       ownMinutesToday,
+      equipmentUvvDue: {
+        rows: equipmentUvvRows,
+        totalCount: equipmentUvvTotal,
+      },
     },
   };
 }

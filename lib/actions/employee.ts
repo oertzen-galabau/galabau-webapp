@@ -668,7 +668,24 @@ export async function saveLeaveRequest(formData: FormData) {
 
   revalidatePath('/app');
   revalidatePath('/app/urlaub');
+  revalidatePath('/app/urlaub/konto');
+  revalidatePath('/app/profil');
   revalidatePath('/app/nachrichten');
+}
+
+export type LeaveFormState = { ok?: boolean; error?: string | null };
+
+export async function saveLeaveRequestAction(
+  _prev: LeaveFormState | null,
+  formData: FormData,
+): Promise<LeaveFormState> {
+  try {
+    await saveLeaveRequest(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Speichern fehlgeschlagen';
+    return { error: message };
+  }
 }
 
 export async function updateLeaveStatus(formData: FormData) {
@@ -749,11 +766,13 @@ export async function updateLeaveStatus(formData: FormData) {
       entitlement_days: balance?.entitlement_days ?? 30,
       carried_over_days: balance?.carried_over_days ?? 0,
       used_days: usedDays,
+      carried_over_source: balance?.carried_over_source ?? 'automatic',
     }, { onConflict: 'tenant_id,user_id,year' });
   }
 
   revalidatePath('/app');
   revalidatePath('/app/urlaub');
+  revalidatePath('/app/urlaub/konto');
   revalidatePath('/app/urlaub/freigabe');
   revalidatePath('/app/nachrichten');
 }
