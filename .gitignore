@@ -15,6 +15,9 @@
 /.next/
 /out/
 
+# git worktrees (local agent/feature checkouts)
+.worktrees/
+
 # misc
 .DS_Store
 *.pem

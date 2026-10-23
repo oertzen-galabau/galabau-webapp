@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
   },
   // Baustellen-Dokumente (Pläne, LV) per Server Action — Default 1 MB reicht nicht
   experimental: {
+    agentUpgrade: 'security',
     serverActions: {
       bodySizeLimit: '10mb',
     },
