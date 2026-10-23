@@ -16,6 +16,7 @@ import { AppSelect } from '@/components/ui/app-select';
 import { DictationRecorder } from '@/components/documentation/dictation-recorder';
 import { ReportPhotoManager } from '@/components/documentation/report-photo-manager';
 import { SignaturePadField } from '@/components/documentation/signature-pad-field';
+import { useGpsEnabled } from '@/components/gps/gps-provider';
 import type { BusinessPartnerFieldOption } from '@/components/documentation/business-partner-field';
 import { DeliveryNoteBlockFields } from '@/components/documentation/delivery-note-block-fields';
 import { partnerOptionLabel } from '@/lib/partners/kind';
@@ -117,6 +118,8 @@ function weatherHintForResult(result: Extract<ReportWeatherResult, { ok: false }
   switch (result.reason) {
     case 'out_of_range':
       return 'Für dieses Datum keine automatische Wettervorlage — bitte manuell eintragen.';
+    case 'gps_disabled':
+      return 'GPS ist für diesen Mandanten deaktiviert — Wetter bitte manuell eintragen.';
     case 'geolocation_denied':
       return 'Standort nicht verfügbar — Wetter bitte manuell eintragen.';
     default:
@@ -200,6 +203,7 @@ export function DailyReportForm({
   supplierPartners = [],
 }: Props) {
   const router = useRouter();
+  const gpsEnabled = useGpsEnabled();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [dictationMessage, setDictationMessage] = useState<string | null>(null);
@@ -320,8 +324,8 @@ export function DailyReportForm({
         }
 
         const result = useSiteApi
-          ? await loadReportWeatherForSite(selectedSite!, logDate)
-          : await loadReportWeatherByGeolocation(logDate);
+          ? await loadReportWeatherForSite(selectedSite!, logDate, gpsEnabled)
+          : await loadReportWeatherByGeolocation(logDate, gpsEnabled);
 
         if (cancelled) return;
 
@@ -346,7 +350,7 @@ export function DailyReportForm({
     return () => {
       cancelled = true;
     };
-  }, [selectedSite, logDate, initial?.dailyLogId, initial?.weather, initial?.siteId, initial?.logDate, weatherReloadNonce]);
+  }, [selectedSite, logDate, gpsEnabled, initial?.dailyLogId, initial?.weather, initial?.siteId, initial?.logDate, weatherReloadNonce]);
 
   function reloadWeatherTemplate() {
     weatherTouchedRef.current = false;
@@ -358,15 +362,17 @@ export function DailyReportForm({
   const clientSignature = initial?.signatures?.find((entry) => entry.role === 'client');
 
   function applyDictationDraft(draft: DailyLogDictationDraft) {
+    if (!lockedReportType && draft.reportType !== reportType) {
+      setReportType(draft.reportType);
+    }
+
+    const draftHourly = isHourlyWageRapport(draft.reportType);
+
     setDictationTranscript(draft.transcript);
     setDictationExtraction(JSON.stringify(draft));
-    if (draft.weather) {
-      weatherTouchedRef.current = true;
-      setWeather(draft.weather);
-    }
     if (draft.notes) setNotes((current) => (current ? `${current}\n${draft.notes}` : draft.notes ?? ''));
 
-    if (hourlyRapport && draft.workers.length > 0) {
+    if (draftHourly && draft.workers.length > 0) {
       setWorkers(
         draft.workers.map((worker) =>
           createWorkerRow({
@@ -391,7 +397,7 @@ export function DailyReportForm({
       );
     }
 
-    if (hourlyRapport && draft.resources.length > 0) {
+    if (draftHourly && draft.resources.length > 0) {
       setResources(
         draft.resources.map((item) =>
           createResourceRow({
@@ -404,12 +410,40 @@ export function DailyReportForm({
       );
     }
 
-    const lowMatches = hourlyRapport
+    if (draftHourly && draft.subcontractors.length > 0) {
+      setSubcontractorGroups(
+        draft.subcontractors.map((group) =>
+          createSubcontractorGroup({
+            partnerId: group.matchedPartnerId ?? '',
+            companyName: group.companyName,
+            workDescription: group.workDescription ?? '',
+            workers: group.workers.map((worker) =>
+              createSubcontractorWorkerRow({
+                workerName: worker.workerName,
+                hours: String(worker.hours),
+              }),
+            ),
+          }),
+        ),
+      );
+    }
+
+    const lowWorkerMatches = draftHourly
       ? draft.workers.filter((worker) => worker.matchConfidence === 'low').length
       : 0;
+    const lowPartnerMatches = draftHourly
+      ? draft.subcontractors.filter((group) => group.matchConfidence === 'low').length
+      : 0;
+    const reviewParts: string[] = [];
+    if (lowWorkerMatches > 0) {
+      reviewParts.push(`${lowWorkerMatches} Mitarbeiter-Zuordnung(en)`);
+    }
+    if (lowPartnerMatches > 0) {
+      reviewParts.push(`${lowPartnerMatches} Subunternehmer-Zuordnung(en)`);
+    }
     setDictationMessage(
-      lowMatches > 0
-        ? `Entwurf übernommen. ${lowMatches} Mitarbeiter-Zuordnung(en) bitte prüfen.`
+      reviewParts.length > 0
+        ? `Entwurf übernommen. Bitte prüfen: ${reviewParts.join(', ')}.`
         : 'Diktat-Entwurf übernommen – bitte vor dem Speichern prüfen.',
     );
   }
@@ -524,6 +558,11 @@ export function DailyReportForm({
           <DictationRecorder
             configured={dictationConfigured}
             disabled={pending}
+            reportType={reportType}
+            lockedReportType={Boolean(lockedReportType)}
+            dailyReportLabel={dailyReportLabel}
+            hourlyRapportLabel={hourlyRapportLabel}
+            onReportTypeChange={setReportType}
             onDraft={applyDictationDraft}
             onError={(message) => {
               setDictationMessage(null);

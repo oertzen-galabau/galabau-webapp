@@ -10,7 +10,7 @@ export type ReportWeatherSite = {
 
 export type ReportWeatherResult =
   | { ok: true; weatherText: string; locationLabel?: string }
-  | { ok: false; reason: 'no_site' | 'unavailable' | 'out_of_range' | 'geolocation_denied' };
+  | { ok: false; reason: 'no_site' | 'unavailable' | 'out_of_range' | 'geolocation_denied' | 'gps_disabled' };
 
 type SiteWeatherApiResponse = {
   needsGeolocation?: boolean;
@@ -56,6 +56,7 @@ function requestDevicePosition(): Promise<GeolocationPosition> {
 export async function loadReportWeatherForSite(
   site: ReportWeatherSite,
   logDate: string,
+  gpsEnabled = true,
 ): Promise<ReportWeatherResult> {
   const response = await fetch(
     `/api/weather/site?siteId=${encodeURIComponent(site.id)}&date=${encodeURIComponent(logDate)}`,
@@ -76,6 +77,7 @@ export async function loadReportWeatherForSite(
   }
 
   if (response.ok && data.needsGeolocation) {
+    if (!gpsEnabled) return { ok: false, reason: 'gps_disabled' };
     return loadReportWeatherByGeolocation(logDate);
   }
 
@@ -94,7 +96,13 @@ export async function loadReportWeatherForSite(
   return { ok: false, reason: 'unavailable' };
 }
 
-export async function loadReportWeatherByGeolocation(logDate: string): Promise<ReportWeatherResult> {
+export async function loadReportWeatherByGeolocation(
+  logDate: string,
+  gpsEnabled = true,
+): Promise<ReportWeatherResult> {
+  if (!gpsEnabled) {
+    return { ok: false, reason: 'gps_disabled' };
+  }
   if (!window.isSecureContext) {
     return { ok: false, reason: 'geolocation_denied' };
   }

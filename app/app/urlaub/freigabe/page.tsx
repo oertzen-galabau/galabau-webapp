@@ -25,7 +25,6 @@ export default async function UrlaubFreigabePage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Abwesenheit</span>
           <h1>Anträge zur Freigabe</h1>
           <p>Offene Urlaubs- und Fehlzeitanträge aller Mitarbeitenden.</p>
         </div>

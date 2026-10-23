@@ -3,6 +3,7 @@ import { formatSiteAddress } from '@/lib/sites/format-address';
 import { sortedEntryTeamDisplay } from '@/lib/schedule/entry-member-labels';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import type { LeaveDay } from '@/lib/schedule/conflicts';
+import { sortScheduleEntriesForDisplay } from '@/lib/schedule/entry-sort';
 import { formatGermanWeekdayDate } from '@/lib/schedule/week';
 
 const A4_LANDSCAPE = [841.89, 595.28] as const;
@@ -49,9 +50,7 @@ export async function loadTenantLogoBytes(logoUrl: string | null | undefined): P
 }
 
 function sortEntries(entries: ScheduleEntryView[]): ScheduleEntryView[] {
-  return [...entries].sort(
-    (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
-  );
+  return sortScheduleEntriesForDisplay(entries);
 }
 
 type EntryPdfSections = {

@@ -17,6 +17,7 @@ import {
 } from '@/lib/documentation/report-validation';
 import { insertDeliveryNote } from '@/lib/documentation/save-delivery-note';
 import { resolvePartnerName } from '@/lib/actions/partners';
+import { loadTenantGpsEnabled } from '@/lib/tenant/gps';
 import { buildStoragePath, deletePrivateFile, uploadPrivateFile } from '@/lib/supabase/storage';
 import {
   isHourlyWageRapport,
@@ -153,7 +154,12 @@ async function saveSignatures(
   dailyLogId: string,
   formData: FormData,
 ) {
-  const signatures = parseSignatureInputs(formData);
+  const gpsEnabled = await loadTenantGpsEnabled(supabase, tenantId);
+  const signatures = parseSignatureInputs(formData).map((signature) =>
+    gpsEnabled
+      ? signature
+      : { ...signature, signedLatitude: null, signedLongitude: null, signedLocationLabel: null },
+  );
 
   for (const signature of signatures) {
     const { data: existing } = await supabase
@@ -172,7 +178,7 @@ async function saveSignatures(
     }
 
     if (signature.dataUrl) {
-      assertSignatureMetadata(signature);
+      assertSignatureMetadata(signature, gpsEnabled);
       const { buffer, mime } = dataUrlToBuffer(signature.dataUrl);
       const ext = mime.includes('png') ? 'png' : 'jpg';
       const path = buildStoragePath(tenantId, siteId, dailyLogId, `signature-${signature.role}.${ext}`);
@@ -358,7 +364,7 @@ export async function saveDailyReport(formData: FormData) {
   }
 
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
   revalidatePath(`/app/baustellen/${siteId}`);
   return { logId };
 }

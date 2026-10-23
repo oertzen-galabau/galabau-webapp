@@ -119,7 +119,6 @@ export default async function BestellungenPage({ searchParams }: PageProps) {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Bestellungen</span>
           <h1>Schuhe & Kleidung</h1>
           <p>Betriebskatalog, Budget und Bestellungen.</p>
         </div>

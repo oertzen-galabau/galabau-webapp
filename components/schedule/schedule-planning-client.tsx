@@ -20,6 +20,7 @@ import { ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { ScheduleDayTimeline } from '@/components/schedule/schedule-day-timeline';
+import { ScheduleEntryDropWrap } from '@/components/schedule/schedule-entry-dnd-wrap';
 import { ScheduleEntryDialog } from '@/components/schedule/schedule-entry-dialog';
 import { AppDialog, PromptDialog } from '@/components/ui/app-dialogs';
 import {
@@ -32,11 +33,13 @@ import {
   copyScheduleDay,
   copyScheduleWeek,
   moveScheduleEntry,
+  reorderScheduleDayEntries,
   publishScheduleDay,
   publishScheduleWeek,
 } from '@/lib/actions/schedule';
 import { scheduleEntryPhase } from '@/lib/schedule/entry-phase';
 import type { SchedulePlanData } from '@/lib/schedule/load-plan-data';
+import { reorderEntryIds, sortScheduleEntriesForDisplay } from '@/lib/schedule/entry-sort';
 import {
   addDays,
   formatGermanDate,
@@ -252,27 +255,25 @@ function EntryCard({
     </>
   );
 
-  if (draggable) {
-    return (
-      <DraggableChip
-        id={`entry-${entry.id}`}
-        data={{ kind: 'entry', entryId: entry.id }}
-        className={cardClass}
-        onClick={() => onEdit()}
-      >
-        {body}
-      </DraggableChip>
-    );
-  }
-
-  return (
-    <button
-      type="button"
+  const card = draggable ? (
+    <DraggableChip
+      id={`entry-${entry.id}`}
+      data={{ kind: 'entry', entryId: entry.id }}
       className={cardClass}
-      onClick={onEdit}
+      onClick={() => onEdit()}
     >
       {body}
+    </DraggableChip>
+  ) : (
+    <button type="button" className={cardClass} onClick={onEdit}>
+      {body}
     </button>
+  );
+
+  return (
+    <ScheduleEntryDropWrap entryId={entry.id} planDate={entry.start_date} enabled={Boolean(draggable)}>
+      {card}
+    </ScheduleEntryDropWrap>
   );
 }
 
@@ -338,6 +339,10 @@ export function SchedulePlanningClient({
       const list = byDay.get(entry.start_date);
       if (list) list.push(entry);
     }
+    for (const day of plan.weekDays) {
+      const list = byDay.get(day);
+      if (list?.length) byDay.set(day, sortScheduleEntriesForDisplay(list));
+    }
 
     const weekendEntries = plan.weekDays
       .slice(SCHEDULE_WEEKEND_START_INDEX)
@@ -374,7 +379,10 @@ export function SchedulePlanningClient({
 
   const visibleWeekDays = plan.weekDays.slice(0, visibleDayCount);
 
-  const dayEntries = plan.entries.filter((e) => e.start_date === selectedDay);
+  const dayEntries = useMemo(
+    () => sortScheduleEntriesForDisplay(plan.entries.filter((e) => e.start_date === selectedDay)),
+    [plan.entries, selectedDay],
+  );
   const selectedDayPublished = plan.publishedByDay[selectedDay] ?? false;
 
   const today = todayIsoInBerlin();
@@ -425,6 +433,23 @@ export function SchedulePlanningClient({
     router.push(`/app/einsatzplanung?week=${week}&view=day&day=${nextDay}`);
   }
 
+  function resolveOverEntryId(event: DragEndEvent): string | null {
+    const tryRaw = (rawId: string): string | null => {
+      if (rawId.startsWith('entry-drop-')) return rawId.slice('entry-drop-'.length);
+      if (rawId.startsWith('entry-')) return rawId.slice('entry-'.length);
+      return null;
+    };
+    if (event.over) {
+      const fromOver = tryRaw(String(event.over.id));
+      if (fromOver) return fromOver;
+    }
+    for (const hit of event.collisions ?? []) {
+      const fromHit = tryRaw(String(hit.id));
+      if (fromHit) return fromHit;
+    }
+    return null;
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setActiveDrag(null);
     if (!canManage) return;
@@ -435,13 +460,12 @@ export function SchedulePlanningClient({
       return;
     }
 
-    const targetDay = resolveDropDay(event, plan.entries, plan.weekDays);
-    if (!targetDay) {
-      setActionError('Bitte auf einen Wochentag ablegen.');
-      return;
-    }
-
     if (payload.kind === 'site') {
+      const targetDay = resolveDropDay(event, plan.entries, plan.weekDays);
+      if (!targetDay) {
+        setActionError('Bitte auf einen Wochentag ablegen.');
+        return;
+      }
       const alreadyPlanned = plan.entries.some(
         (e) => e.site_id === payload.siteId && e.start_date === targetDay,
       );
@@ -454,24 +478,55 @@ export function SchedulePlanningClient({
       return;
     }
 
-    startTransition(async () => {
-      setActionError(null);
-      try {
-        const fd = new FormData();
-        if (payload.kind === 'entry') {
-          const entry = plan.entries.find((e) => e.id === payload.entryId);
-          if (!entry) return;
-          if (entry.start_date === targetDay) return;
+    if (payload.kind === 'entry') {
+      const entry = plan.entries.find((e) => e.id === payload.entryId);
+      if (!entry) return;
+
+      const overEntryId = resolveOverEntryId(event);
+      if (overEntryId && overEntryId !== entry.id) {
+        const overEntry = plan.entries.find((e) => e.id === overEntryId);
+        if (overEntry && overEntry.start_date === entry.start_date) {
+          startTransition(async () => {
+            setActionError(null);
+            try {
+              const ids = sortScheduleEntriesForDisplay(
+                plan.entries.filter((e) => e.start_date === entry.start_date),
+              ).map((e) => e.id);
+              const nextIds = reorderEntryIds(ids, entry.id, overEntryId);
+              const fd = new FormData();
+              fd.set('plan_date', entry.start_date);
+              for (const id of nextIds) fd.append('entry_id[]', id);
+              await reorderScheduleDayEntries(fd);
+              router.refresh();
+            } catch (e) {
+              setActionError(e instanceof Error ? e.message : 'Reihenfolge konnte nicht gespeichert werden');
+            }
+          });
+          return;
+        }
+      }
+
+      const targetDay = resolveDropDay(event, plan.entries, plan.weekDays);
+      if (!targetDay) {
+        setActionError('Bitte auf einen Wochentag ablegen.');
+        return;
+      }
+      if (entry.start_date === targetDay) return;
+
+      startTransition(async () => {
+        setActionError(null);
+        try {
+          const fd = new FormData();
           fd.set('entry_id', payload.entryId);
           fd.set('target_day', targetDay);
           await moveScheduleEntry(fd);
           openEdit({ ...entry, start_date: targetDay, end_date: targetDay });
+          router.refresh();
+        } catch (e) {
+          setActionError(e instanceof Error ? e.message : 'Aktion fehlgeschlagen');
         }
-        router.refresh();
-      } catch (e) {
-        setActionError(e instanceof Error ? e.message : 'Aktion fehlgeschlagen');
-      }
-    });
+      });
+    }
   }
 
   async function sendEmail(to: string) {
@@ -959,6 +1014,7 @@ export function SchedulePlanningClient({
           sites={sites}
           employees={employees}
           workAreas={workAreas}
+          leaveDays={plan.leaveDays}
           subcontractors={plan.subcontractors}
           equipment={plan.equipment}
           defaultSiteId={dialogDefaults.siteId}

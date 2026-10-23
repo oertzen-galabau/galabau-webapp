@@ -3,6 +3,7 @@
 import { setEquipmentActive, updateEquipment } from '@/lib/actions/equipment';
 import { AppDialog } from '@/components/ui/app-dialogs';
 import { AppSidePanel } from '@/components/ui/app-side-panel';
+import { FileInputField } from '@/components/ui/file-input-field';
 import {
   EQUIPMENT_KIND_LABELS,
   EQUIPMENT_STATUS_LABELS,
@@ -174,80 +175,82 @@ function EquipmentDetailPanel({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={item.photoUrl} alt={item.name} className="equipment-detail-photo" />
       ) : null}
-      <dl className="equipment-detail-facts">
-        <div>
-          <dt>Typ</dt>
-          <dd>{EQUIPMENT_KIND_LABELS[item.kind]}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{EQUIPMENT_STATUS_LABELS[item.status]}</dd>
-        </div>
-        <div>
-          <dt>Baujahr</dt>
-          <dd>{item.build_year ?? '—'}</dd>
-        </div>
-        <div>
-          <dt>Seriennummer</dt>
-          <dd>{item.serial_number ?? '—'}</dd>
-        </div>
-        <div>
-          <dt>Inventarnummer</dt>
-          <dd>{item.inventory_number ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className={uvvClass}>UVV fällig</dt>
-          <dd className={uvvClass}>{item.uvv_due_date ?? '—'}</dd>
-        </div>
-        {item.license_plate ? (
+      {!canManage ? (
+        <dl className="equipment-detail-facts">
           <div>
-            <dt>Kennzeichen</dt>
-            <dd>{item.license_plate}</dd>
+            <dt>Typ</dt>
+            <dd>{EQUIPMENT_KIND_LABELS[item.kind]}</dd>
           </div>
-        ) : null}
-        {item.manufacturer_model ? (
           <div>
-            <dt>Hersteller / Modell</dt>
-            <dd>{item.manufacturer_model}</dd>
+            <dt>Status</dt>
+            <dd>{EQUIPMENT_STATUS_LABELS[item.status]}</dd>
           </div>
-        ) : null}
-        {item.inspection_due_date ? (
           <div>
-            <dt>HU / TÜV</dt>
-            <dd>{item.inspection_due_date}</dd>
+            <dt>Baujahr</dt>
+            <dd>{item.build_year ?? '—'}</dd>
           </div>
-        ) : null}
-        {item.operating_hours != null ? (
           <div>
-            <dt>Betriebsstunden</dt>
-            <dd>{item.operating_hours}</dd>
+            <dt>Seriennummer</dt>
+            <dd>{item.serial_number ?? '—'}</dd>
           </div>
-        ) : null}
-        {item.mileage_km != null ? (
           <div>
-            <dt>Kilometer</dt>
-            <dd>{item.mileage_km}</dd>
+            <dt>Inventarnummer</dt>
+            <dd>{item.inventory_number ?? '—'}</dd>
           </div>
-        ) : null}
-        {item.license_class_required ? (
           <div>
-            <dt>Führerschein</dt>
-            <dd>{item.license_class_required}</dd>
+            <dt className={uvvClass}>UVV fällig</dt>
+            <dd className={uvvClass}>{item.uvv_due_date ?? '—'}</dd>
           </div>
-        ) : null}
-        {item.booking_number ? (
-          <div>
-            <dt>Buchungsnummer</dt>
-            <dd>{item.booking_number}</dd>
-          </div>
-        ) : null}
-        {item.notes ? (
-          <div className="equipment-detail-notes">
-            <dt>Notiz</dt>
-            <dd>{item.notes}</dd>
-          </div>
-        ) : null}
-      </dl>
+          {item.license_plate ? (
+            <div>
+              <dt>Kennzeichen</dt>
+              <dd>{item.license_plate}</dd>
+            </div>
+          ) : null}
+          {item.manufacturer_model ? (
+            <div>
+              <dt>Hersteller / Modell</dt>
+              <dd>{item.manufacturer_model}</dd>
+            </div>
+          ) : null}
+          {item.inspection_due_date ? (
+            <div>
+              <dt>HU / TÜV</dt>
+              <dd>{item.inspection_due_date}</dd>
+            </div>
+          ) : null}
+          {item.operating_hours != null ? (
+            <div>
+              <dt>Betriebsstunden</dt>
+              <dd>{item.operating_hours}</dd>
+            </div>
+          ) : null}
+          {item.mileage_km != null ? (
+            <div>
+              <dt>Kilometer</dt>
+              <dd>{item.mileage_km}</dd>
+            </div>
+          ) : null}
+          {item.license_class_required ? (
+            <div>
+              <dt>Führerschein</dt>
+              <dd>{item.license_class_required}</dd>
+            </div>
+          ) : null}
+          {item.booking_number ? (
+            <div>
+              <dt>Buchungsnummer</dt>
+              <dd>{item.booking_number}</dd>
+            </div>
+          ) : null}
+          {item.notes ? (
+            <div className="equipment-detail-notes">
+              <dt>Notiz</dt>
+              <dd>{item.notes}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
 
       {canManage ? (
         <>
@@ -276,10 +279,13 @@ function EquipmentDetailPanel({
                   ))}
                 </select>
               </label>
-              <label>
-                Neues Foto
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" disabled={pending} />
-              </label>
+              <FileInputField
+                label="Neues Foto"
+                name="photo"
+                accept="image/jpeg,image/png,image/webp"
+                hint="JPG, PNG oder WebP"
+                disabled={pending}
+              />
               <label>
                 Baujahr
                 <input type="number" name="build_year" min={1950} max={2100} defaultValue={item.build_year ?? ''} disabled={pending} />

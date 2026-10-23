@@ -21,6 +21,103 @@ export type ConversationSummary = {
   latestUnreadAt?: string;
 };
 
+export type ContactWithSummary = ChatContact & Partial<ConversationSummary>;
+
+type MessageListPatch = Pick<
+  Message,
+  'sender_id' | 'recipient_id' | 'body' | 'created_at' | 'read_at'
+>;
+
+function sortContactList(contacts: ContactWithSummary[]): ContactWithSummary[] {
+  const withConversation = contacts.filter((c) => Boolean(c.lastMessageAt));
+  const withoutConversation = contacts.filter((c) => !c.lastMessageAt);
+
+  withConversation.sort((a, b) => {
+    const aUnread = (a.unreadCount ?? 0) > 0 ? 1 : 0;
+    const bUnread = (b.unreadCount ?? 0) > 0 ? 1 : 0;
+    if (bUnread !== aUnread) return bUnread - aUnread;
+    return new Date(b.lastMessageAt!).getTime() - new Date(a.lastMessageAt!).getTime();
+  });
+
+  withoutConversation.sort((a, b) =>
+    `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'de'),
+  );
+
+  return [...withConversation, ...withoutConversation];
+}
+
+/** Inkrementelles Update der Kontaktliste bei neuer Nachricht (Realtime INSERT). */
+export function patchContactListFromMessageInsert(
+  contacts: ContactWithSummary[],
+  message: MessageListPatch,
+  currentUserId: string,
+): ContactWithSummary[] {
+  if (message.sender_id !== currentUserId && message.recipient_id !== currentUserId) {
+    return contacts;
+  }
+
+  const contactId =
+    message.sender_id === currentUserId ? message.recipient_id : message.sender_id;
+  const isIncoming = message.recipient_id === currentUserId;
+  const isUnread = isIncoming && !message.read_at;
+
+  const next = contacts.map((contact) => {
+    if (contact.id !== contactId) return contact;
+
+    const prevTime = contact.lastMessageAt ? new Date(contact.lastMessageAt).getTime() : 0;
+    const msgTime = new Date(message.created_at).getTime();
+    if (msgTime < prevTime) return contact;
+
+    const prevUnread = contact.unreadCount ?? 0;
+    const updated: ContactWithSummary = {
+      ...contact,
+      contactId,
+      lastMessage: message.body,
+      lastMessageAt: message.created_at,
+      lastMessageSenderId: message.sender_id,
+    };
+
+    if (isUnread) {
+      updated.unreadCount = prevUnread + 1;
+      updated.latestUnreadMessage = message.body;
+      updated.latestUnreadAt = message.created_at;
+    } else {
+      updated.unreadCount = prevUnread;
+    }
+
+    return updated;
+  });
+
+  return sortContactList(next);
+}
+
+/** Unread-Zähler senken, wenn eine Nachricht als gelesen markiert wird (Realtime UPDATE). */
+export function patchContactListFromMessageRead(
+  contacts: ContactWithSummary[],
+  message: Pick<Message, 'sender_id' | 'recipient_id' | 'read_at'>,
+  currentUserId: string,
+): ContactWithSummary[] {
+  if (message.recipient_id !== currentUserId || !message.read_at) {
+    return contacts;
+  }
+
+  const contactId = message.sender_id;
+  const next = contacts.map((contact) => {
+    if (contact.id !== contactId) return contact;
+    const unread = Math.max(0, (contact.unreadCount ?? 0) - 1);
+    if (unread === (contact.unreadCount ?? 0)) return contact;
+
+    const updated: ContactWithSummary = { ...contact, unreadCount: unread };
+    if (unread === 0) {
+      delete updated.latestUnreadMessage;
+      delete updated.latestUnreadAt;
+    }
+    return updated;
+  });
+
+  return sortContactList(next);
+}
+
 export function buildConversationSummaries(
   messages: Message[],
   currentUserId: string,

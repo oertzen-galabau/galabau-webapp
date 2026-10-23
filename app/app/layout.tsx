@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
+import { GpsProvider } from '@/components/gps/gps-provider';
 import { getUnreadMessageCount } from '@/lib/actions/employee';
 import { getPendingOrderCount } from '@/lib/actions/orders';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
@@ -62,6 +63,7 @@ export default async function TenantAppLayout({ children }: { children: React.Re
 
   return (
     <div style={tenantThemeStyle(tenant)}>
+      <GpsProvider enabled={tenant.gps_enabled !== false}>
       <TenantShell
         theme={theme}
         profile={ctx.profile}
@@ -80,6 +82,7 @@ export default async function TenantAppLayout({ children }: { children: React.Re
       >
         {children}
       </TenantShell>
+      </GpsProvider>
     </div>
   );
 }

@@ -94,7 +94,6 @@ export default async function BuchungenPage({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Lohnbuchungen</span>
           <h1>Buchungsübersicht</h1>
           <p>Monat: {month}</p>
         </div>

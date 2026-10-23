@@ -9,6 +9,15 @@ export const DAY_TIMELINE_TOTAL_MIN = DAY_TIMELINE_END_MIN - DAY_TIMELINE_START_
 export const DAY_TIMELINE_PX_PER_HOUR = 56;
 /** Max. nebeneinander sichtbare Einsätze; darüber horizontal scrollen */
 export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS = 4;
+/** Auf schmalen Viewports (s. `DAY_TIMELINE_COMPACT_MEDIA_QUERY`) */
+export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT = 3;
+export const DAY_TIMELINE_COMPACT_MEDIA_QUERY = '(max-width: 760px)';
+
+export function dayTimelineMaxVisibleColumns(compactViewport: boolean): number {
+  return compactViewport
+    ? DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT
+    : DAY_TIMELINE_MAX_VISIBLE_COLUMNS;
+}
 
 export function timeToMinutes(t: string): number {
   const [h, m] = t.slice(0, 5).split(':').map(Number);
@@ -61,6 +70,7 @@ export type DayTimelineEntryPick = {
   id: string;
   start_time: string;
   end_time: string;
+  sort_order?: number;
 };
 
 export type DayTimelineEventLayout = EntryBlockLayout & {
@@ -125,8 +135,8 @@ function clusterOverlappingEntries(entries: DayTimelineEntryPick[]): DayTimeline
 function columnRect(
   columnIndex: number,
   columnCount: number,
+  maxVisible: number,
 ): { leftPercent: number; widthPercent: number; gridWidthFactor: number } {
-  const maxVisible = DAY_TIMELINE_MAX_VISIBLE_COLUMNS;
   const gridWidthFactor = columnCount > maxVisible ? columnCount / maxVisible : 1;
 
   if (columnCount <= 1) {
@@ -165,12 +175,16 @@ export function dayTimelineGridWidthPercent(layouts: Iterable<DayTimelineEventLa
   return factor * 100;
 }
 
+function compareTimelineLaneOrder(a: DayTimelineEntryPick, b: DayTimelineEntryPick): number {
+  const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  if (orderDiff !== 0) return orderDiff;
+  const startDiff = timeToMinutes(a.start_time) - timeToMinutes(b.start_time);
+  if (startDiff !== 0) return startDiff;
+  return a.id.localeCompare(b.id);
+}
+
 function assignLanes(cluster: DayTimelineEntryPick[]): Map<string, number> {
-  const sorted = [...cluster].sort((a, b) => {
-    const startDiff = timeToMinutes(a.start_time) - timeToMinutes(b.start_time);
-    if (startDiff !== 0) return startDiff;
-    return timeToMinutes(a.end_time) - timeToMinutes(b.end_time);
-  });
+  const sorted = [...cluster].sort(compareTimelineLaneOrder);
 
   const laneEnds: number[] = [];
   const laneById = new Map<string, number>();
@@ -194,9 +208,15 @@ function assignLanes(cluster: DayTimelineEntryPick[]): Map<string, number> {
 }
 
 /** Vertikale Position + horizontale Spalten bei zeitlicher Überlappung. */
+export type LayoutDayTimelineColumnsOptions = {
+  maxVisibleColumns?: number;
+};
+
 export function layoutDayTimelineColumns(
   entries: DayTimelineEntryPick[],
+  options?: LayoutDayTimelineColumnsOptions,
 ): Map<string, DayTimelineEventLayout> {
+  const maxVisible = options?.maxVisibleColumns ?? DAY_TIMELINE_MAX_VISIBLE_COLUMNS;
   const result = new Map<string, DayTimelineEventLayout>();
   const clusters = clusterOverlappingEntries(entries);
 
@@ -207,7 +227,11 @@ export function layoutDayTimelineColumns(
     for (const entry of cluster) {
       const block = entryBlockLayout(entry.start_time, entry.end_time);
       const columnIndex = laneById.get(entry.id) ?? 0;
-      const { leftPercent, widthPercent, gridWidthFactor } = columnRect(columnIndex, columnCount);
+      const { leftPercent, widthPercent, gridWidthFactor } = columnRect(
+        columnIndex,
+        columnCount,
+        maxVisible,
+      );
       result.set(entry.id, {
         ...block,
         columnIndex,

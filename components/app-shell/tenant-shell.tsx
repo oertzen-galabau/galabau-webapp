@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   { href: '/app/baustellen', label: 'Baustellen', icon: BriefcaseBusiness, permission: 'nav.baustellen' },
   { href: '/app/einsatzplanung', label: 'Einsatzplan', icon: CalendarRange, permission: 'nav.einsatzplanung' },
   { href: '/app/dokumentation', label: 'Dokumentation', icon: FileText, permission: 'nav.dokumentation' },
-  { href: '/app/rapporte', label: 'Dokumente', icon: FolderOpen, permission: 'nav.rapporte' },
+  { href: '/app/dokumente', label: 'Dokumente', icon: FolderOpen, permission: 'nav.rapporte' },
   { href: '/app/nachrichten', label: 'Nachrichten', icon: MessageSquare, permission: 'nav.nachrichten' },
   { href: '/app/bestellungen', label: 'Bestellungen', icon: Shirt, permission: 'nav.bestellungen' },
   { href: '/app/team', label: 'Team', icon: Users, permission: 'nav.team' },
@@ -52,7 +52,7 @@ const BOTTOM_NAV_PRIORITY = [
   '/app/dokumentation',
   '/app/baustellen',
   '/app/einsatzplanung',
-  '/app/rapporte',
+  '/app/dokumente',
   '/app/team',
   '/app/einstellungen',
 ] as const;
@@ -170,12 +170,34 @@ export function TenantShell({
         },
         refreshInbox,
       )
-      .subscribe();
+      // Nach (Wieder-)Verbindung sofort nachladen, falls Events verpasst wurden.
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') refreshInbox();
+      });
+
+    // Fallback, falls Realtime nicht zustellt (Netzwerk, Proxy, Tab im Hintergrund).
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshInbox();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', refreshInbox);
+    const interval = window.setInterval(onVisible, 30_000);
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', refreshInbox);
+      window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
   }, [canViewMessages, profile.id]);
+
+  // Zähler bei jedem Seitenwechsel aktualisieren (Layout wird bei Soft-Navigation nicht neu geladen).
+  useEffect(() => {
+    if (!canViewMessages) return;
+    void getUnreadMessageCount()
+      .then(setUnreadCount)
+      .catch(() => undefined);
+  }, [canViewMessages, pathname]);
 
   useEffect(() => {
     if (!canSeeOrderBadge) return;

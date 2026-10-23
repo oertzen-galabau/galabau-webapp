@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { LeaveDay } from '@/lib/schedule/conflicts';
 import {
   employeeDisplayName,
   filterScheduleEmployeesForPicker,
@@ -11,6 +12,8 @@ import {
 type Props = {
   employees: ScheduleEmployeePick[];
   workAreas: ScheduleWorkAreaPick[];
+  planDates: string[];
+  leaveDays: LeaveDay[];
   initialSelectedIds: string[];
   initialForemanId: string | null;
   disabled?: boolean;
@@ -19,6 +22,8 @@ type Props = {
 export function ScheduleMemberPicker({
   employees,
   workAreas,
+  planDates,
+  leaveDays,
   initialSelectedIds,
   initialForemanId,
   disabled,
@@ -37,10 +42,12 @@ export function ScheduleMemberPicker({
         areaId: null,
         searchQuery: '',
         showNonAssignable: false,
+        planDates,
+        leaveDays,
       }).sort((a, b) =>
         employeeDisplayName(a).localeCompare(employeeDisplayName(b), 'de'),
       ),
-    [employees, workAreas],
+    [employees, workAreas, planDates, leaveDays],
   );
 
   function toggleMember(id: string, checked: boolean) {
@@ -132,7 +139,9 @@ export function ScheduleMemberPicker({
           </tbody>
         </table>
         {visibleEmployees.length === 0 ? (
-          <p className="muted schedule-member-table-empty">Keine Mitarbeiter für diese Auswahl.</p>
+          <p className="muted schedule-member-table-empty">
+            Keine verfügbaren Mitarbeiter (Berufsbereich oder Abwesenheit).
+          </p>
         ) : null}
       </div>
 

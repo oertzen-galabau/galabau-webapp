@@ -9,6 +9,7 @@ export const INFOBOARD_WIDGET_IDS = [
   'metric_completed_month',
   'metric_open_reports',
   'today_schedule',
+  'tomorrow_schedule',
   'infoboard_posts',
   'leave_pending',
   'leave_mine',
@@ -52,6 +53,12 @@ export type DashboardLayout = {
   items: DashboardLayoutItem[];
 };
 
+export type ScheduleTeamLine = {
+  text: string;
+  isForeman?: boolean;
+  initials: string;
+};
+
 export type ScheduleRow = {
   id: string;
   time: string;
@@ -61,6 +68,13 @@ export type ScheduleRow = {
   href: string;
   /** z. B. fehlender Tagesbericht für Vorarbeiter */
   subtitle?: string | null;
+  teamLines: ScheduleTeamLine[];
+};
+
+export type ScheduleDayBlock = {
+  dateLabel: string;
+  dayIso: string;
+  rows: ScheduleRow[];
 };
 
 export type PendingApprovalRow = {
@@ -104,6 +118,7 @@ export type InfoboardPostRow = {
   postType: string;
   publishedAt: string | null;
   createdAt: string;
+  isUnread: boolean;
 };
 
 export type InfoboardWidgetData = {
@@ -128,9 +143,11 @@ export type InfoboardWidgetData = {
     pendingReports: number;
   };
   schedule: {
-    rows: ScheduleRow[];
+    today: ScheduleDayBlock;
+    tomorrow: ScheduleDayBlock;
   };
   posts: InfoboardPostRow[];
+  latestUnreadPost: InfoboardPostRow | null;
   canManagePosts: boolean;
   leavePending: {
     rows: PendingLeaveRow[];
@@ -139,7 +156,6 @@ export type InfoboardWidgetData = {
   leaveMine: {
     rows: MyLeaveRow[];
   };
-  unreadMessagesCount: number;
   showTeamTimeStats: boolean;
   showActiveWorkersLine: boolean;
   ownMinutesToday: number;

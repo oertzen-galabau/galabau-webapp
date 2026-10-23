@@ -7,6 +7,10 @@ import { upsertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
 import { loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
 import { validatePublishPlanDate } from '@/lib/schedule/foreman-daily-report';
 import { syncDailyAssignmentsFromSchedule } from '@/lib/schedule/sync-assignments';
+import {
+  assertNewScheduleMembersAllowed,
+  assertScheduleMemberUpdatesAllowed,
+} from '@/lib/schedule/member-selection-server';
 import { addDays, mondayOfWeek } from '@/lib/schedule/week';
 import { createClient } from '@/lib/supabase/server';
 
@@ -120,9 +124,23 @@ async function insertEntryFromForm(
   await assertSiteNotPlannedOnDay(supabase, ctx.tenantId, siteId, planDate);
 
   const foremanId = (formData.get('foreman_user_id') as string) || null;
-  if (foremanId) await assertUsersInTenant(supabase, ctx.tenantId, [foremanId]);
+  const memberIds = formData.getAll('member_user_id[]').map(String).filter(Boolean);
+  const scheduleUserIds = [...new Set([...memberIds, ...(foremanId ? [foremanId] : [])])];
+  if (scheduleUserIds.length) await assertUsersInTenant(supabase, ctx.tenantId, scheduleUserIds);
+  await assertNewScheduleMembersAllowed(supabase, ctx.tenantId, scheduleUserIds, [planDate]);
 
   await unpublishDayIfNeeded(supabase, ctx.tenantId, planDate);
+
+  const { data: maxSortRow } = await supabase
+    .from('schedule_entries')
+    .select('sort_order')
+    .eq('tenant_id', ctx.tenantId)
+    .eq('start_date', planDate)
+    .eq('end_date', planDate)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = (maxSortRow?.sort_order ?? -10) + 10;
 
   const { data, error } = await supabase
     .from('schedule_entries')
@@ -136,15 +154,14 @@ async function insertEntryFromForm(
       foreman_user_id: foremanId,
       external_workers_text: (formData.get('external_workers_text') as string)?.trim() || null,
       notes: (formData.get('notes') as string)?.trim() || null,
+      sort_order: sortOrder,
       created_by: ctx.userId,
     })
     .select('id')
     .single();
   if (error) throw new Error(error.message);
 
-  const memberIds = formData.getAll('member_user_id[]').map(String).filter(Boolean);
   if (memberIds.length) {
-    await assertUsersInTenant(supabase, ctx.tenantId, memberIds);
     const { error: memberError } = await supabase.from('schedule_entry_members').insert(
       memberIds.map((userId) => ({
         tenant_id: ctx.tenantId,
@@ -198,11 +215,17 @@ export async function updateScheduleEntry(formData: FormData) {
 
   const { data: existing } = await supabase
     .from('schedule_entries')
-    .select('start_date, tenant_id')
+    .select('start_date, tenant_id, foreman_user_id')
     .eq('id', entryId)
     .eq('tenant_id', ctx.tenantId)
     .single();
   if (!existing) throw new Error('Einsatz nicht gefunden');
+
+  const { data: existingMemberRows } = await supabase
+    .from('schedule_entry_members')
+    .select('user_id')
+    .eq('schedule_entry_id', entryId);
+  const previousMemberIds = new Set((existingMemberRows ?? []).map((r) => r.user_id));
 
   const siteId = String(formData.get('site_id') ?? '');
   const planDate = String(formData.get('start_date') ?? existing.start_date);
@@ -210,7 +233,18 @@ export async function updateScheduleEntry(formData: FormData) {
   await assertSiteNotPlannedOnDay(supabase, ctx.tenantId, siteId, planDate, entryId);
 
   const foremanId = (formData.get('foreman_user_id') as string) || null;
-  if (foremanId) await assertUsersInTenant(supabase, ctx.tenantId, [foremanId]);
+  const memberIds = formData.getAll('member_user_id[]').map(String).filter(Boolean);
+  const scheduleUserIds = [...new Set([...memberIds, ...(foremanId ? [foremanId] : [])])];
+  if (scheduleUserIds.length) await assertUsersInTenant(supabase, ctx.tenantId, scheduleUserIds);
+  await assertScheduleMemberUpdatesAllowed(
+    supabase,
+    ctx.tenantId,
+    memberIds,
+    foremanId,
+    previousMemberIds,
+    existing.foreman_user_id,
+    [planDate],
+  );
 
   await unpublishDayIfNeeded(supabase, ctx.tenantId, planDate);
   if (existing.start_date !== planDate) {
@@ -234,8 +268,6 @@ export async function updateScheduleEntry(formData: FormData) {
     .eq('tenant_id', ctx.tenantId);
   if (error) throw new Error(error.message);
 
-  const memberIds = formData.getAll('member_user_id[]').map(String).filter(Boolean);
-  await assertUsersInTenant(supabase, ctx.tenantId, memberIds);
   await supabase.from('schedule_entry_members').delete().eq('schedule_entry_id', entryId);
   if (memberIds.length) {
     const { error: memberError } = await supabase.from('schedule_entry_members').insert(
@@ -286,6 +318,43 @@ export async function moveScheduleEntry(formData: FormData) {
   revalidatePath(SCHEDULE_PATH);
 }
 
+export async function reorderScheduleDayEntries(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'schedule.manage');
+  const supabase = await createClient();
+
+  const planDate = String(formData.get('plan_date') ?? '');
+  const orderedIds = formData.getAll('entry_id[]').map(String).filter(Boolean);
+  if (!planDate || orderedIds.length === 0) throw new Error('Ungültige Anfrage');
+
+  const { data: rows, error: loadError } = await supabase
+    .from('schedule_entries')
+    .select('id')
+    .eq('tenant_id', ctx.tenantId)
+    .eq('start_date', planDate)
+    .eq('end_date', planDate);
+  if (loadError) throw new Error(loadError.message);
+
+  const dayIds = new Set((rows ?? []).map((r) => r.id));
+  if (dayIds.size !== orderedIds.length || orderedIds.some((id) => !dayIds.has(id))) {
+    throw new Error('Reihenfolge passt nicht zu den Einsätzen an diesem Tag');
+  }
+
+  await unpublishDayIfNeeded(supabase, ctx.tenantId, planDate);
+
+  const updatedAt = new Date().toISOString();
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    const { error } = await supabase
+      .from('schedule_entries')
+      .update({ sort_order: i * 10, updated_at: updatedAt })
+      .eq('id', orderedIds[i])
+      .eq('tenant_id', ctx.tenantId);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath(SCHEDULE_PATH);
+}
+
 export async function deleteScheduleEntry(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'schedule.manage');
@@ -327,6 +396,7 @@ export async function addMemberToScheduleEntry(formData: FormData) {
   if (!entry) throw new Error('Einsatz nicht gefunden');
 
   await assertUsersInTenant(supabase, ctx.tenantId, [userId]);
+  await assertNewScheduleMembersAllowed(supabase, ctx.tenantId, [userId], [entry.start_date]);
   await unpublishDayIfNeeded(supabase, ctx.tenantId, entry.start_date);
 
   const { error } = await supabase.from('schedule_entry_members').insert({

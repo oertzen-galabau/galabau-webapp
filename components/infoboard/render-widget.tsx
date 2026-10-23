@@ -1,15 +1,13 @@
 import type { InfoboardWidgetData, InfoboardWidgetId } from '@/lib/infoboard/types';
-import { InfoboardPostsWidget } from '@/components/infoboard/widgets/infoboard-posts-widget';
 import { LeaveMineWidget } from '@/components/infoboard/widgets/leave-mine-widget';
 import { LeavePendingWidget } from '@/components/infoboard/widgets/leave-pending-widget';
-import { MessagesUnreadWidget } from '@/components/infoboard/widgets/messages-unread-widget';
 import { MetricCompletedWidget } from '@/components/infoboard/widgets/metric-completed-widget';
 import { MetricHoursWidget } from '@/components/infoboard/widgets/metric-hours-widget';
 import { MetricOpenSitesWidget } from '@/components/infoboard/widgets/metric-open-sites-widget';
 import { MetricReportsWidget } from '@/components/infoboard/widgets/metric-reports-widget';
 import { EquipmentUvvDueWidget } from '@/components/infoboard/widgets/equipment-uvv-due-widget';
 import { PendingApprovalWidget } from '@/components/infoboard/widgets/pending-approval-widget';
-import { TodayScheduleWidget } from '@/components/infoboard/widgets/today-schedule-widget';
+import { ScheduleAssignmentsWidget } from '@/components/infoboard/widgets/schedule-assignments-widget';
 
 type Props = {
   widgetId: InfoboardWidgetId;
@@ -56,11 +54,30 @@ export function RenderWidget({ widgetId, data }: Props) {
         />
       );
     case 'today_schedule':
-      return <TodayScheduleWidget dateLabel={data.dateLabel} rows={data.schedule.rows} />;
-    case 'infoboard_posts':
+      return null;
+    case 'tomorrow_schedule':
       return (
-        <InfoboardPostsWidget posts={data.posts} canManagePosts={data.canManagePosts} />
+        <ScheduleAssignmentsWidget
+          title="Heute & Morgen"
+          planDayIso={data.schedule.today.dayIso}
+          sections={[
+            {
+              dayLabel: data.schedule.today.dateLabel,
+              rows: data.schedule.today.rows,
+              emptyMessage: 'Keine Einsätze für heute geplant.',
+              planDayIso: data.schedule.today.dayIso,
+            },
+            {
+              dayLabel: data.schedule.tomorrow.dateLabel,
+              rows: data.schedule.tomorrow.rows,
+              emptyMessage: 'Keine Einsätze für morgen geplant.',
+              planDayIso: data.schedule.tomorrow.dayIso,
+            },
+          ]}
+        />
       );
+    case 'infoboard_posts':
+      return null;
     case 'leave_pending':
       return (
         <LeavePendingWidget
@@ -71,7 +88,7 @@ export function RenderWidget({ widgetId, data }: Props) {
     case 'leave_mine':
       return <LeaveMineWidget rows={data.leaveMine.rows} />;
     case 'messages_unread':
-      return <MessagesUnreadWidget count={data.unreadMessagesCount} />;
+      return null;
     case 'site_weather':
       return <p className="muted infoboard-widget-empty">Wetter-Widget folgt in Kürze.</p>;
     case 'equipment_uvv_due':

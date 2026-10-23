@@ -75,7 +75,6 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Baustellenakte</span>
           <h1>Baustellen</h1>
           <p>Stammdaten, Dokumente und Ansprechpartner je Baustelle.</p>
         </div>

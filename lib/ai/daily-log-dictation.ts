@@ -1,3 +1,9 @@
+import {
+  isHourlyWageRapport,
+  parseDailyLogReportType,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
+
 export type DictationWorkerDraft = {
   name: string;
   jobTitle: string | null;
@@ -19,14 +25,28 @@ export type DictationResourceDraft = {
   hours: number | null;
 };
 
+export type DictationSubcontractorWorkerDraft = {
+  workerName: string;
+  hours: number;
+};
+
+export type DictationSubcontractorDraft = {
+  companyName: string;
+  workDescription: string | null;
+  matchedPartnerId: string | null;
+  matchConfidence: 'high' | 'low' | 'none';
+  workers: DictationSubcontractorWorkerDraft[];
+};
+
 export type DailyLogDictationDraft = {
+  reportType: DailyLogReportType;
   transcript: string;
   detectedLanguage: string | null;
-  weather: string | null;
   notes: string | null;
   workers: DictationWorkerDraft[];
   workItems: DictationWorkItemDraft[];
   resources: DictationResourceDraft[];
+  subcontractors: DictationSubcontractorDraft[];
 };
 
 export class DailyLogDictationError extends Error {
@@ -46,11 +66,20 @@ type ProfileMatch = {
   job_title: string | null;
 };
 
+export type SubcontractorPartnerMatch = {
+  id: string;
+  name: string;
+};
+
+export type DictationPromptHints = {
+  employeeNames: string[];
+  subcontractorNames: string[];
+};
+
 const STRUCTURE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    weather: { type: ['string', 'null'] },
     notes: { type: ['string', 'null'] },
     workers: {
       type: 'array',
@@ -92,21 +121,41 @@ const STRUCTURE_SCHEMA = {
         required: ['name', 'quantity', 'unit', 'hours'],
       },
     },
+    subcontractors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          company_name: { type: 'string' },
+          work_description: { type: ['string', 'null'] },
+          workers: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                worker_name: { type: 'string' },
+                hours: { type: 'number' },
+              },
+              required: ['worker_name', 'hours'],
+            },
+          },
+        },
+        required: ['company_name', 'work_description', 'workers'],
+      },
+    },
   },
-  required: ['weather', 'notes', 'workers', 'work_items', 'resources'],
+  required: ['notes', 'workers', 'work_items', 'resources', 'subcontractors'],
 } as const;
 
-const STRUCTURE_PROMPT = [
-  'Du strukturierst ein Baustellen-Tagesrapport-Transkript für BauDiggie (Baustellenmanagement).',
-  'Die Eingabe kann in jeder Sprache sein; alle Ausgabefelder müssen auf Deutsch formuliert sein.',
-  'Extrahiere Wetter, Bemerkungen, Mitarbeiter mit Stunden, Leistungen mit Menge/Einheit sowie Maschinen/Material.',
-  'Einheiten nur aus: Std., m, m², m³, kg, t. Bei fehlenden Werten null setzen.',
-  'Erfinde keine Daten, die nicht im Transkript vorkommen.',
-].join(' ');
-
-function normalizeName(value: string) {
+export function normalizeDictationName(value: string) {
   return value
     .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -114,17 +163,80 @@ function normalizeName(value: string) {
     .trim();
 }
 
+export function buildWhisperVocabularyHint(hints: DictationPromptHints): string {
+  const parts = [
+    'GaLaBau, Baustelle, Pflaster, Randsteine, Schotter, Mutterboden, Radlader, Rüttelplatte, Bagger, Minibagger.',
+  ];
+  const names = [...hints.employeeNames, ...hints.subcontractorNames].filter(Boolean).slice(0, 48);
+  if (names.length > 0) {
+    parts.push(`Namen: ${names.join(', ')}.`);
+  }
+  return parts.join(' ').slice(0, 900);
+}
+
+export function buildStructureSystemPrompt(reportType: DailyLogReportType, hints: DictationPromptHints): string {
+  const base = [
+    'Du strukturierst ein Transkript für einen Baustellenbericht (Garten- und Landschaftsbau / GaLaBau).',
+    'Die Eingabe kann in jeder Sprache sein; alle Ausgabetexte müssen auf Deutsch formuliert sein.',
+    'Fachbegriffe korrekt erkennen: Pflaster, Randsteine, Schotter, Mutterboden, Radlader, Rüttelplatte, Bagger.',
+    'Personennamen und Firmennamen nicht übersetzen, nur sauber schreiben.',
+    'Erfinde keine Daten, die nicht im Transkript vorkommen. Fehlende Werte: null. Leere Arrays statt Platzhalter.',
+    'Wetter und Wetterbeschreibungen ignorieren — Wetter wird automatisch gesetzt.',
+    'Einheiten nur aus: Std., m, m², m³, kg, t. Gängige Wörter umrechnen (Quadratmeter→m², Kubikmeter→m³, Tonnen→t, Stunden→Std.).',
+    'Stunden als Dezimalzahl (z. B. achteinhalb → 8.5).',
+    'Leistungen (work_items): ausgeführte Tätigkeit mit Menge und Einheit.',
+    'Fremdfirmen/Subunternehmer niemals als eigene Mitarbeiter (workers) listen.',
+    'Stundenangaben nicht in notes duplizieren, wenn sie bereits in workers/resources/subcontractors stehen.',
+  ];
+
+  if (hints.employeeNames.length > 0) {
+    base.push(`Bekannte Mitarbeiter (Schreibweise): ${hints.employeeNames.join(', ')}.`);
+  }
+  if (hints.subcontractorNames.length > 0) {
+    base.push(`Bekannte Subunternehmer-Firmen: ${hints.subcontractorNames.join(', ')}.`);
+  }
+
+  if (isHourlyWageRapport(reportType)) {
+    base.push(
+      'Berichtsart: Std.-Lohn-Rapport.',
+      'workers: nur Personen der eigenen Firma mit Name und Stunden.',
+      'resources: Maschinen oder Material mit Name, optional Menge/Einheit oder Betriebsstunden (hours).',
+      'subcontractors: Fremdfirmen mit company_name, work_description (Tätigkeit der Firma) und workers (Name + Stunden der Subunternehmer-Mitarbeiter).',
+      'notes: übrige Hinweise (Probleme, Besonderheiten, Absprachen).',
+    );
+  } else {
+    base.push(
+      'Berichtsart: Tagesbericht.',
+      'workers, resources und subcontractors müssen leere Arrays [] bleiben.',
+      'Nur work_items und notes füllen.',
+      'Erwähnte Stunden, Maschinen oder Subunternehmer sinngemäß in notes zusammenfassen, nicht in anderen Feldern.',
+    );
+  }
+
+  return base.join(' ');
+}
+
+export function dictationPromptHintsFromLists(
+  profiles: ProfileMatch[],
+  partners: SubcontractorPartnerMatch[],
+): DictationPromptHints {
+  return {
+    employeeNames: profiles.map((p) => `${p.first_name} ${p.last_name}`.trim()).filter(Boolean),
+    subcontractorNames: partners.map((p) => p.name.trim()).filter(Boolean),
+  };
+}
+
 function matchWorker(name: string, profiles: ProfileMatch[]) {
-  const target = normalizeName(name);
+  const target = normalizeDictationName(name);
   if (!target) return { userId: null, confidence: 'none' as const };
 
   let best: { profile: ProfileMatch; score: number } | null = null;
 
   for (const profile of profiles) {
-    const full = normalizeName(`${profile.first_name} ${profile.last_name}`);
-    const reversed = normalizeName(`${profile.last_name} ${profile.first_name}`);
-    const first = normalizeName(profile.first_name);
-    const last = normalizeName(profile.last_name);
+    const full = normalizeDictationName(`${profile.first_name} ${profile.last_name}`);
+    const reversed = normalizeDictationName(`${profile.last_name} ${profile.first_name}`);
+    const first = normalizeDictationName(profile.first_name);
+    const last = normalizeDictationName(profile.last_name);
 
     let score = 0;
     if (target === full || target === reversed) score = 100;
@@ -141,11 +253,45 @@ function matchWorker(name: string, profiles: ProfileMatch[]) {
   return { userId: best.profile.id, confidence: 'low' as const };
 }
 
-async function transcribeAudio(apiKey: string, file: File): Promise<{ text: string; language: string | null }> {
+export function matchSubcontractorPartner(companyName: string, partners: SubcontractorPartnerMatch[]) {
+  const target = normalizeDictationName(companyName);
+  if (!target) return { partnerId: null, confidence: 'none' as const };
+
+  let best: { partner: SubcontractorPartnerMatch; score: number } | null = null;
+
+  for (const partner of partners) {
+    const normalized = normalizeDictationName(partner.name);
+    if (!normalized) continue;
+
+    let score = 0;
+    if (target === normalized) score = 100;
+    else if (target.includes(normalized) || normalized.includes(target)) score = 80;
+    else {
+      const targetTokens = target.split(' ').filter((t) => t.length > 2);
+      const partnerTokens = normalized.split(' ').filter((t) => t.length > 2);
+      const overlap = targetTokens.filter((t) => partnerTokens.some((p) => p.includes(t) || t.includes(p))).length;
+      if (overlap >= 2) score = 70;
+      else if (overlap === 1) score = 50;
+    }
+
+    if (!best || score > best.score) best = { partner, score };
+  }
+
+  if (!best || best.score < 50) return { partnerId: null, confidence: 'none' as const };
+  if (best.score >= 75) return { partnerId: best.partner.id, confidence: 'high' as const };
+  return { partnerId: best.partner.id, confidence: 'low' as const };
+}
+
+async function transcribeAudio(
+  apiKey: string,
+  file: File,
+  whisperHint: string,
+): Promise<{ text: string; language: string | null }> {
   const body = new FormData();
   body.append('file', file);
   body.append('model', 'whisper-1');
   body.append('response_format', 'verbose_json');
+  if (whisperHint.trim()) body.append('prompt', whisperHint.trim());
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -169,7 +315,12 @@ async function transcribeAudio(apiKey: string, file: File): Promise<{ text: stri
   return { text: payload.text.trim(), language: payload.language ?? null };
 }
 
-async function structureTranscript(apiKey: string, transcript: string) {
+async function structureTranscript(
+  apiKey: string,
+  transcript: string,
+  reportType: DailyLogReportType,
+  hints: DictationPromptHints,
+) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -188,7 +339,7 @@ async function structureTranscript(apiKey: string, transcript: string) {
         },
       },
       messages: [
-        { role: 'system', content: STRUCTURE_PROMPT },
+        { role: 'system', content: buildStructureSystemPrompt(reportType, hints) },
         { role: 'user', content: transcript },
       ],
     }),
@@ -209,11 +360,15 @@ async function structureTranscript(apiKey: string, transcript: string) {
   if (!content) throw new DailyLogDictationError('Keine strukturierten Daten erhalten.', 'parse_error');
 
   return JSON.parse(content) as {
-    weather: string | null;
     notes: string | null;
     workers: Array<{ name: string; job_title: string | null; hours: number }>;
     work_items: Array<{ description: string; quantity: number | null; unit: string | null }>;
     resources: Array<{ name: string; quantity: number | null; unit: string | null; hours: number | null }>;
+    subcontractors: Array<{
+      company_name: string;
+      work_description: string | null;
+      workers: Array<{ worker_name: string; hours: number }>;
+    }>;
   };
 }
 
@@ -224,7 +379,10 @@ export function isDictationConfigured() {
 export async function extractDailyLogFromAudio(
   file: File,
   profiles: ProfileMatch[],
+  subcontractors: SubcontractorPartnerMatch[],
+  reportTypeRaw: string | null | undefined,
 ): Promise<DailyLogDictationDraft> {
+  const reportType = parseDailyLogReportType(reportTypeRaw);
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new DailyLogDictationError(
@@ -242,29 +400,81 @@ export async function extractDailyLogFromAudio(
     throw new DailyLogDictationError('Nur Audiodateien werden unterstützt.', 'unsupported_file');
   }
 
-  const { text, language } = await transcribeAudio(apiKey, file);
-  const structured = await structureTranscript(apiKey, text);
+  const hints = dictationPromptHintsFromLists(profiles, subcontractors);
+  const whisperHint = buildWhisperVocabularyHint(hints);
 
-  const workers = (structured.workers ?? [])
-    .map((worker) => {
-      const name = worker.name?.trim();
-      if (!name) return null;
-      const match = matchWorker(name, profiles);
-      const profile = match.userId ? profiles.find((p) => p.id === match.userId) : null;
-      return {
-        name: profile ? `${profile.first_name} ${profile.last_name}`.trim() : name,
-        jobTitle: worker.job_title?.trim() || profile?.job_title || null,
-        hours: Number.isFinite(worker.hours) ? worker.hours : 0,
-        matchedUserId: match.userId,
-        matchConfidence: match.confidence,
-      };
-    })
-    .filter((entry): entry is DictationWorkerDraft => entry !== null);
+  const { text, language } = await transcribeAudio(apiKey, file, whisperHint);
+  const structured = await structureTranscript(apiKey, text, reportType, hints);
+
+  const hourly = isHourlyWageRapport(reportType);
+
+  const workers = hourly
+    ? (structured.workers ?? [])
+        .map((worker) => {
+          const name = worker.name?.trim();
+          if (!name) return null;
+          const match = matchWorker(name, profiles);
+          const profile = match.userId ? profiles.find((p) => p.id === match.userId) : null;
+          return {
+            name: profile ? `${profile.first_name} ${profile.last_name}`.trim() : name,
+            jobTitle: worker.job_title?.trim() || profile?.job_title || null,
+            hours: Number.isFinite(worker.hours) ? worker.hours : 0,
+            matchedUserId: match.userId,
+            matchConfidence: match.confidence,
+          };
+        })
+        .filter((entry): entry is DictationWorkerDraft => entry !== null)
+    : [];
+
+  const resources = hourly
+    ? (structured.resources ?? [])
+        .map((item) => {
+          const name = item.name?.trim();
+          if (!name) return null;
+          return {
+            name,
+            quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : null,
+            unit: item.unit?.trim() || null,
+            hours: typeof item.hours === 'number' && Number.isFinite(item.hours) ? item.hours : null,
+          };
+        })
+        .filter((entry): entry is DictationResourceDraft => entry !== null)
+    : [];
+
+  const subcontractorsDraft = hourly
+    ? (structured.subcontractors ?? [])
+        .map((group) => {
+          const companyName = group.company_name?.trim();
+          if (!companyName) return null;
+          const match = matchSubcontractorPartner(companyName, subcontractors);
+          const partner = match.partnerId ? subcontractors.find((p) => p.id === match.partnerId) : null;
+          const resolvedName = partner?.name.trim() || companyName;
+          const workersList = (group.workers ?? [])
+            .map((w) => {
+              const workerName = w.worker_name?.trim();
+              if (!workerName) return null;
+              return {
+                workerName,
+                hours: Number.isFinite(w.hours) ? w.hours : 0,
+              };
+            })
+            .filter((entry): entry is DictationSubcontractorWorkerDraft => entry !== null);
+
+          return {
+            companyName: resolvedName,
+            workDescription: group.work_description?.trim() || null,
+            matchedPartnerId: match.partnerId,
+            matchConfidence: match.confidence,
+            workers: workersList.length > 0 ? workersList : [{ workerName: '', hours: 0 }],
+          };
+        })
+        .filter((entry): entry is DictationSubcontractorDraft => entry !== null)
+    : [];
 
   return {
+    reportType,
     transcript: text,
     detectedLanguage: language,
-    weather: structured.weather?.trim() || null,
     notes: structured.notes?.trim() || null,
     workers,
     workItems: (structured.work_items ?? [])
@@ -278,17 +488,7 @@ export async function extractDailyLogFromAudio(
         };
       })
       .filter((entry): entry is DictationWorkItemDraft => entry !== null),
-    resources: (structured.resources ?? [])
-      .map((item) => {
-        const name = item.name?.trim();
-        if (!name) return null;
-        return {
-          name,
-          quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : null,
-          unit: item.unit?.trim() || null,
-          hours: typeof item.hours === 'number' && Number.isFinite(item.hours) ? item.hours : null,
-        };
-      })
-      .filter((entry): entry is DictationResourceDraft => entry !== null),
+    resources,
+    subcontractors: subcontractorsDraft,
   };
 }

@@ -112,7 +112,6 @@ export default async function ZeitenPage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Arbeitszeiterfassung</span>
           <h1>Meine Zeiten</h1>
           <p>
             Genehmigte Stunden im Monat: {formatMinutes(approvedMinutes)} Std.

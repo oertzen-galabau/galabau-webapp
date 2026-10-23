@@ -35,7 +35,7 @@ export type DashboardLayoutInput = z.infer<typeof dashboardLayoutSchema>;
 
 export function clampLayoutItem(item: z.infer<typeof layoutItemSchema>) {
   const def = WIDGET_REGISTRY[item.id];
-  const w = Math.min(Math.max(item.w, INFOBOARD_MIN_W), INFOBOARD_MAX_W);
+  const w = Math.min(Math.max(item.w, def.minW ?? INFOBOARD_MIN_W), def.maxW ?? INFOBOARD_MAX_W);
   const h = Math.min(Math.max(item.h, def.minH), def.maxH ?? 20);
   const x = Math.min(Math.max(item.x, 0), INFOBOARD_GRID_COLS - w);
   return { ...item, x, y: Math.max(item.y, 0), w, h };

@@ -7,7 +7,6 @@ import type {
   MyLeaveRow,
   PendingApprovalRow,
   PendingLeaveRow,
-  ScheduleRow,
 } from '@/lib/infoboard/types';
 import {
   compareUvvDueEntries,
@@ -27,12 +26,22 @@ import type { SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
 import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
 import {
+  buildScheduleRowsForDay,
+  formatScheduleDayLabel,
+  type InfoboardAppointmentRaw,
+  type InfoboardScheduleEntryRaw,
+} from '@/lib/infoboard/schedule-rows';
+import { addDays } from '@/lib/schedule/week';
+import {
   currentHour,
   endOfWeekDate,
   greetingForHour,
   startOfWeekDate,
   todayWorkDate,
 } from '@/lib/time-tracking/work-day';
+
+const INFOBOARD_SCHEDULE_SELECT =
+  'id, start_time, end_time, site_id, foreman_user_id, external_workers_text, sites(name, address), schedule_entry_members(user_id, profiles(first_name, last_name))';
 
 type ProfileRef = { first_name: string; last_name: string };
 type SiteRef = { name: string; address: string | null };
@@ -49,23 +58,6 @@ function asSiteRef(value: unknown): SiteRef | null {
   return site.name ? site : null;
 }
 
-function formatAppointmentTime(iso: string): string {
-  return new Intl.DateTimeFormat('de-DE', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Berlin',
-  }).format(new Date(iso));
-}
-
-function appointmentTone(iso: string): ScheduleRow['tone'] {
-  const now = Date.now();
-  const time = new Date(iso).getTime();
-  const diffHours = (time - now) / (1000 * 60 * 60);
-  if (diffHours <= 0 && diffHours > -4) return 'active';
-  if (diffHours > 0 && diffHours <= 2) return 'travel';
-  return 'planned';
-}
-
 export type InfoboardPagePayload = {
   layout: ReturnType<typeof resolveEffectiveLayout>;
   allowedWidgetIds: ReturnType<typeof allowedWidgetIds>;
@@ -78,6 +70,7 @@ export async function fetchInfoboardPayload(
   supabase: SupabaseClient,
 ): Promise<InfoboardPagePayload> {
   const today = todayWorkDate();
+  const tomorrow = addDays(today, 1);
   const tenantId = ctx.tenant?.id;
   if (!tenantId) {
     throw new Error('Kein Mandant');
@@ -87,7 +80,6 @@ export async function fetchInfoboardPayload(
   const canManagePosts = canAccess(ctx, 'infoboard.posts');
   const canApproveLeave = canAccess(ctx, 'urlaub.approve');
   const canRequestLeave = canAccess(ctx, 'urlaub.request');
-  const canViewMessages = canAccess(ctx, 'nav.nachrichten');
   const canViewEquipment =
     canAccess(ctx, 'nav.partners') && canAccess(ctx, 'partners.view');
   const equipmentUvvPreviewLimit = 10;
@@ -100,6 +92,9 @@ export async function fetchInfoboardPayload(
   const weekEnd = endOfWeekDate(today);
   const dayStart = `${today}T00:00:00`;
   const dayEnd = `${today}T23:59:59`;
+  const tomorrowDayStart = `${tomorrow}T00:00:00`;
+  const tomorrowDayEnd = `${tomorrow}T23:59:59`;
+  const canViewSchedule = canAccess(ctx, 'schedule.view');
 
   const [
     { data: profileRow },
@@ -112,15 +107,18 @@ export async function fetchInfoboardPayload(
     { data: openReports },
     { data: appointments },
     { data: todayScheduleEntries },
+    { data: tomorrowScheduleEntries },
     { data: myAssignment },
+    { data: myAssignmentTomorrow },
+    { data: tomorrowAppointments },
     { data: pendingPreview },
     { count: pendingCount },
     { data: posts },
     leavePendingPreviewResult,
     { count: leavePendingCount },
     myLeaveRequestsResult,
-    { count: unreadMessagesCount },
     { data: equipmentWithUvv },
+    { data: readInfoboardPosts },
   ] = await Promise.all([
     supabase.from('profiles').select('dashboard_layout').eq('id', ctx.userId).single(),
     supabase
@@ -162,13 +160,22 @@ export async function fetchInfoboardPayload(
       .gte('appointment_at', dayStart)
       .lte('appointment_at', dayEnd)
       .order('appointment_at'),
-    canAccess(ctx, 'schedule.view')
+    canViewSchedule
       ? supabase
           .from('schedule_entries')
-          .select('id, start_time, end_time, site_id, foreman_user_id, sites(name, address), schedule_entry_members(user_id)')
+          .select(INFOBOARD_SCHEDULE_SELECT)
           .eq('tenant_id', tenantId)
           .lte('start_date', today)
           .gte('end_date', today)
+          .order('start_time')
+      : Promise.resolve({ data: [] }),
+    canViewSchedule
+      ? supabase
+          .from('schedule_entries')
+          .select(INFOBOARD_SCHEDULE_SELECT)
+          .eq('tenant_id', tenantId)
+          .lte('start_date', tomorrow)
+          .gte('end_date', tomorrow)
           .order('start_time')
       : Promise.resolve({ data: [] }),
     supabase
@@ -178,6 +185,20 @@ export async function fetchInfoboardPayload(
       .eq('user_id', ctx.userId)
       .eq('assignment_date', today)
       .maybeSingle(),
+    supabase
+      .from('daily_assignments')
+      .select('site_id, sites(name, address)')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', ctx.userId)
+      .eq('assignment_date', tomorrow)
+      .maybeSingle(),
+    supabase
+      .from('site_appointments')
+      .select('id, title, appointment_at, site_id, sites(name, address)')
+      .eq('tenant_id', tenantId)
+      .gte('appointment_at', tomorrowDayStart)
+      .lte('appointment_at', tomorrowDayEnd)
+      .order('appointment_at'),
     canApprove
       ? supabase
           .from('time_entries')
@@ -200,7 +221,7 @@ export async function fetchInfoboardPayload(
           .select('id, title, content, post_type, published_at, created_at')
           .eq('tenant_id', tenantId)
           .order('published_at', { ascending: false, nullsFirst: false })
-          .limit(5)
+          .limit(30)
       : Promise.resolve({ data: [] }),
     canApproveLeave
       ? listPendingLeavePreview(supabase, tenantId, 5)
@@ -215,20 +236,19 @@ export async function fetchInfoboardPayload(
     canRequestLeave
       ? listMyLeaveRequestsForInfoboard(supabase, tenantId, ctx.userId, 20)
       : Promise.resolve({ data: [], error: null }),
-    canViewMessages
-      ? supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .eq('recipient_id', ctx.userId)
-          .is('read_at', null)
-      : Promise.resolve({ count: 0 }),
     canViewEquipment
       ? supabase
           .from('tenant_equipment')
           .select('id, name, kind, license_plate, inventory_number, uvv_due_date')
           .eq('tenant_id', tenantId)
           .not('uvv_due_date', 'is', null)
+      : Promise.resolve({ data: [] }),
+    canViewPosts
+      ? supabase
+          .from('infoboard_post_reads')
+          .select('post_id')
+          .eq('tenant_id', tenantId)
+          .eq('user_id', ctx.userId)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -247,8 +267,7 @@ export async function fetchInfoboardPayload(
   const rejectedCount = rejectedTimeEntries?.length ?? 0;
   const totalPending = pendingCount ?? 0;
 
-  const canManageSchedule = canAccess(ctx, 'schedule.manage');
-  const scheduleRows: ScheduleRow[] = [];
+  const canSeeAllInfoboardSchedule = canAccess(ctx, 'infoboard.schedule_all');
 
   const { data: todayDailyLogs } = await supabase
     .from('daily_logs')
@@ -262,56 +281,31 @@ export async function fetchInfoboardPayload(
       .map((row) => `${row.site_id}:${row.created_by}`),
   );
 
-  for (const entry of todayScheduleEntries ?? []) {
-    const members = (entry.schedule_entry_members ?? []) as { user_id: string }[];
-    const isForeman = entry.foreman_user_id === ctx.userId;
-    const isMine = members.some((m) => m.user_id === ctx.userId);
-    if (!canManageSchedule && !isMine && !isForeman) continue;
-    const site = asSiteRef(entry.sites);
-    const start = String(entry.start_time).slice(0, 5);
-    const end = String(entry.end_time).slice(0, 5);
-    const siteId = entry.site_id as string;
-    const missingReport =
-      isForeman &&
-      !foremanLogKeys.has(`${siteId}:${ctx.userId}`);
-    scheduleRows.push({
-      id: entry.id,
-      time: `${start}–${end}`,
-      title: site?.name ?? 'Einsatz',
-      place: site?.address ?? '—',
-      tone: 'active',
-      href: isForeman
-        ? `/app/dokumentation?site=${siteId}&type=daily_report`
-        : `/app/einsatzplanung?view=day&day=${today}`,
-      subtitle: missingReport ? 'Tagesbericht fehlt' : null,
-    });
-  }
+  const scheduleBuildBase = {
+    userId: ctx.userId,
+    canSeeAll: canSeeAllInfoboardSchedule,
+  };
 
-  if (!scheduleRows.length) {
-    scheduleRows.push(...(appointments ?? []).map((a) => {
-      const site = asSiteRef(a.sites);
-      return {
-        id: a.id,
-        time: formatAppointmentTime(a.appointment_at),
-        title: a.title || site?.name || 'Termin',
-        place: site?.address ?? '—',
-        tone: appointmentTone(a.appointment_at),
-        href: `/app/baustellen/${a.site_id}`,
-      };
-    }));
-  }
+  const todayScheduleRows = buildScheduleRowsForDay({
+    ...scheduleBuildBase,
+    dayIso: today,
+    entries: (todayScheduleEntries ?? []) as InfoboardScheduleEntryRaw[],
+    appointments: (appointments ?? []) as InfoboardAppointmentRaw[],
+    assignment: myAssignment,
+    foremanLogKeys,
+    includeMissingReport: true,
+    emptyMessage: 'Keine Einsätze für heute geplant.',
+  });
 
-  const assignmentSite = asSiteRef(myAssignment?.sites);
-  if (!scheduleRows.length && assignmentSite) {
-    scheduleRows.push({
-      id: myAssignment?.site_id ?? 'assignment',
-      time: '—',
-      title: assignmentSite.name,
-      place: assignmentSite.address ?? '—',
-      tone: 'active',
-      href: myAssignment?.site_id ? `/app/baustellen/${myAssignment.site_id}` : '/app/baustellen',
-    });
-  }
+  const tomorrowScheduleRows = buildScheduleRowsForDay({
+    ...scheduleBuildBase,
+    dayIso: tomorrow,
+    entries: (tomorrowScheduleEntries ?? []) as InfoboardScheduleEntryRaw[],
+    appointments: (tomorrowAppointments ?? []) as InfoboardAppointmentRaw[],
+    assignment: myAssignmentTomorrow,
+    includeMissingReport: false,
+    emptyMessage: 'Keine Einsätze für morgen geplant.',
+  });
 
   const pendingLeaveRows: PendingLeaveRow[] = (leavePendingPreview ?? []).map((req) => {
     const profile = asProfile(req.profiles);
@@ -391,6 +385,18 @@ export async function fetchInfoboardPayload(
     ctx.isSuperadminBypass,
   );
 
+  const readInfoboardPostIds = new Set((readInfoboardPosts ?? []).map((row) => row.post_id));
+
+  const infoboardPostRows = (posts ?? []).map((post) => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    postType: post.post_type,
+    publishedAt: post.published_at,
+    createdAt: post.created_at,
+    isUnread: !readInfoboardPostIds.has(post.id),
+  }));
+
   const greeting = greetingForHour(currentHour());
   const firstName = ctx.profile.first_name || 'Team';
   const dateLabel = new Intl.DateTimeFormat('de-DE', {
@@ -433,22 +439,26 @@ export async function fetchInfoboardPayload(
         openReports: openReports?.length ?? 0,
         pendingReports,
       },
-      schedule: { rows: scheduleRows },
-      posts: (posts ?? []).map((post) => ({
-        id: post.id,
-        title: post.title,
-        content: post.content,
-        postType: post.post_type,
-        publishedAt: post.published_at,
-        createdAt: post.created_at,
-      })),
+      schedule: {
+        today: {
+          dateLabel: formatScheduleDayLabel(today),
+          dayIso: today,
+          rows: todayScheduleRows,
+        },
+        tomorrow: {
+          dateLabel: formatScheduleDayLabel(tomorrow),
+          dayIso: tomorrow,
+          rows: tomorrowScheduleRows,
+        },
+      },
+      posts: infoboardPostRows,
+      latestUnreadPost: infoboardPostRows.find((post) => post.isUnread) ?? null,
       canManagePosts,
       leavePending: {
         rows: pendingLeaveRows,
         totalPending: totalLeavePending,
       },
       leaveMine: { rows: myLeaveRows },
-      unreadMessagesCount: unreadMessagesCount ?? 0,
       showTeamTimeStats,
       showActiveWorkersLine,
       ownMinutesToday,

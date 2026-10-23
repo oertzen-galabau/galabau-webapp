@@ -24,15 +24,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Keine Audiodatei übermittelt' }, { status: 400 });
   }
 
+  const reportType = formData.get('report_type');
+
   const supabase = await createClient();
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, first_name, last_name, job_title')
-    .eq('tenant_id', ctx.tenantId)
-    .eq('is_active', true);
+  const [{ data: profiles }, { data: partners }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, first_name, last_name, job_title')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('is_active', true),
+    supabase
+      .from('tenant_business_partners')
+      .select('id, name')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('is_active', true)
+      .eq('kind', 'subcontractor'),
+  ]);
 
   try {
-    const draft = await extractDailyLogFromAudio(file, profiles ?? []);
+    const draft = await extractDailyLogFromAudio(
+      file,
+      profiles ?? [],
+      partners ?? [],
+      typeof reportType === 'string' ? reportType : null,
+    );
     return NextResponse.json({ draft });
   } catch (error) {
     if (error instanceof DailyLogDictationError) {

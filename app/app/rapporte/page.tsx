@@ -1,45 +1,20 @@
-import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { DocumentationOverview } from '@/components/documentation/documentation-overview';
-import { DocumentationSiteFilter } from '@/components/documentation/documentation-site-filter';
-import { loadDocumentationOverview } from '@/lib/documentation/load-documentation-overview';
+import { redirect } from 'next/navigation';
 
 type PageProps = {
-  searchParams: Promise<{ site?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function RapportePage({ searchParams }: PageProps) {
-  const ctx = await requireTenantMember();
-  if (!canAccess(ctx, 'nav.rapporte')) return <p className="muted">Keine Berechtigung.</p>;
-
-  const { site: siteParam } = await searchParams;
-  const filterSiteId = siteParam?.trim() || undefined;
-
-  const supabase = await createClient();
-  const { items, sites, selectedSiteId } = await loadDocumentationOverview(supabase, ctx, {
-    siteId: filterSiteId,
-  });
-
-  return (
-    <>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">Dokumente</span>
-          <h1>Dokumente</h1>
-          <p>
-            Pläne, PDF-Rapporte, Fotos und Lieferscheine aller Baustellen — gefiltert nach Baustelle.
-            Tagesberichte erfassen Sie unter Dokumentation.
-          </p>
-        </div>
-      </div>
-
-      <section className="panel">
-        <div className="documentation-list-head">
-          <h2>Dokumente</h2>
-          <DocumentationSiteFilter sites={sites} selectedSiteId={selectedSiteId} />
-        </div>
-        <DocumentationOverview items={items} />
-      </section>
-    </>
-  );
+export default async function RapporteLegacyRedirect({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === 'string' && value) qs.set(key, value);
+    else if (Array.isArray(value)) {
+      for (const v of value) {
+        if (v) qs.append(key, v);
+      }
+    }
+  }
+  const query = qs.toString();
+  redirect(query ? `/app/dokumente?${query}` : '/app/dokumente');
 }

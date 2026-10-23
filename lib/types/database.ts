@@ -23,6 +23,7 @@ export type Tenant = {
   daily_report_label: string | null;
   hourly_wage_rapport_label: string | null;
   bad_weather_allowance_days: number;
+  gps_enabled: boolean;
   leave_carry_expire_month: number | null;
   leave_carry_expire_day: number | null;
   status: TenantStatus;
@@ -593,6 +594,13 @@ export type InfoboardPost = {
   content: string;
   post_type: string;
   published_at: string;
+};
+
+export type InfoboardPostRead = {
+  post_id: string;
+  user_id: string;
+  tenant_id: string;
+  read_at: string;
 };
 
 export type TenantTheme = {

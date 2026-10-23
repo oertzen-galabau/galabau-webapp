@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useGpsEnabled } from '@/components/gps/gps-provider';
 import { WeatherIcon } from '@/components/sites/weather-icon';
 import type { WeatherIconKind } from '@/lib/weather/weather-codes';
 
@@ -51,9 +52,11 @@ function requestPosition(): Promise<GeolocationPosition> {
 
 /** Wetter im Header — ausschließlich vom Gerätestandort (Browser-Geolocation). */
 export function HeaderWeather() {
+  const gpsEnabled = useGpsEnabled();
   const [weather, setWeather] = useState<HeaderWeatherData | null>(null);
 
   useEffect(() => {
+    if (!gpsEnabled) return;
     let cancelled = false;
 
     async function loadFromDevice() {
@@ -87,9 +90,9 @@ export function HeaderWeather() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [gpsEnabled]);
 
-  if (!weather) return null;
+  if (!gpsEnabled || !weather) return null;
 
   const locationLabel = weather.location ?? 'Standort';
   const ariaLabel = `${weather.label}, ${Math.round(weather.temperature)} Grad in ${locationLabel}`;

@@ -13,16 +13,35 @@ import { todayIsoInBerlin, weekDayLabels } from '@/lib/schedule/week';
 
 type Props = {
   initialDays: string[];
+  selectedDays?: string[];
+  onSelectedDaysChange?: (days: string[]) => void;
   disabled?: boolean;
   readOnly?: boolean;
 };
 
-export function ScheduleEntryDayPicker({ initialDays, disabled, readOnly }: Props) {
+export function ScheduleEntryDayPicker({
+  initialDays,
+  selectedDays: selectedDaysProp,
+  onSelectedDaysChange,
+  disabled,
+  readOnly,
+}: Props) {
   const today = todayIsoInBerlin();
   const seed = initialDays.filter(Boolean);
   const initialView = isoToViewMonth(seed[0] ?? today);
 
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(seed));
+  const [selectedInternal, setSelectedInternal] = useState<Set<string>>(() => new Set(seed));
+  const isControlled = selectedDaysProp != null && onSelectedDaysChange != null;
+  const selected = isControlled ? new Set(selectedDaysProp) : selectedInternal;
+
+  function setSelected(next: Set<string> | ((prev: Set<string>) => Set<string>)) {
+    const resolved = typeof next === 'function' ? next(selected) : next;
+    if (isControlled) {
+      onSelectedDaysChange!([...resolved].sort());
+    } else {
+      setSelectedInternal(resolved);
+    }
+  }
   const [viewYear, setViewYear] = useState(initialView.year);
   const [viewMonth, setViewMonth] = useState(initialView.month);
   const [validationError, setValidationError] = useState<string | null>(null);

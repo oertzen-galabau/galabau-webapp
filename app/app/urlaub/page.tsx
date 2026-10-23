@@ -6,7 +6,7 @@ import { LeaveTeamCalendarClient } from '@/components/leave/leave-team-calendar-
 import { loadTeamLeaveCalendarData } from '@/lib/leave/load-team-calendar-data';
 
 type PageProps = {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 };
 
 export default async function UrlaubTeamCalendarPage({ searchParams }: PageProps) {
@@ -22,16 +22,17 @@ export default async function UrlaubTeamCalendarPage({ searchParams }: PageProps
 
   const params = await searchParams;
   const supabase = await createClient();
-  const data = await loadTeamLeaveCalendarData(supabase, tenantId, params.month);
+  const data = await loadTeamLeaveCalendarData(supabase, tenantId, params.year, params.month);
 
   const canReview = canAccess(ctx, 'urlaub.approve');
   const canRequest = canAccess(ctx, 'urlaub.request');
+  const canSeeOthersLeaveReason =
+    canAccess(ctx, 'urlaub.approve') || canAccess(ctx, 'urlaub.view_all');
 
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Abwesenheit</span>
           <h1>An- und Abwesenheit</h1>
           <p>Teamkalender – wer ist wann abwesend?</p>
         </div>
@@ -42,7 +43,10 @@ export default async function UrlaubTeamCalendarPage({ searchParams }: PageProps
       <LeaveTeamCalendarClient
         data={data}
         canRequest={canRequest}
-        viewer={{ canApprove: canReview }}
+        viewer={{
+          userId: ctx.userId,
+          canSeeOthersLeaveReason,
+        }}
       />
     </>
   );

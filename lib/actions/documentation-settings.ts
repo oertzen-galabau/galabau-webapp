@@ -28,5 +28,5 @@ export async function saveTenantReportLabels(formData: FormData) {
 
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }

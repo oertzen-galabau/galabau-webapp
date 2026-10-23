@@ -32,7 +32,6 @@ export default async function RollenPage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Verwaltung</span>
           <h1>Rollen & Berechtigungen</h1>
           <p>Rollen anlegen und festlegen, welche Funktionen sichtbar und nutzbar sind.</p>
         </div>

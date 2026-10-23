@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { AppDialog } from '@/components/ui/app-dialogs';
 import {
   createScheduleEntry,
@@ -16,6 +16,7 @@ import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { partnerOptionLabel } from '@/lib/partners/kind';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
+import type { LeaveDay } from '@/lib/schedule/conflicts';
 import type { SchedulePlanData } from '@/lib/schedule/load-plan-data';
 import { todayIsoInBerlin } from '@/lib/schedule/week';
 import { ScheduleEntryDayPicker } from '@/components/schedule/schedule-entry-day-picker';
@@ -35,6 +36,7 @@ type Props = {
   sites: Pick<Site, 'id' | 'name'>[];
   employees: SchedulePlanData['employees'];
   workAreas: SchedulePlanData['workAreas'];
+  leaveDays: LeaveDay[];
   subcontractors: ScheduleSubcontractorOption[];
   equipment: SchedulePlanData['equipment'];
   defaultSiteId?: string;
@@ -49,6 +51,7 @@ export function ScheduleEntryDialog({
   sites,
   employees,
   workAreas,
+  leaveDays,
   subcontractors,
   equipment,
   defaultSiteId,
@@ -75,6 +78,11 @@ export function ScheduleEntryDialog({
 
   const primaryDay = entry?.start_date ?? defaultDay ?? todayIsoInBerlin();
   const initialPlanDays = entry ? [entry.start_date] : primaryDay ? [primaryDay] : [];
+  const [planDates, setPlanDates] = useState<string[]>(() => [...initialPlanDays]);
+
+  useEffect(() => {
+    setPlanDates([...initialPlanDays]);
+  }, [formKey, initialPlanDays.join(',')]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -172,6 +180,8 @@ export function ScheduleEntryDialog({
           </label>
           <ScheduleEntryDayPicker
             initialDays={initialPlanDays}
+            selectedDays={planDates}
+            onSelectedDaysChange={entry ? undefined : setPlanDates}
             readOnly={Boolean(entry)}
             disabled={pending}
           />
@@ -204,6 +214,8 @@ export function ScheduleEntryDialog({
             key={formKey}
             employees={employees}
             workAreas={workAreas}
+            planDates={planDates.length ? planDates : initialPlanDays}
+            leaveDays={leaveDays}
             initialSelectedIds={initialMemberIds}
             initialForemanId={entry?.foreman_user_id ?? null}
             disabled={pending}

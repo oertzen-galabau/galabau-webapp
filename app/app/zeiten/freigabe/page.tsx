@@ -98,7 +98,6 @@ export default async function ZeitenFreigabePage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Arbeitszeiterfassung</span>
           <h1>Zeiten zur Freigabe</h1>
           <p>Eingereichte Zeiteinträge aller Mitarbeitenden.</p>
         </div>

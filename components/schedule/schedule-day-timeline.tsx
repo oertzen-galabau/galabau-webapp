@@ -9,11 +9,17 @@ import {
   DAY_TIMELINE_START_HOUR,
   dayTimelineGridHeightPx,
   formatTimelineHourLabel,
-  DAY_TIMELINE_MAX_VISIBLE_COLUMNS,
   dayTimelineGridWidthPercent,
+  dayTimelineMaxVisibleColumns,
   layoutDayTimelineColumns,
   nowLinePercent,
 } from '@/lib/schedule/day-timeline';
+import { sortScheduleEntriesForDisplay } from '@/lib/schedule/entry-sort';
+import {
+  ScheduleDraggableEntryButton,
+  ScheduleEntryDropWrap,
+} from '@/components/schedule/schedule-entry-dnd-wrap';
+import { useDayTimelineCompactViewport } from '@/lib/schedule/use-day-timeline-compact';
 
 type Props = {
   entries: ScheduleEntryView[];
@@ -61,13 +67,21 @@ export function ScheduleDayTimeline({
   conflictEntryIds,
   onEdit,
 }: Props) {
+  const compactViewport = useDayTimelineCompactViewport();
+  const maxVisibleColumns = dayTimelineMaxVisibleColumns(compactViewport);
   const gridHeight = dayTimelineGridHeightPx();
   const nowPct = nowLinePercent(now, selectedDay);
 
-  const sorted = [...entries].sort(
-    (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
+  const sorted = sortScheduleEntriesForDisplay(entries);
+  const layoutById = layoutDayTimelineColumns(
+    sorted.map((e) => ({
+      id: e.id,
+      start_time: e.start_time,
+      end_time: e.end_time,
+      sort_order: e.sort_order,
+    })),
+    { maxVisibleColumns },
   );
-  const layoutById = layoutDayTimelineColumns(sorted);
   const gridWidthPercent = dayTimelineGridWidthPercent(layoutById.values());
 
   return (
@@ -125,7 +139,7 @@ export function ScheduleDayTimeline({
                 const location = siteLocationLine(entry.site);
                 const cardClass = [
                   entryCardClassName(entry, conflictEntryIds.has(entry.id), now),
-                  layout.columnCount > 1 && layout.columnCount <= DAY_TIMELINE_MAX_VISIBLE_COLUMNS
+                  layout.columnCount > 1 && layout.columnCount <= maxVisibleColumns
                     ? 'schedule-day-timeline-event--narrow'
                     : '',
                   canManage ? 'schedule-day-timeline-event--clickable' : '',
@@ -225,16 +239,23 @@ export function ScheduleDayTimeline({
 
                 if (canManage) {
                   return (
-                    <button
+                    <ScheduleEntryDropWrap
                       key={entry.id}
-                      type="button"
-                      className={cardClass}
-                      style={style}
-                      onClick={() => onEdit(entry)}
-                      aria-label={`Einsatz ${entry.site.name} bearbeiten`}
+                      entryId={entry.id}
+                      planDate={entry.start_date}
+                      enabled
+                      slotStyle={style}
+                      slotClassName="schedule-day-timeline-event-slot"
                     >
-                      {body}
-                    </button>
+                      <ScheduleDraggableEntryButton
+                        entryId={entry.id}
+                        className={cardClass}
+                        onActivate={() => onEdit(entry)}
+                        ariaLabel={`Einsatz ${entry.site.name} bearbeiten oder verschieben`}
+                      >
+                        {body}
+                      </ScheduleDraggableEntryButton>
+                    </ScheduleEntryDropWrap>
                   );
                 }
 

@@ -21,7 +21,6 @@ const adminPermissions = new Set<PermissionKey>([
   'zeiten.record',
   'infoboard.posts',
   'urlaub.approve',
-  'nav.nachrichten',
   'infoboard.customize',
 ]);
 
@@ -47,27 +46,50 @@ describe('resolveEffectiveLayout', () => {
     assert.ok(!layout.items.some((item) => item.id === 'leave_pending'));
     assert.ok(layout.items.some((item) => item.id === 'leave_mine'));
     assert.ok(layout.items.some((item) => item.id === 'metric_hours_today'));
-    assert.ok(layout.items.some((item) => item.id === 'infoboard_posts' && item.visible));
-  });
-
-  it('keeps locked widgets visible even when stored layout hides them', () => {
-    const hiddenPosts = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'infoboard_posts', false);
-    const layout = resolveEffectiveLayout(hiddenPosts, adminPermissions, false);
-    const posts = layout.items.find((item) => item.id === 'infoboard_posts');
-    assert.ok(posts?.visible);
+    assert.ok(!layout.items.some((item) => item.id === 'infoboard_posts'));
   });
 
   it('prevents hiding locked widgets via setWidgetVisibility', () => {
-    assert.equal(isWidgetLocked('infoboard_posts'), true);
-    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'infoboard_posts', false);
-    const posts = hidden.items.find((item) => item.id === 'infoboard_posts');
-    assert.equal(posts?.visible, true);
+    assert.equal(isWidgetLocked('tomorrow_schedule'), true);
+    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'tomorrow_schedule', false);
+    const schedule = hidden.items.find((item) => item.id === 'tomorrow_schedule');
+    assert.equal(schedule?.visible, true);
+  });
+
+  it('keeps tomorrow_schedule locked and visible', () => {
+    assert.equal(isWidgetLocked('tomorrow_schedule'), true);
+    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'tomorrow_schedule', false);
+    const layout = resolveEffectiveLayout(hidden, adminPermissions, false);
+    const tomorrow = layout.items.find((item) => item.id === 'tomorrow_schedule');
+    assert.equal(tomorrow?.visible, true);
+  });
+
+  it('pins locked widgets above all other visible widgets', () => {
+    const scrambled: typeof DEFAULT_DASHBOARD_LAYOUT = {
+      version: 1,
+      items: DEFAULT_DASHBOARD_LAYOUT.items.map((item) => {
+        if (item.id === 'tomorrow_schedule') return { ...item, y: 40 };
+        if (item.id === 'pending_approval') return { ...item, y: 0 };
+        return item;
+      }),
+    };
+    const layout = resolveEffectiveLayout(scrambled, adminPermissions, false);
+    const visible = layout.items.filter((item) => item.visible);
+    const locked = visible.filter((item) => isWidgetLocked(item.id));
+    const others = visible.filter((item) => !isWidgetLocked(item.id));
+    assert.ok(locked.length >= 1);
+    const lockedBottom = Math.max(...locked.map((item) => item.y + item.h));
+    assert.ok(others.every((item) => item.y >= lockedBottom - 0.001));
+    assert.equal(Math.min(...locked.map((item) => item.y)), 0);
+    const tomorrow = layout.items.find((item) => item.id === 'tomorrow_schedule');
+    assert.equal(tomorrow?.y, 0);
+    assert.equal(tomorrow?.w, INFOBOARD_GRID_COLS);
   });
 
   it('toggle visibility adds widget at next row', () => {
-    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'messages_unread', false);
-    const shown = setWidgetVisibility(hidden, 'messages_unread', true);
-    const item = shown.items.find((entry) => entry.id === 'messages_unread');
+    const hidden = setWidgetVisibility(DEFAULT_DASHBOARD_LAYOUT, 'metric_open_reports', false);
+    const shown = setWidgetVisibility(hidden, 'metric_open_reports', true);
+    const item = shown.items.find((entry) => entry.id === 'metric_open_reports');
     assert.ok(item?.visible);
     assert.ok((item?.y ?? 0) >= 0);
   });
@@ -77,6 +99,8 @@ describe('resolveEffectiveLayout', () => {
     const visible = layout.items.filter((item) => item.visible);
     assert.ok(visible.every((item) => item.x + item.w <= INFOBOARD_GRID_COLS));
     assert.equal(layoutsOverlap(visible), false);
+    assert.ok(!layout.items.some((item) => item.id === 'today_schedule'));
+    assert.ok(layout.items.some((item) => item.id === 'tomorrow_schedule' && item.visible));
   });
 
   it('migrates legacy 12-column stored layouts', () => {
@@ -84,12 +108,12 @@ describe('resolveEffectiveLayout', () => {
       version: 1 as const,
       items: [
         { id: 'metric_hours_today' as const, x: 0, y: 0, w: 4, h: 3, visible: true },
-        { id: 'today_schedule' as const, x: 0, y: 9, w: 8, h: 5, visible: true },
+        { id: 'tomorrow_schedule' as const, x: 0, y: 9, w: 8, h: 5, visible: true },
         { id: 'metric_open_sites' as const, x: 4, y: 6, w: 3, h: 3, visible: true },
       ],
     };
     const layout = resolveEffectiveLayout(legacy, adminPermissions, false);
-    const schedule = layout.items.find((item) => item.id === 'today_schedule');
+    const schedule = layout.items.find((item) => item.id === 'tomorrow_schedule');
     assert.ok(schedule);
     assert.ok((schedule?.w ?? 0) <= INFOBOARD_GRID_COLS);
     const visible = layout.items.filter((item) => item.visible);

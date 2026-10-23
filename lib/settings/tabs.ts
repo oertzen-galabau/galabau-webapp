@@ -37,6 +37,11 @@ export const SETTINGS_TABS = [
     label: 'Mitarbeiter-Bereiche',
     permission: 'settings.work_areas' as PermissionKey,
   },
+  {
+    id: 'gps',
+    label: 'GPS & Standort',
+    permission: 'settings.gps' as PermissionKey,
+  },
 ] as const;
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];

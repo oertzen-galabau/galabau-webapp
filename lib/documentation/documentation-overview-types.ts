@@ -15,6 +15,8 @@ export type DocumentationOverviewItem = {
   title: string;
   reportId?: string;
   fileUrl?: string;
+  /** Anzeige in Spalte „Art“, wenn abweichend von kindLabel(kind). */
+  displayKind?: string;
 };
 
 export type SiteFilterOption = {

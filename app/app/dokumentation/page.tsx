@@ -365,7 +365,6 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Baustellendokumentation</span>
           <h1>Baustellendokumentation</h1>
           <p>Tagesberichte und Std.-Lohn-Rapporte digital erfassen – mit optionaler Diktierfunktion und Pflichtfotos.</p>
         </div>

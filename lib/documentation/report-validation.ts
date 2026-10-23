@@ -54,7 +54,7 @@ function parseCoordinate(value: FormDataEntryValue | null): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
-export function assertSignatureMetadata(signature: SignatureInput) {
+export function assertSignatureMetadata(signature: SignatureInput, gpsEnabled = true) {
   if (!signature.dataUrl) return;
 
   if (!signature.signedAt) {
@@ -65,6 +65,8 @@ export function assertSignatureMetadata(signature: SignatureInput) {
   if (Number.isNaN(signedAt.getTime())) {
     throw new Error('Unterschrift: Ungültiger Zeitpunkt. Bitte erneut unterschreiben.');
   }
+
+  if (!gpsEnabled) return;
 
   if (signature.signedLatitude == null || signature.signedLongitude == null) {
     throw new Error(

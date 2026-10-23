@@ -1,11 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { daysInMonth, monthFirstDay, monthLastDay, normalizeMonthParam } from '@/lib/leave/calendar-month';
+import {
+  daysInYear,
+  normalizeYearParam,
+  yearFirstDay,
+  yearLastDay,
+} from '@/lib/leave/calendar-month';
 import type { LeaveCalendarRequest } from '@/lib/leave/calendar-layout';
 import type { Profile, TenantWorkArea } from '@/lib/types/database';
 
 export type TeamLeaveCalendarData = {
-  month: string;
-  monthDays: string[];
+  year: string;
+  days: string[];
   employees: Pick<
     Profile,
     'id' | 'first_name' | 'last_name' | 'job_title' | 'work_area_id' | 'is_active'
@@ -19,12 +24,13 @@ export type TeamLeaveCalendarData = {
 export async function loadTeamLeaveCalendarData(
   supabase: SupabaseClient,
   tenantId: string,
-  monthParam: string | undefined | null,
+  yearParam: string | undefined | null,
+  monthParam?: string | undefined | null,
 ): Promise<TeamLeaveCalendarData> {
-  const month = normalizeMonthParam(monthParam);
-  const rangeStart = monthFirstDay(month);
-  const rangeEnd = monthLastDay(month);
-  const monthDays = daysInMonth(month);
+  const year = normalizeYearParam(yearParam, monthParam);
+  const rangeStart = yearFirstDay(year);
+  const rangeEnd = yearLastDay(year);
+  const days = daysInYear(year);
 
   const [
     { data: employees, error: empError },
@@ -74,8 +80,8 @@ export async function loadTeamLeaveCalendarData(
   const requests = (calendarRows ?? []) as LeaveCalendarRequest[];
 
   return {
-    month,
-    monthDays,
+    year,
+    days,
     employees: employees ?? [],
     workAreas: workAreas ?? [],
     requests,

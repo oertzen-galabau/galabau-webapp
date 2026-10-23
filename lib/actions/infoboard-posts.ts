@@ -55,15 +55,31 @@ export async function saveInfoboardPost(formData: FormData) {
   const input = parsePostFormData(formData);
   const supabase = await createClient();
 
-  const { error } = await supabase.from('infoboard_posts').insert({
-    tenant_id: tenantId,
-    title: input.title,
-    content: input.content,
-    post_type: input.postType,
-    published_at: input.publishedAt,
-    created_by: userId,
-  });
+  const { data: inserted, error } = await supabase
+    .from('infoboard_posts')
+    .insert({
+      tenant_id: tenantId,
+      title: input.title,
+      content: input.content,
+      post_type: input.postType,
+      published_at: input.publishedAt,
+      created_by: userId,
+    })
+    .select('id')
+    .single();
   if (error) throw new Error(error.message);
+
+  if (inserted?.id) {
+    await supabase.from('infoboard_post_reads').upsert(
+      {
+        post_id: inserted.id,
+        user_id: userId,
+        tenant_id: tenantId,
+        read_at: new Date().toISOString(),
+      },
+      { onConflict: 'post_id,user_id' },
+    );
+  }
   revalidatePath('/app');
 }
 

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DAY_TIMELINE_MAX_VISIBLE_COLUMNS,
+  DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT,
   DAY_TIMELINE_START_MIN,
   dayTimelineGridWidthPercent,
   entryBlockLayout,
@@ -78,6 +79,19 @@ describe('layoutDayTimelineColumns', () => {
     const fourWidth = fourCol.get('e0')?.widthPercent ?? 0;
     assert.ok(Math.abs(wideWidth * map.get('e0')!.gridWidthFactor - fourWidth) < 0.05);
     assert.equal(dayTimelineGridWidthPercent(map.values()), 150);
+  });
+
+  it('nutzt auf schmalen Viewports max. drei sichtbare Spalten', () => {
+    const entries = Array.from({ length: 4 }, (_, i) => ({
+      id: `e${i}`,
+      start_time: '07:30',
+      end_time: '16:00',
+    }));
+    const map = layoutDayTimelineColumns(entries, {
+      maxVisibleColumns: DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT,
+    });
+    assert.equal(map.get('e0')?.gridWidthFactor, 4 / DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT);
+    assert.ok(Math.abs(dayTimelineGridWidthPercent(map.values()) - 400 / 3) < 1e-9);
   });
 
   it('drei parallele überlappende Einsätze', () => {

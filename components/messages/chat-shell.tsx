@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { MoreVertical, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   DropdownMenu,
@@ -15,12 +15,12 @@ import { markConversationUnread } from '@/lib/actions/employee';
 import { displayName, initials } from '@/lib/auth/roles';
 import {
   conversationListPreview,
-  type ChatContact,
-  type ConversationSummary,
+  patchContactListFromMessageInsert,
+  patchContactListFromMessageRead,
+  type ContactWithSummary,
 } from '@/lib/messages/conversations';
 import { formatChatListTime } from '@/lib/messages/format';
-
-type ContactWithSummary = ChatContact & Partial<ConversationSummary>;
+import type { Message } from '@/lib/types/database';
 
 type Props = {
   currentUserId: string;
@@ -33,20 +33,35 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [markingUnreadId, setMarkingUnreadId] = useState<string | null>(null);
+  const [contactList, setContactList] = useState(contacts);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listScrollTopRef = useRef(0);
 
   const activeContactId = pathname.startsWith('/app/nachrichten/')
     ? pathname.split('/app/nachrichten/')[1]?.split('/')[0] ?? null
     : null;
 
+  useEffect(() => {
+    setContactList(contacts);
+    requestAnimationFrame(() => {
+      const el = listRef.current;
+      if (el) el.scrollTop = listScrollTopRef.current;
+    });
+  }, [contacts]);
+
+  function handleListScroll() {
+    listScrollTopRef.current = listRef.current?.scrollTop ?? 0;
+  }
+
   const filteredContacts = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return contacts;
-    return contacts.filter((contact) => {
+    if (!q) return contactList;
+    return contactList.filter((contact) => {
       const name = displayName(contact).toLowerCase();
       const role = (contact.roleName ?? '').toLowerCase();
       return name.includes(q) || role.includes(q) || contact.email.toLowerCase().includes(q);
     });
-  }, [contacts, query]);
+  }, [contactList, query]);
 
   const { unreadContacts, otherContacts } = useMemo(() => {
     const unread: ContactWithSummary[] = [];
@@ -60,20 +75,41 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
 
   useEffect(() => {
     const supabase = createClient();
-    const refreshList = () => {
-      router.refresh();
+    const applyInsert = (payload: { new: Record<string, unknown> }) => {
+      const message = payload.new as Message;
+      setContactList((prev) =>
+        patchContactListFromMessageInsert(prev, message, currentUserId),
+      );
     };
+    const applyRead = (payload: { new: Record<string, unknown> }) => {
+      const message = payload.new as Message;
+      if (!message.read_at) return;
+      setContactList((prev) =>
+        patchContactListFromMessageRead(prev, message, currentUserId),
+      );
+    };
+
     const channel = supabase
       .channel(`chat-sidebar:${currentUserId}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: `recipient_id=eq.${currentUserId}`,
         },
-        refreshList,
+        applyInsert,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq.${currentUserId}`,
+        },
+        applyRead,
       )
       .on(
         'postgres_changes',
@@ -83,14 +119,14 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
           table: 'messages',
           filter: `sender_id=eq.${currentUserId}`,
         },
-        refreshList,
+        applyInsert,
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [currentUserId, router]);
+  }, [currentUserId]);
 
   function renderContactRow(contact: ContactWithSummary) {
     const isActive = activeContactId === contact.id;
@@ -181,7 +217,11 @@ export function ChatShell({ currentUserId, contacts, children }: Props) {
             aria-label="Chats durchsuchen"
           />
         </div>
-        <div className="chat-sidebar-list">
+        <div
+          className="chat-sidebar-list"
+          ref={listRef}
+          onScroll={handleListScroll}
+        >
           {filteredContacts.length === 0 && (
             <p className="chat-sidebar-empty muted">Keine Kontakte gefunden.</p>
           )}

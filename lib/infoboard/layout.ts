@@ -15,19 +15,21 @@ import {
 
 const TABLET_FREIGABE_WIDGETS = new Set<InfoboardWidgetId>(['pending_approval', 'leave_pending']);
 
+/** Reihenfolge der Pflicht-Widgets ganz oben auf dem Infoboard. */
+const LOCKED_WIDGET_TOP_ORDER: InfoboardWidgetId[] = ['tomorrow_schedule'];
+
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   version: 1,
   items: [
-    { id: 'pending_approval', x: 0, y: 0, w: 4, h: 4, visible: true },
-    { id: 'leave_pending', x: 0, y: 4, w: 4, h: 4, visible: true },
-    { id: 'leave_mine', x: 0, y: 8, w: 4, h: 4, visible: true },
-    { id: 'metric_hours_today', x: 0, y: 12, w: 2, h: 3, visible: true },
-    { id: 'metric_open_sites', x: 2, y: 12, w: 1, h: 3, visible: true },
-    { id: 'metric_completed_month', x: 3, y: 12, w: 1, h: 3, visible: true },
-    { id: 'metric_open_reports', x: 0, y: 15, w: 2, h: 3, visible: true },
-    { id: 'today_schedule', x: 0, y: 18, w: 4, h: 5, visible: true },
-    { id: 'infoboard_posts', x: 0, y: 23, w: 2, h: 4, visible: true },
-    { id: 'messages_unread', x: 2, y: 23, w: 2, h: 3, visible: true },
+    { id: 'tomorrow_schedule', x: 0, y: 0, w: 4, h: 7, visible: true },
+    { id: 'pending_approval', x: 0, y: 7, w: 4, h: 4, visible: true },
+    { id: 'leave_pending', x: 0, y: 11, w: 4, h: 4, visible: true },
+    { id: 'leave_mine', x: 0, y: 15, w: 4, h: 4, visible: true },
+    { id: 'metric_hours_today', x: 0, y: 19, w: 2, h: 3, visible: true },
+    { id: 'metric_open_sites', x: 2, y: 19, w: 1, h: 3, visible: true },
+    { id: 'metric_completed_month', x: 3, y: 19, w: 1, h: 3, visible: true },
+    { id: 'metric_open_reports', x: 0, y: 22, w: 2, h: 3, visible: true },
+    { id: 'equipment_uvv_due', x: 0, y: 25, w: 4, h: 4, visible: true },
   ],
 };
 
@@ -43,24 +45,93 @@ function defaultItemFor(id: InfoboardWidgetId, y: number): DashboardLayoutItem {
   };
 }
 
-function toGridItems(items: DashboardLayoutItem[], cols: number = INFOBOARD_GRID_COLS): Layout {
-  const maxW = Math.min(INFOBOARD_MAX_W, cols);
+function toGridItems(
+  items: DashboardLayoutItem[],
+  cols: number = INFOBOARD_GRID_COLS,
+): Layout {
+  const gridMax = Math.min(INFOBOARD_MAX_W, cols);
   return items
     .filter((item) => item.visible)
     .map((item) => {
       const def = WIDGET_REGISTRY[item.id];
+      const minW = Math.min(def.minW ?? INFOBOARD_MIN_W, gridMax);
+      const maxW = Math.min(def.maxW ?? gridMax, gridMax);
       return {
         i: item.id,
         x: item.x,
         y: item.y,
         w: item.w,
         h: item.h,
-        minW: INFOBOARD_MIN_W,
+        minW: Math.min(minW, maxW),
         minH: def.minH,
-        maxW,
+        maxW: Math.max(minW, maxW),
         maxH: def.maxH,
       };
     });
+}
+
+export function pinLockedWidgetsToTop(
+  layout: DashboardLayout,
+  cols: number = INFOBOARD_GRID_COLS,
+): DashboardLayout {
+  const maxW = Math.min(INFOBOARD_MAX_W, cols);
+  const byId = new Map(layout.items.map((item) => [item.id, clampLayoutItem(item)]));
+  const pinnedIds = new Set<InfoboardWidgetId>();
+
+  let lockedBottom = 0;
+  let y = 0;
+  for (const id of LOCKED_WIDGET_TOP_ORDER) {
+    if (!isWidgetLocked(id)) continue;
+    const item = byId.get(id);
+    if (!item?.visible) continue;
+    const pinned = clampLayoutItem({ ...item, x: 0, y, w: maxW });
+    byId.set(id, pinned);
+    pinnedIds.add(id);
+    y += pinned.h;
+  }
+  lockedBottom = y;
+
+  const restVisible = layout.items.filter(
+    (item) => item.visible && !pinnedIds.has(item.id),
+  );
+  if (restVisible.length === 0) {
+    return { version: 1, items: [...byId.values()] };
+  }
+
+  const restGrid = restVisible.map((item) => {
+    const def = WIDGET_REGISTRY[item.id];
+    const current = byId.get(item.id) ?? item;
+    return {
+      i: current.id,
+      x: current.x,
+      y: current.y,
+      w: current.w,
+      h: current.h,
+      minW: INFOBOARD_MIN_W,
+      minH: def.minH,
+      maxW,
+      maxH: def.maxH,
+    };
+  });
+
+  const compactedRest = verticalCompactor.compact([...restGrid], cols);
+  for (const gridItem of compactedRest) {
+    const id = gridItem.i as InfoboardWidgetId;
+    const existing = byId.get(id);
+    if (!existing) continue;
+    byId.set(
+      id,
+      clampLayoutItem({
+        ...existing,
+        x: gridItem.x,
+        y: gridItem.y + lockedBottom,
+        w: gridItem.w,
+        h: gridItem.h,
+      }),
+    );
+  }
+
+  return { version: 1, items: [...byId.values()] };
 }
 
 export function compactDashboardLayout(
@@ -68,10 +139,10 @@ export function compactDashboardLayout(
   cols: number = INFOBOARD_GRID_COLS,
 ): DashboardLayout {
   const gridItems = toGridItems(layout.items, cols);
-  if (gridItems.length === 0) return layout;
+  if (gridItems.length === 0) return pinLockedWidgetsToTop(layout, cols);
 
   const compacted = verticalCompactor.compact([...gridItems], cols);
-  return mergeGridLayoutChange(
+  const merged = mergeGridLayoutChange(
     layout,
     compacted.map((item) => ({
       i: item.i,
@@ -81,6 +152,7 @@ export function compactDashboardLayout(
       h: item.h,
     })),
   );
+  return pinLockedWidgetsToTop(merged, cols);
 }
 
 function migrateLegacyItems(items: DashboardLayoutItem[]): DashboardLayoutItem[] {
@@ -179,6 +251,11 @@ function scaleItemToTabletCols(item: DashboardLayoutItem): DashboardLayoutItem {
 export function layoutForTabletDisplay(layout: DashboardLayout): DashboardLayout {
   const items = layout.items.map(scaleItemToTabletCols);
   return compactDashboardLayout({ version: 1, items }, INFOBOARD_TABLET_COLS);
+}
+
+/** Mobile-Stapel: Pflicht-Widgets je volle Breite untereinander (nur Anzeige). */
+export function layoutForMobileDisplay(layout: DashboardLayout): DashboardLayout {
+  return pinLockedWidgetsToTop(layout, INFOBOARD_GRID_COLS);
 }
 
 export function mergeGridLayoutChange(

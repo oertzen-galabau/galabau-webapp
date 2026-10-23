@@ -21,8 +21,20 @@ import { TenantReportLabelsForm } from '@/components/settings/tenant-report-labe
 import { TenantBadWeatherAllowanceForm } from '@/components/settings/tenant-bad-weather-allowance-form';
 import { TenantLeaveCarryExpiryForm } from '@/components/settings/tenant-leave-carry-expiry-form';
 import { TenantWorkAreasPanel } from '@/components/settings/tenant-work-areas-panel';
+import { TenantGpsForm } from '@/components/settings/tenant-gps-form';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
+import { formatGermanDate } from '@/lib/schedule/week';
 import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
+
+const SETTINGS_DATE: Intl.DateTimeFormatOptions = {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+};
+
+function formatSettingsDate(iso: string): string {
+  return formatGermanDate(iso, SETTINGS_DATE);
+}
 
 type PageProps = {
   searchParams: Promise<{ tab?: string; partners?: string }>;
@@ -47,7 +59,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
   const tenantId = ctx.tenant!.id;
 
   const needsCalendarData = activeTab === 'allgemein';
-  const needsTenantRow = needsCalendarData || activeTab === 'bestellbudget' || activeTab === 'berichte';
+  const needsTenantRow =
+    needsCalendarData || activeTab === 'bestellbudget' || activeTab === 'berichte' || activeTab === 'gps';
   const { data: tenant } = needsTenantRow
     ? await supabase.from('tenants').select('*').eq('id', tenantId).single()
     : { data: null };
@@ -102,7 +115,6 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Verwaltung</span>
           <h1>Mandanten-Einstellungen</h1>
           <p>
             {activeTab === 'lohnregeln'
@@ -117,6 +129,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                     ? 'Subunternehmer, Lieferanten und Fahrzeuge & Geräte für Dokumentation und Einsatzplanung.'
                     : activeTab === 'bereiche'
                       ? 'Bereiche für Mitarbeiter (Baustelle, Verwaltung …) und Filter in der Einsatzplanung.'
+                    : activeTab === 'gps'
+                      ? 'Standortfunktionen (GPS) für alle Mitarbeiter ein- oder ausschalten.'
                     : activeTab === 'berichte'
                       ? 'Anzeigenamen für Tagesbericht und Std.-Lohn-Rapport in der App und in PDFs.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
@@ -158,6 +172,10 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
 
       {activeTab === 'bereiche' ? <TenantWorkAreasPanel ctx={ctx} /> : null}
 
+      {activeTab === 'gps' && canAccess(ctx, 'settings.gps') && tenant ? (
+        <TenantGpsForm gpsEnabled={tenant.gps_enabled !== false} />
+      ) : null}
+
       {activeTab === 'berichte' && canAccess(ctx, 'settings.branding') && tenant ? (
         <TenantReportLabelsForm tenant={tenant} />
       ) : null}
@@ -171,20 +189,30 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
           <section className="panel form-panel" style={{ marginTop: 16 }}>
             <h2>Betriebsurlaub</h2>
             <p className="muted">Betriebsferien und geschlossene Zeiträume, die für alle Mitarbeiter gelten.</p>
-            <ul className="simple-list">
-              {(holidays ?? []).map((h) => (
-                <li key={h.id}>
-                  {h.title}: {h.start_date} – {h.end_date}
-                  <form action={deleteCompanyHoliday} style={{ display: 'inline', marginLeft: 8 }}>
-                    <input type="hidden" name="id" value={h.id} />
-                    <button type="submit" className="text-button">Löschen</button>
-                  </form>
-                </li>
-              ))}
-              {!holidays?.length && <li className="muted">Keine Einträge</li>}
-            </ul>
+            {!holidays?.length ? (
+              <p className="muted settings-period-list-empty">Keine Einträge</p>
+            ) : (
+              <ul className="settings-period-list">
+                {(holidays ?? []).map((h) => (
+                  <li key={h.id} className="settings-period-list-row">
+                    <div className="settings-period-list-main">
+                      <span className="settings-period-list-title">{h.title}</span>
+                      <span className="settings-period-list-range muted">
+                        {formatSettingsDate(h.start_date)} – {formatSettingsDate(h.end_date)}
+                      </span>
+                    </div>
+                    <form action={deleteCompanyHoliday} className="settings-period-list-action">
+                      <input type="hidden" name="id" value={h.id} />
+                      <button type="submit" className="text-button">
+                        Löschen
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
             <form action={saveCompanyHoliday} className="input-form" style={{ marginTop: 8 }}>
-              <div className="input-form-core">
+              <div className="input-form-core input-form-core--period-row">
                 <label>Bezeichnung<input name="title" placeholder="z.B. Betriebsferien Sommer" required /></label>
                 <label>Von<input type="date" name="start_date" required /></label>
                 <label>Bis<input type="date" name="end_date" required /></label>
@@ -198,20 +226,28 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
           <section className="panel form-panel" style={{ marginTop: 16 }}>
             <h2>Brückentage</h2>
             <p className="muted">Einzelne freie Tage, die für alle Mitarbeiter gelten.</p>
-            <ul className="simple-list">
-              {(bridgeDays ?? []).map((b) => (
-                <li key={b.id}>
-                  {b.title}: {b.date}
-                  <form action={deleteBridgeDay} style={{ display: 'inline', marginLeft: 8 }}>
-                    <input type="hidden" name="id" value={b.id} />
-                    <button type="submit" className="text-button">Löschen</button>
-                  </form>
-                </li>
-              ))}
-              {!bridgeDays?.length && <li className="muted">Keine Einträge</li>}
-            </ul>
+            {!bridgeDays?.length ? (
+              <p className="muted settings-period-list-empty">Keine Einträge</p>
+            ) : (
+              <ul className="settings-period-list">
+                {(bridgeDays ?? []).map((b) => (
+                  <li key={b.id} className="settings-period-list-row">
+                    <div className="settings-period-list-main">
+                      <span className="settings-period-list-title">{b.title}</span>
+                      <span className="settings-period-list-range muted">{formatSettingsDate(b.date)}</span>
+                    </div>
+                    <form action={deleteBridgeDay} className="settings-period-list-action">
+                      <input type="hidden" name="id" value={b.id} />
+                      <button type="submit" className="text-button">
+                        Löschen
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
             <form action={saveBridgeDay} className="input-form" style={{ marginTop: 8 }}>
-              <div className="input-form-core">
+              <div className="input-form-core input-form-core--period-row input-form-core--period-row-2">
                 <label>Bezeichnung<input name="title" placeholder="z.B. Brückentag nach Feiertag" required /></label>
                 <label>Datum<input type="date" name="date" required /></label>
               </div>

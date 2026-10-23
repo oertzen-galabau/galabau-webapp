@@ -14,6 +14,26 @@ import {
   resolveAccessibleSiteIds,
 } from '@/lib/sites/access';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
+import {
+  kindsForTabWithArt,
+  parseDocumentsArtFilter,
+  parseDocumentsTab,
+  parseReportArtFilter,
+  siteDocumentCategoryForArt,
+  tabNeedsDeliveryNotes,
+  tabNeedsPdfReports,
+  tabNeedsReportPhotos,
+  tabNeedsSiteDocuments,
+  type DocumentsTabId,
+} from '@/lib/documentation/documents-tabs';
+import type { DocumentationOverviewKind } from '@/lib/documentation/documentation-overview-types';
+import {
+  displayTitleForLog,
+  parseDailyLogReportType,
+  shortLabelForReportType,
+  tenantReportLabelsFromTenant,
+  type DailyLogReportType,
+} from '@/lib/documentation/report-labels';
 
 type DailyLogJoin = {
   log_date: string;
@@ -61,7 +81,12 @@ export type DocumentationOverviewResult = {
 export async function loadDocumentationOverview(
   supabase: SupabaseClient,
   ctx: SessionContext,
-  options: { siteId?: string } = {},
+  options: {
+    siteId?: string;
+    tab?: DocumentsTabId;
+    art?: string;
+    kinds?: readonly DocumentationOverviewKind[];
+  } = {},
 ): Promise<DocumentationOverviewResult> {
   const tenantId = ctx.tenant!.id;
   const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
@@ -79,9 +104,20 @@ export async function loadDocumentationOverview(
     };
   }
 
-  const ownedLogIds = await resolveOwnedDailyLogIds(supabase, ctx, tenantId, {
-    siteId: filterSiteId,
-  });
+  const tab = options.tab ?? parseDocumentsTab(undefined);
+  const artFilter = parseDocumentsArtFilter(options.art, tab);
+  const reportArtFilter = parseReportArtFilter(options.art, tab);
+  const kinds = options.kinds ?? kindsForTabWithArt(tab, artFilter);
+  const siteDocCategory = siteDocumentCategoryForArt(artFilter);
+  const reportLabels = tenantReportLabelsFromTenant(ctx.tenant);
+  const needsOwnedLogs =
+    tabNeedsPdfReports(kinds) || tabNeedsReportPhotos(kinds) || tabNeedsDeliveryNotes(kinds);
+
+  const ownedLogIds = needsOwnedLogs
+    ? await resolveOwnedDailyLogIds(supabase, ctx, tenantId, {
+        siteId: filterSiteId,
+      })
+    : null;
 
   const [
     siteDocuments,
@@ -90,10 +126,26 @@ export async function loadDocumentationOverview(
     deliveries,
     siteOptions,
   ] = await Promise.all([
-    loadSiteDocuments(supabase, tenantId, accessibleSiteIds, filterSiteId),
-    loadPdfReports(supabase, tenantId, accessibleSiteIds, filterSiteId, ownedLogIds),
-    loadReportPhotos(supabase, tenantId, accessibleSiteIds, filterSiteId, ctx),
-    loadDeliveryNotes(supabase, tenantId, accessibleSiteIds, filterSiteId, ctx),
+    tabNeedsSiteDocuments(kinds)
+      ? loadSiteDocuments(supabase, tenantId, accessibleSiteIds, filterSiteId, siteDocCategory)
+      : Promise.resolve([]),
+    tabNeedsPdfReports(kinds)
+      ? loadPdfReports(
+          supabase,
+          tenantId,
+          accessibleSiteIds,
+          filterSiteId,
+          ownedLogIds,
+          reportArtFilter,
+          reportLabels,
+        )
+      : Promise.resolve([]),
+    tabNeedsReportPhotos(kinds)
+      ? loadReportPhotos(supabase, tenantId, accessibleSiteIds, filterSiteId, ctx)
+      : Promise.resolve([]),
+    tabNeedsDeliveryNotes(kinds)
+      ? loadDeliveryNotes(supabase, tenantId, accessibleSiteIds, filterSiteId, ctx)
+      : Promise.resolve([]),
     loadSiteFilterOptions(supabase, ctx),
   ]);
 
@@ -150,6 +202,7 @@ async function loadSiteDocuments(
   tenantId: string,
   accessibleSiteIds: string[] | null,
   filterSiteId: string | undefined,
+  categoryFilter: 'plan' | 'leistungsverzeichnis' | 'other' | null = null,
 ): Promise<DocumentationOverviewItem[]> {
   let query = supabase
     .from('site_documents')
@@ -159,9 +212,19 @@ async function loadSiteDocuments(
     .limit(OVERVIEW_PER_SOURCE_LIMIT);
   query = applyAccessibleSiteIdFilter(query, 'site_id', accessibleSiteIds);
   query = applyOptionalSiteFilter(query, 'site_id', filterSiteId);
+  if (categoryFilter === 'plan') {
+    query = query.eq('category', 'plan');
+  } else if (categoryFilter === 'leistungsverzeichnis') {
+    query = query.eq('category', 'leistungsverzeichnis');
+  }
   const { data } = await query;
 
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).filter((row) => {
+    if (categoryFilter !== 'other') return true;
+    return siteDocumentKind(row.category as string | null) === 'site_other';
+  });
+
+  return rows.map((row) => {
     const siteRaw = row.sites as { name: string } | { name: string }[] | null;
     const siteName = Array.isArray(siteRaw) ? siteRaw[0]?.name ?? '' : siteRaw?.name ?? '';
     const sortDate = (row.created_at as string)?.slice(0, 10) ?? '';
@@ -177,16 +240,35 @@ async function loadSiteDocuments(
   });
 }
 
+type PdfReportLogJoin = {
+  report_type: string | null;
+  custom_title: string | null;
+};
+
+function parsePdfReportLogJoin(raw: unknown): PdfReportLogJoin | null {
+  const row = Array.isArray(raw) ? raw[0] : raw;
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  return {
+    report_type: (record.report_type as string | null) ?? null,
+    custom_title: (record.custom_title as string | null) ?? null,
+  };
+}
+
 async function loadPdfReports(
   supabase: SupabaseClient,
   tenantId: string,
   accessibleSiteIds: string[] | null,
   filterSiteId: string | undefined,
   ownedLogIds: string[] | null,
+  reportTypeFilter: DailyLogReportType | null,
+  reportLabels: ReturnType<typeof tenantReportLabelsFromTenant>,
 ): Promise<DocumentationOverviewItem[]> {
   const { data: rawReports } = await supabase
     .from('reports')
-    .select('id, report_date, pdf_url, site_id, daily_log_id, sites(name)')
+    .select(
+      'id, report_date, pdf_url, site_id, daily_log_id, sites(name), daily_logs(report_type, custom_title)',
+    )
     .eq('tenant_id', tenantId)
     .not('pdf_url', 'is', null)
     .order('report_date', { ascending: false })
@@ -202,19 +284,28 @@ async function loadPdfReports(
     if (accessibleSet && !accessibleSet.has(siteId)) return false;
     if (filterSiteId && siteId !== filterSiteId) return false;
     if (ownedSet && !ownedSet.has(row.daily_log_id as string)) return false;
+    const log = parsePdfReportLogJoin(row.daily_logs);
+    const reportType = parseDailyLogReportType(log?.report_type);
+    if (reportTypeFilter && reportType !== reportTypeFilter) return false;
     return true;
   });
 
   return data.map((row) => {
     const siteRaw = row.sites as { name: string } | { name: string }[] | null;
     const siteName = Array.isArray(siteRaw) ? siteRaw[0]?.name ?? '' : siteRaw?.name ?? '';
+    const log = parsePdfReportLogJoin(row.daily_logs);
+    const reportType = parseDailyLogReportType(log?.report_type);
+    const title =
+      displayTitleForLog(reportType, log?.custom_title, reportLabels) ||
+      `Rapport ${row.report_date}`;
     return {
       id: `report-${row.id}`,
       kind: 'pdf_report' as const,
       sortDate: row.report_date as string,
       siteId: row.site_id as string,
       siteName,
-      title: `Rapport ${row.report_date}`,
+      title,
+      displayKind: shortLabelForReportType(reportType, reportLabels),
       reportId: row.id as string,
     };
   });

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState, useTransition } from 'react';
 import GridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
+import { InfoboardPostsSurfaces } from '@/components/infoboard/infoboard-posts-surfaces';
 import { InfoboardEditToolbar } from '@/components/infoboard/infoboard-edit-toolbar';
 import { InfoboardWidgetFrame } from '@/components/infoboard/infoboard-widget-frame';
 import { InfoboardWidgetPicker } from '@/components/infoboard/infoboard-widget-picker';
@@ -10,6 +11,7 @@ import { RenderWidget } from '@/components/infoboard/render-widget';
 import { saveDashboardLayout } from '@/lib/actions/infoboard';
 import {
   compactDashboardLayout,
+  layoutForMobileDisplay,
   layoutForTabletDisplay,
   layoutToGridLayout,
   mergeGridLayoutChange,
@@ -64,13 +66,12 @@ export function InfoboardDashboard({
     [displayLayout, gridCols],
   );
 
-  const stackItems = useMemo(
-    () =>
-      activeLayout.items
-        .filter((item) => item.visible)
-        .sort((a, b) => a.y - b.y || a.x - b.x),
-    [activeLayout],
-  );
+  const stackItems = useMemo(() => {
+    const layout = isMobile ? layoutForMobileDisplay(activeLayout) : activeLayout;
+    return layout.items
+      .filter((item) => item.visible)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+  }, [activeLayout, isMobile]);
 
   const showEditChrome = isEditing && !isMobile;
 
@@ -148,7 +149,7 @@ export function InfoboardDashboard({
       ? isEditing
         ? isMobile
           ? 'Wähle oben Widgets aus, um sie auf dem Infoboard anzuzeigen.'
-          : 'Wähle links Widgets aus, um sie auf dem Infoboard anzuzeigen.'
+          : 'Wähle oben Widgets aus, um sie auf dem Infoboard anzuzeigen.'
         : 'Keine Widgets sichtbar. Passe dein Infoboard an, um Inhalte hinzuzufügen.'
       : null;
 
@@ -156,7 +157,6 @@ export function InfoboardDashboard({
     <>
       <div className={`page-heading${isMobile ? ' page-heading--stack' : ''}`}>
         <div>
-          <span className="eyebrow">Büro · Live-Status</span>
           <h1>{widgetData.greeting}, {widgetData.firstName}.</h1>
           <p>{widgetData.subtitle}</p>
         </div>
@@ -183,6 +183,11 @@ export function InfoboardDashboard({
           />
         )}
       </div>
+
+      <InfoboardPostsSurfaces
+        posts={widgetData.posts}
+        canManagePosts={widgetData.canManagePosts}
+      />
 
       <div
         className={`infoboard-shell${isEditing ? ' infoboard-shell-editing' : ''}${isMobile ? ' infoboard-shell-mobile' : ''}${isEditing && isMobile ? ' infoboard-shell-mobile-editing' : ''}`}

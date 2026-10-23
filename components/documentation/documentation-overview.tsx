@@ -7,6 +7,8 @@ import { ReportPdfActions } from '@/components/reports/report-pdf-actions';
 
 type Props = {
   items: DocumentationOverviewItem[];
+  emptyMessage?: string;
+  showKindColumn?: boolean;
 };
 
 function formatDisplayDate(isoDate: string) {
@@ -32,14 +34,13 @@ function OverviewActions({ item }: { item: DocumentationOverviewItem }) {
   return <span className="muted">—</span>;
 }
 
-export function DocumentationOverview({ items }: Props) {
+export function DocumentationOverview({
+  items,
+  emptyMessage = 'Keine Einträge für die aktuelle Auswahl.',
+  showKindColumn = false,
+}: Props) {
   if (items.length === 0) {
-    return (
-      <p className="muted">
-        Keine Dokumente für die aktuelle Auswahl. Dateien werden auf der Baustelle hochgeladen;
-        Tagesberichte erfassen Sie unter Dokumentation.
-      </p>
-    );
+    return <p className="muted">{emptyMessage}</p>;
   }
 
   return (
@@ -49,7 +50,7 @@ export function DocumentationOverview({ items }: Props) {
           <tr>
             <th>Datum</th>
             <th>Baustelle</th>
-            <th>Art</th>
+            {showKindColumn ? <th>Art</th> : null}
             <th>Bezeichnung</th>
             <th className="data-table-col--actions">Aktion</th>
           </tr>
@@ -63,11 +64,13 @@ export function DocumentationOverview({ items }: Props) {
                   {item.siteName || '—'}
                 </Link>
               </td>
-              <td>
-                <span className="status-badge travel documentation-report-type-badge">
-                  {kindLabel(item.kind)}
-                </span>
-              </td>
+              {showKindColumn ? (
+                <td>
+                  <span className="status-badge travel documentation-report-type-badge">
+                    {item.displayKind ?? kindLabel(item.kind)}
+                  </span>
+                </td>
+              ) : null}
               <td>{item.title}</td>
               <td className="data-table-col--actions">
                 <div className="inline-actions">

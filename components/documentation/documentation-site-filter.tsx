@@ -2,26 +2,43 @@
 
 import { useRouter } from 'next/navigation';
 import { AppSelect } from '@/components/ui/app-select';
+import {
+  artParamForTab,
+  buildDocumentsPageHref,
+  type DocumentsArtFilterId,
+  type DocumentsTabId,
+} from '@/lib/documentation/documents-tabs';
+import type { DailyLogReportType } from '@/lib/documentation/report-labels';
 import type { SiteFilterOption } from '@/lib/documentation/documentation-overview-types';
 
 type Props = {
   sites: SiteFilterOption[];
   selectedSiteId: string | null;
-  basePath?: string;
+  activeTab?: DocumentsTabId;
+  siteDocArtFilter?: DocumentsArtFilterId | null;
+  reportArtFilter?: DailyLogReportType | null;
 };
 
-export function DocumentationSiteFilter({ sites, selectedSiteId, basePath = '/app/rapporte' }: Props) {
+export function DocumentationSiteFilter({
+  sites,
+  selectedSiteId,
+  activeTab = 'dokumente',
+  siteDocArtFilter = null,
+  reportArtFilter = null,
+}: Props) {
   const router = useRouter();
   const value = selectedSiteId ?? '';
 
   const options = sites.map((site) => ({ value: site.id, label: site.name }));
 
   function onValueChange(next: string) {
-    if (!next) {
-      router.push(basePath);
-      return;
-    }
-    router.push(`${basePath}?site=${encodeURIComponent(next)}`);
+    router.push(
+      buildDocumentsPageHref(
+        activeTab,
+        next || null,
+        artParamForTab(activeTab, siteDocArtFilter, reportArtFilter),
+      ),
+    );
   }
 
   return (

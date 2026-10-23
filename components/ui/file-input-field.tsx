@@ -22,10 +22,11 @@ type Props = {
   trailingAction?: ReactNode;
   allowCamera?: boolean;
   compact?: boolean;
+  disabled?: boolean;
 };
 
 function formatFileList(files: FileList | null): string {
-  if (!files?.length) return 'Keine Datei ausgewählt';
+  if (!files?.length) return '';
   if (files.length === 1) return files[0].name;
   return `${files.length} Dateien ausgewählt`;
 }
@@ -48,6 +49,7 @@ export function FileInputField({
   trailingAction,
   allowCamera = false,
   compact = false,
+  disabled = false,
 }: Props) {
   const submittedInputId = useId();
   const filePickerId = useId();
@@ -55,7 +57,7 @@ export function FileInputField({
   const submittedInputRef = useRef<HTMLInputElement>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
   const cameraPickerRef = useRef<HTMLInputElement>(null);
-  const [selection, setSelection] = useState('Keine Datei ausgewählt');
+  const [selection, setSelection] = useState('');
 
   function setSubmittedRef(element: HTMLInputElement | null) {
     submittedInputRef.current = element;
@@ -93,6 +95,7 @@ export function FileInputField({
       accept={accept}
       multiple={multiple}
       required={required}
+      disabled={disabled}
       tabIndex={-1}
       className="input-form-file-native-hidden"
       onChange={(event) => setSelection(formatFileList(event.target.files))}
@@ -108,6 +111,7 @@ export function FileInputField({
         type="file"
         accept={accept}
         multiple={multiple}
+        disabled={disabled}
         className="input-form-file-native-hidden"
         onChange={handlePickerChange}
       />
@@ -117,6 +121,7 @@ export function FileInputField({
         type="file"
         accept="image/*"
         capture="environment"
+        disabled={disabled}
         className="input-form-file-native-hidden"
         onChange={handleCameraChange}
       />
@@ -130,6 +135,7 @@ export function FileInputField({
       accept={accept}
       multiple={multiple}
       required={required}
+      disabled={disabled}
       capture={capture}
       className={useButtonOnly ? 'input-form-file-native-hidden' : 'input-form-file-native'}
       onChange={(event) => setSelection(formatFileList(event.target.files))}
@@ -144,62 +150,72 @@ export function FileInputField({
         label
       )}
       <div className={['input-form-file-row', useButtonOnly ? 'input-form-file-row--with-action' : ''].filter(Boolean).join(' ')}>
-        <div className={['input-form-file-zone', useButtonOnly ? 'input-form-file-zone--button-only' : ''].filter(Boolean).join(' ')}>
-          <Upload size={18} aria-hidden />
-          {useButtonOnly ? (
-            <div className="input-form-file-actions">
-              {useSplitInputs ? (
-                <>
-                  <DropdownMenu modal={false}>
-                    <DropdownMenuTrigger className="input-form-file-cta">
-                      Datei hinzufügen
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="input-form-file-source-menu" align="start">
-                      <DropdownMenuItem
-                        className="input-form-file-source-item"
-                        onClick={() => filePickerRef.current?.click()}
-                      >
-                        <Upload size={16} aria-hidden />
-                        Hochladen
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="input-form-file-source-item"
-                        onClick={() => cameraPickerRef.current?.click()}
-                      >
-                        <Camera size={16} aria-hidden />
-                        Foto machen
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  {fileInput}
-                </>
-              ) : (
-                <label htmlFor={submittedInputId} className="input-form-file-cta">
-                  Datei auswählen
-                  {fileInput}
-                </label>
-              )}
-            </div>
-          ) : (
-            <>
-              <span className="input-form-file-cta">Datei auswählen</span>
-              {hint && <span className="input-form-file-hint">{hint}</span>}
-              {fileInput}
-            </>
-          )}
+        <div className="input-form-file-upload-block">
+          <div className={['input-form-file-zone', useButtonOnly ? 'input-form-file-zone--button-only' : ''].filter(Boolean).join(' ')}>
+            <Upload size={18} aria-hidden />
+            {useButtonOnly ? (
+              <div className="input-form-file-actions">
+                {useSplitInputs ? (
+                  <>
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger className="input-form-file-cta">
+                        Datei hinzufügen
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="input-form-file-source-menu" align="start">
+                        <DropdownMenuItem
+                          className="input-form-file-source-item"
+                          onClick={() => filePickerRef.current?.click()}
+                        >
+                          <Upload size={16} aria-hidden />
+                          Hochladen
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="input-form-file-source-item"
+                          onClick={() => cameraPickerRef.current?.click()}
+                        >
+                          <Camera size={16} aria-hidden />
+                          Foto machen
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {fileInput}
+                  </>
+                ) : (
+                  <label htmlFor={submittedInputId} className="input-form-file-cta">
+                    Datei auswählen
+                    {fileInput}
+                  </label>
+                )}
+              </div>
+            ) : (
+              <>
+                <span className="input-form-file-cta">Datei auswählen</span>
+                {fileInput}
+              </>
+            )}
+          </div>
+          {hint ? <span className="input-form-file-hint">{hint}</span> : null}
         </div>
         {trailingAction}
       </div>
-      <span className="input-form-file-selected">{selection}</span>
+      {selection ? <span className="input-form-file-selected">{selection}</span> : null}
     </>
   );
 
+  const rootClass = [
+    'input-form-file',
+    disabled ? 'input-form-file--disabled' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   if (useButtonOnly) {
-    return <div className={['input-form-file', className].filter(Boolean).join(' ')}>{content}</div>;
+    return <div className={rootClass}>{content}</div>;
   }
 
   return (
-    <label className={['input-form-file', className].filter(Boolean).join(' ')} htmlFor={submittedInputId}>
+    <label className={rootClass} htmlFor={disabled ? undefined : submittedInputId}>
       {content}
     </label>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useGpsEnabled } from '@/components/gps/gps-provider';
 import {
   formatSignatureAuditLine,
   requestSignaturePosition,
@@ -69,6 +70,7 @@ export function SignaturePadField({
   existingMetadata,
   onChange,
 }: Props) {
+  const gpsEnabled = useGpsEnabled();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const geoStartedRef = useRef(false);
@@ -113,6 +115,7 @@ export function SignaturePadField({
   }, [signedAt, latitude, longitude, locationLabel, role]);
 
   async function captureSignatureLocation() {
+    if (!gpsEnabled) return;
     if (geoStartedRef.current) return;
     geoStartedRef.current = true;
     setGeoStatus('pending');

@@ -36,7 +36,6 @@ export default async function TeamPage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Verwaltung</span>
           <h1>Team & Mitarbeiter</h1>
           <p>Mitarbeiter verwalten, Rollen zuweisen und Details einsehen.</p>
         </div>

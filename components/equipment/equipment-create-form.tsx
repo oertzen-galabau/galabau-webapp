@@ -1,6 +1,7 @@
 'use client';
 
 import { createEquipment } from '@/lib/actions/equipment';
+import { FileInputField } from '@/components/ui/file-input-field';
 import { EQUIPMENT_KIND_LABELS, EQUIPMENT_STATUS_LABELS } from '@/lib/equipment/labels';
 import type { TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
 import { useRouter } from 'next/navigation';
@@ -15,7 +16,7 @@ export function EquipmentCreateForm() {
 
   return (
     <form
-      className="input-form"
+      className="input-form equipment-create-form"
       encType="multipart/form-data"
       onSubmit={(e) => {
         e.preventDefault();
@@ -42,10 +43,6 @@ export function EquipmentCreateForm() {
           </select>
         </label>
         <label>
-          Foto
-          <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" disabled={pending} />
-        </label>
-        <label>
           Baujahr
           <input type="number" name="build_year" min={1950} max={2100} disabled={pending} />
         </label>
@@ -61,16 +58,27 @@ export function EquipmentCreateForm() {
           UVV fällig
           <input type="date" name="uvv_due_date" disabled={pending} />
         </label>
-        <label>
-          Status
-          <select name="status" disabled={pending} defaultValue="active">
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {EQUIPMENT_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="equipment-create-form-last-row">
+          <label>
+            Status
+            <select name="status" disabled={pending} defaultValue="active">
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {EQUIPMENT_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <FileInputField
+            compact
+            className="equipment-create-photo"
+            label="Foto"
+            name="photo"
+            accept="image/jpeg,image/png,image/webp"
+            hint="JPG, PNG oder WebP"
+            disabled={pending}
+          />
+        </div>
       </div>
       <details className="equipment-optional-fields">
         <summary>Optionale Angaben</summary>

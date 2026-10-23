@@ -33,7 +33,6 @@ export default async function UrlaubKontoPage() {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Abwesenheit</span>
           <h1>Mein Urlaubskonto</h1>
           <p>
             Resturlaub {year}: {breakdown.remaining.toFixed(1)} Tage

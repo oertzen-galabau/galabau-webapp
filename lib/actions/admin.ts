@@ -172,7 +172,7 @@ export async function saveDailyLog(formData: FormData) {
   }
 
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }
 
 export async function saveDeliveryNote(formData: FormData) {
@@ -199,7 +199,7 @@ export async function saveDeliveryNote(formData: FormData) {
     .maybeSingle();
 
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
   if (logRow?.site_id) {
     revalidatePath(`/app/baustellen/${logRow.site_id}`);
   }
@@ -234,7 +234,7 @@ export async function saveSubcontractorEntry(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }
 
 async function softDeleteDocumentationEntry(
@@ -263,7 +263,7 @@ async function softDeleteDocumentationEntry(
 
   if (error) throw new Error(error.message);
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }
 
 export async function softDeleteDeliveryNote(formData: FormData) {
@@ -658,7 +658,7 @@ export async function deleteSiteDocument(formData: FormData) {
 
   revalidatePath(`/app/baustellen/${data.site_id}`);
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }
 
 export async function uploadSiteDocument(formData: FormData) {
@@ -689,7 +689,7 @@ export async function uploadSiteDocument(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/app/baustellen/${siteId}`);
   revalidatePath('/app/dokumentation');
-  revalidatePath('/app/rapporte');
+  revalidatePath('/app/dokumente');
 }
 
 export async function uploadSiteDocumentAction(
@@ -793,6 +793,23 @@ export async function updateTenantBadWeatherAllowance(formData: FormData) {
 
   revalidatePath('/app/einstellungen');
   revalidatePath('/app/urlaub');
+}
+
+export async function updateTenantGpsEnabled(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'settings.gps');
+  const { tenantId } = ctx;
+
+  const enabled = formData.get('gps_enabled') === 'on';
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({ gps_enabled: enabled, updated_at: new Date().toISOString() })
+    .eq('id', tenantId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/app', 'layout');
 }
 
 export async function updateLeaveEntitlement(formData: FormData) {
