@@ -38,23 +38,23 @@ export function AppSidePanel({ open, onClose, title, children, titleId }: Props)
   if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="side-panel-root" role="presentation">
-      <button type="button" className="side-panel-backdrop" aria-label="Schließen" onClick={onClose} />
+    <div className="app-side-panel-root" role="presentation">
+      <button type="button" className="app-side-panel-backdrop" aria-label="Schließen" onClick={onClose} />
       <aside
         ref={panelRef}
-        className="side-panel"
+        className="app-side-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
       >
-        <header className="side-panel-header">
+        <header className="app-side-panel-head">
           <h2 id={headingId}>{title}</h2>
-          <button type="button" className="text-button side-panel-close" onClick={onClose}>
+          <button type="button" className="text-button app-side-panel-close" onClick={onClose}>
             Schließen
           </button>
         </header>
-        <div className="side-panel-body">{children}</div>
+        <div className="app-side-panel-body">{children}</div>
       </aside>
     </div>,
     document.body,
