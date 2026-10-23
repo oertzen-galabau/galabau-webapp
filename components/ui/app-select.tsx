@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
@@ -49,13 +49,19 @@ export function AppSelect({
   const [internalValue, setInternalValue] = useState(defaultValue);
   const currentValue = value !== undefined ? value : internalValue;
 
+  useEffect(() => {
+    if (value === undefined) setInternalValue(defaultValue);
+  }, [defaultValue, value]);
+
   function pick(next: string) {
     if (value === undefined) setInternalValue(next);
     onValueChange?.(next);
   }
 
   const selected = options.find((option) => option.value === currentValue);
-  const displayLabel = selected?.label ?? (currentValue === '' ? placeholder : currentValue);
+  const orphanValue =
+    currentValue !== '' && !selected && /^[0-9a-f-]{36}$/i.test(currentValue);
+  const displayLabel = selected?.label ?? (orphanValue || currentValue === '' ? placeholder : currentValue);
   const hasEmptyOption = options.some((option) => option.value === '');
 
   return (

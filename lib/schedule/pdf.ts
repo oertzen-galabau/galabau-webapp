@@ -1,17 +1,30 @@
 import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFFont, type PDFPage } from 'pdf-lib';
-import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { formatSiteAddress } from '@/lib/sites/format-address';
+import { sortedEntryTeamDisplay } from '@/lib/schedule/entry-member-labels';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import type { LeaveDay } from '@/lib/schedule/conflicts';
 import { formatGermanWeekdayDate } from '@/lib/schedule/week';
 
 const A4_LANDSCAPE = [841.89, 595.28] as const;
-const MARGIN = 36;
-const MAX_COLS = 7;
+const MARGIN_X = 28;
+const MARGIN_TOP = 24;
+const MARGIN_BOTTOM = 20;
+/** Kopfzeile: Titel links, Mandanten-Logo rechts */
+const HEADER_BAND_H = 68;
+const LOGO_MAX_W = 108;
+const LOGO_MAX_H = 54;
+const GAP_HEADER_TABLE = 8;
+/** Weniger Spalten pro Seite = breitere Zellen (Gerätenamen lesbar). */
+const MAX_COLS = 5;
 const BORDER = rgb(0.12, 0.12, 0.12);
 const HEADER_GREEN = rgb(0.79, 0.9, 0.58);
-const HIGHLIGHT_YELLOW = rgb(1, 0.98, 0.55);
-const LINE_H = 11;
+const SUB_BOX_FILL = rgb(1, 0.99, 0.82);
+const TEAM_BOX_FILL = rgb(1, 1, 1);
+const EQUIP_BOX_FILL = rgb(0.97, 0.98, 1);
+const LINE_H = 13;
+const EQUIP_LINE_H = 14;
+const SECTION_PAD = 8;
+const SECTION_GAP = 4;
 const FONT_SM = 8;
 const FONT_MD = 9;
 const FONT_LG = 10;
@@ -41,18 +54,125 @@ function sortEntries(entries: ScheduleEntryView[]): ScheduleEntryView[] {
   );
 }
 
-function memberPdfName(m: ScheduleEntryView['members'][number]): string {
-  const last = m.last_name?.trim() ?? '';
-  const first = m.first_name?.trim() ?? '';
-  if (last && first) return `${last}, ${first}`;
-  return `${last}${first}`.trim() || '—';
+type EntryPdfSections = {
+  team: ReturnType<typeof sortedEntryTeamDisplay>['members'];
+  external: string[];
+};
+
+type EquipmentPdfLine = { text: string; size: number };
+
+function entryPdfSections(entry: ScheduleEntryView): EntryPdfSections {
+  const display = sortedEntryTeamDisplay(entry);
+  return {
+    team: display.members,
+    external: display.external,
+  };
 }
 
-function equipmentBottomLabel(entry: ScheduleEntryView): string {
-  if (!entry.equipment.length) return '';
-  return entry.equipment
-    .map((eq) => eq.license_plate?.trim() || eq.inventory_number?.trim() || equipmentScheduleLabel(eq))
-    .join(', ');
+function pushFittingChunks(text: string, font: PDFFont, size: number, maxWidth: number, lines: string[]) {
+  let chunk = text;
+  while (chunk.length > 0) {
+    if (font.widthOfTextAtSize(chunk, size) <= maxWidth) {
+      lines.push(chunk);
+      return;
+    }
+    let cut = chunk.length;
+    while (cut > 1 && font.widthOfTextAtSize(chunk.slice(0, cut), size) > maxWidth) {
+      cut -= 1;
+    }
+    lines.push(chunk.slice(0, cut));
+    chunk = chunk.slice(cut);
+  }
+}
+
+function wrapTextLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const lines: string[] = [];
+  let current = words[0]!;
+  for (let i = 1; i < words.length; i += 1) {
+    const candidate = `${current} ${words[i]}`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+    } else {
+      pushFittingChunks(current, font, size, maxWidth, lines);
+      current = words[i]!;
+    }
+  }
+  pushFittingChunks(current, font, size, maxWidth, lines);
+  return lines;
+}
+
+function equipmentPdfLines(
+  equipment: ScheduleEntryView['equipment'],
+  font: PDFFont,
+  colW: number,
+): EquipmentPdfLine[] {
+  const maxW = Math.max(12, colW - 8);
+  const lines: EquipmentPdfLine[] = [];
+
+  for (const eq of equipment) {
+    const name = eq.name.trim();
+    if (!name) continue;
+    for (const part of wrapTextLines(name, font, FONT_MD, maxW)) {
+      lines.push({ text: part, size: FONT_MD });
+    }
+    const inv = eq.inventory_number?.trim();
+    if (inv) {
+      lines.push({ text: inv, size: FONT_SM });
+    } else if (eq.license_plate?.trim()) {
+      lines.push({ text: eq.license_plate.trim(), size: FONT_SM });
+    }
+  }
+
+  return lines;
+}
+
+function equipmentSectionHeight(
+  equipment: ScheduleEntryView['equipment'],
+  font: PDFFont,
+  colW: number,
+): number {
+  const lineCount = Math.max(equipmentPdfLines(equipment, font, colW).length, 1);
+  return SECTION_PAD * 2 + lineCount * EQUIP_LINE_H;
+}
+
+function teamSectionHeight(memberCount: number): number {
+  const lines = Math.max(memberCount, 1);
+  return SECTION_PAD * 2 + lines * LINE_H;
+}
+
+function subSectionHeight(externalCount: number): number {
+  const lines = Math.max(externalCount, 1);
+  return SECTION_PAD * 2 + lines * LINE_H;
+}
+
+/** Nur Hintergrund — Rahmen kommt vom äußeren Tabellenraster (kein Doppelrand). */
+function drawSectionFill(
+  page: PDFPage,
+  cellX: number,
+  colW: number,
+  sectionTopY: number,
+  sectionH: number,
+  fill: ReturnType<typeof rgb>,
+) {
+  page.drawRectangle({
+    x: cellX,
+    y: sectionTopY - sectionH,
+    width: colW,
+    height: sectionH,
+    color: fill,
+  });
+}
+
+function truncateToWidth(text: string, font: PDFFont, size: number, maxWidth: number): string {
+  const trimmed = text.trim();
+  if (!trimmed || font.widthOfTextAtSize(trimmed, size) <= maxWidth) return trimmed;
+  let out = trimmed;
+  while (out.length > 1 && font.widthOfTextAtSize(`${out}…`, size) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return `${out}…`;
 }
 
 function drawCenteredText(
@@ -63,39 +183,14 @@ function drawCenteredText(
   y: number,
   font: PDFFont,
   size: number,
+  truncate = true,
 ) {
   const trimmed = text.trim();
   if (!trimmed) return;
-  const w = font.widthOfTextAtSize(trimmed, size);
-  page.drawText(trimmed, { x: cellX + Math.max(2, (cellW - w) / 2), y, size, font });
-}
-
-function drawYellowTag(
-  page: PDFPage,
-  text: string,
-  cellX: number,
-  cellW: number,
-  y: number,
-  font: PDFFont,
-) {
-  const trimmed = text.trim();
-  if (!trimmed) return y;
-  const size = FONT_MD;
-  const tw = font.widthOfTextAtSize(trimmed, size);
-  const boxW = Math.min(cellW - 10, tw + 10);
-  const boxH = 14;
-  const boxX = cellX + (cellW - boxW) / 2;
-  page.drawRectangle({
-    x: boxX,
-    y: y - 2,
-    width: boxW,
-    height: boxH,
-    color: HIGHLIGHT_YELLOW,
-    borderColor: BORDER,
-    borderWidth: 0.4,
-  });
-  page.drawText(trimmed, { x: boxX + (boxW - tw) / 2, y: y + 2, size, font });
-  return y - boxH - 4;
+  const maxW = Math.max(8, cellW - 10);
+  const line = truncate ? truncateToWidth(trimmed, font, size, maxW) : trimmed;
+  const w = font.widthOfTextAtSize(line, size);
+  page.drawText(line, { x: cellX + Math.max(2, (cellW - w) / 2), y, size, font });
 }
 
 async function embedTenantLogo(
@@ -122,37 +217,38 @@ function drawPageHeader(
   logoImage: PDFImage | null,
 ) {
   const { width, height } = page.getSize();
-  let y = height - MARGIN;
+  const bandTop = height - MARGIN_TOP;
+  const bandBottom = bandTop - HEADER_BAND_H;
 
-  page.drawText('Einsatztafel', { x: MARGIN, y, size: 20, font: bold });
-  y -= 22;
-  page.drawText(formatGermanWeekdayDate(day), { x: MARGIN, y, size: 12, font: bold });
-  y -= 16;
+  let textY = bandTop - 17;
+  page.drawText('Einsatztafel', { x: MARGIN_X, y: textY, size: 18, font: bold });
+  textY -= 15;
+  page.drawText(formatGermanWeekdayDate(day), { x: MARGIN_X, y: textY, size: 11, font: bold });
 
   if (draft) {
+    textY -= 13;
     page.drawText('ENTWURF – noch nicht veröffentlicht', {
-      x: MARGIN,
-      y,
+      x: MARGIN_X,
+      y: textY,
       size: 9,
       font: bold,
       color: rgb(0.65, 0.2, 0.15),
     });
-    y -= 14;
   }
 
   if (logoImage) {
-    const maxW = 72;
-    const scale = maxW / logoImage.width;
-    const h = logoImage.height * scale;
+    const scale = Math.min(LOGO_MAX_W / logoImage.width, LOGO_MAX_H / logoImage.height);
+    const logoW = logoImage.width * scale;
+    const logoH = logoImage.height * scale;
     page.drawImage(logoImage, {
-      x: width - MARGIN - maxW,
-      y: height - MARGIN - h + 4,
-      width: maxW,
-      height: h,
+      x: width - MARGIN_X - logoW,
+      y: bandBottom + (HEADER_BAND_H - logoH) / 2,
+      width: logoW,
+      height: logoH,
     });
   }
 
-  return y - 8;
+  return bandBottom - GAP_HEADER_TABLE;
 }
 
 function drawEinsatztafelTable(
@@ -163,92 +259,110 @@ function drawEinsatztafelTable(
   bold: PDFFont,
 ) {
   const { width } = page.getSize();
-  const tableWidth = width - MARGIN * 2;
-  const colW = tableWidth / entries.length;
-  const colXs = entries.map((_, i) => MARGIN + i * colW);
+  const tableWidth = width - MARGIN_X * 2;
+  /** Immer 5 gleich breite Spalten pro Seite – auch wenn weniger als 5 Einsätze (Fortsetzungsseite). */
+  const colW = tableWidth / MAX_COLS;
+  const colXs = entries.map((_, i) => MARGIN_X + i * colW);
 
-  const leaderH = 16;
-  const siteH = 22;
-  const addrH = 16;
+  const leaderH = 20;
+  const siteH = 28;
+  const addrH = 20;
 
-  const teamHeights = entries.map((entry) => {
-    const memberLines = entry.members.length ? entry.members.map(memberPdfName) : [];
-    const external = entry.external_workers_text?.trim();
-    let h = 8 + Math.max(memberLines.length, external && !memberLines.length ? 1 : 0) * LINE_H;
-    if (external) h += 22;
-    return Math.max(h, 36);
+  const sections = entries.map((entry) => entryPdfSections(entry));
+  const teamBlockH = Math.max(...sections.map((s) => teamSectionHeight(s.team.length)), 44);
+  const subBlockH = Math.max(...sections.map((s) => subSectionHeight(s.external.length)), 36);
+  const equipBlockH = Math.max(
+    ...entries.map((entry) => equipmentSectionHeight(entry.equipment, font, colW)),
+    38,
+  );
+
+  const contentStackH = teamBlockH + SECTION_GAP + subBlockH + SECTION_GAP + equipBlockH;
+  const totalH = leaderH + siteH + addrH + contentStackH;
+  const tableBottomY = Math.max(tableTopY - totalH, MARGIN_BOTTOM);
+  const contentTopY = tableTopY - leaderH - siteH - addrH;
+  const teamSectionTopY = contentTopY;
+  const subSectionTopY = contentTopY - teamBlockH - SECTION_GAP;
+  const equipSectionTopY = subSectionTopY - subBlockH - SECTION_GAP;
+
+  entries.forEach((entry, i) => {
+    const cellX = colXs[i];
+    const leaderY = tableTopY - leaderH + 6;
+    drawCenteredText(page, entry.leaderLabel, cellX, colW, leaderY, bold, FONT_LG);
+
+    page.drawRectangle({
+      x: cellX,
+      y: tableTopY - leaderH - siteH,
+      width: colW,
+      height: siteH,
+      color: HEADER_GREEN,
+    });
+    const siteY = tableTopY - leaderH - siteH + 9;
+    drawCenteredText(page, entry.site.name, cellX, colW, siteY, bold, FONT_LG);
+
+    const addr = formatSiteAddress(entry.site);
+    const addrY = tableTopY - leaderH - siteH - addrH + 6;
+    if (addr) {
+      drawCenteredText(page, addr, cellX, colW, addrY, font, FONT_SM);
+    }
+
+    const columnSections = sections[i];
+
+    drawSectionFill(page, cellX, colW, teamSectionTopY, teamBlockH, TEAM_BOX_FILL);
+    let teamY = teamSectionTopY - SECTION_PAD - 3;
+    if (columnSections.team.length) {
+      for (const line of columnSections.team) {
+        drawCenteredText(page, line.text, cellX, colW, teamY, line.isForeman ? bold : font, FONT_MD);
+        teamY -= LINE_H;
+      }
+    } else {
+      drawCenteredText(page, '—', cellX, colW, teamY, font, FONT_MD);
+    }
+
+    drawSectionFill(page, cellX, colW, subSectionTopY, subBlockH, SUB_BOX_FILL);
+    let subY = subSectionTopY - SECTION_PAD - 3;
+    const externalLines = columnSections.external.length ? columnSections.external : ['—'];
+    for (const external of externalLines) {
+      drawCenteredText(page, external, cellX, colW, subY, font, FONT_MD);
+      subY -= LINE_H;
+    }
+
+    drawSectionFill(page, cellX, colW, equipSectionTopY, equipBlockH, EQUIP_BOX_FILL);
+    let equipY = equipSectionTopY - SECTION_PAD - 3;
+    const equipmentLines = equipmentPdfLines(entry.equipment, font, colW);
+    if (equipmentLines.length === 0) {
+      drawCenteredText(page, '—', cellX, colW, equipY, font, FONT_MD);
+    } else {
+      for (const line of equipmentLines) {
+        drawCenteredText(page, line.text, cellX, colW, equipY, font, line.size, false);
+        equipY -= EQUIP_LINE_H;
+      }
+    }
   });
-  const teamH = Math.max(...teamHeights, 40);
-  const equipH = 18;
 
-  const totalH = leaderH + siteH + addrH + teamH + equipH;
-  const tableBottomY = tableTopY - totalH;
-
-  for (let i = 0; i <= entries.length; i++) {
-    const x = MARGIN + i * colW;
+  const gridLine = (x1: number, y1: number, x2: number, y2: number) => {
     page.drawLine({
-      start: { x, y: tableTopY },
-      end: { x, y: tableBottomY },
-      thickness: 0.8,
+      start: { x: x1, y: y1 },
+      end: { x: x2, y: y2 },
+      thickness: 0.6,
       color: BORDER,
     });
+  };
+
+  for (let i = 0; i <= MAX_COLS; i++) {
+    const x = MARGIN_X + i * colW;
+    gridLine(x, tableTopY, x, tableBottomY);
   }
 
   const rowTops = [
     tableTopY,
     tableTopY - leaderH,
     tableTopY - leaderH - siteH,
-    tableTopY - leaderH - siteH - addrH,
-    tableTopY - leaderH - siteH - addrH - teamH,
+    contentTopY,
     tableBottomY,
   ];
   for (const rowY of rowTops) {
-    page.drawLine({
-      start: { x: MARGIN, y: rowY },
-      end: { x: MARGIN + tableWidth, y: rowY },
-      thickness: 0.8,
-      color: BORDER,
-    });
+    gridLine(MARGIN_X, rowY, MARGIN_X + tableWidth, rowY);
   }
-
-  entries.forEach((entry, i) => {
-    const cellX = colXs[i];
-    const leaderY = tableTopY - leaderH + 5;
-    drawCenteredText(page, entry.leaderLabel, cellX, colW, leaderY, bold, FONT_LG);
-
-    page.drawRectangle({
-      x: cellX + 0.4,
-      y: tableTopY - leaderH - siteH + 0.4,
-      width: colW - 0.8,
-      height: siteH - 0.8,
-      color: HEADER_GREEN,
-    });
-    const siteY = tableTopY - leaderH - siteH + 7;
-    drawCenteredText(page, entry.site.name, cellX, colW, siteY, bold, FONT_LG);
-
-    const addr = formatSiteAddress(entry.site);
-    const addrY = tableTopY - leaderH - siteH - addrH + 5;
-    if (addr) {
-      drawCenteredText(page, addr, cellX, colW, addrY, font, FONT_SM);
-    }
-
-    let teamY = tableTopY - leaderH - siteH - addrH - 10;
-    for (const name of entry.members.map(memberPdfName)) {
-      drawCenteredText(page, name, cellX, colW, teamY, font, FONT_MD);
-      teamY -= LINE_H;
-    }
-    const external = entry.external_workers_text?.trim();
-    if (external) {
-      if (!entry.members.length) teamY -= 2;
-      drawYellowTag(page, external, cellX, colW, teamY, font);
-    }
-
-    const equip = equipmentBottomLabel(entry);
-    const equipY = tableBottomY + 5;
-    if (equip) {
-      drawCenteredText(page, equip, cellX, colW, equipY, font, FONT_MD);
-    }
-  });
 }
 
 async function buildEinsatztafelPdfPages(
@@ -266,7 +380,7 @@ async function buildEinsatztafelPdfPages(
   if (!sorted.length) {
     const page = pdfDoc.addPage([...A4_LANDSCAPE]);
     const tableTopY = drawPageHeader(page, day, draft, font, bold, logoImage);
-    page.drawText('Keine Einsätze an diesem Tag.', { x: MARGIN, y: tableTopY - 12, size: 11, font });
+    page.drawText('Keine Einsätze an diesem Tag.', { x: MARGIN_X, y: tableTopY - 12, size: 11, font });
     return;
   }
 
@@ -277,8 +391,8 @@ async function buildEinsatztafelPdfPages(
     drawEinsatztafelTable(page, chunk, tableTopY, font, bold);
     if (sorted.length > MAX_COLS && offset + MAX_COLS < sorted.length) {
       page.drawText('Fortsetzung folgt', {
-        x: MARGIN,
-        y: MARGIN - 4,
+        x: MARGIN_X,
+        y: MARGIN_BOTTOM - 4,
         size: 8,
         font,
         color: rgb(0.45, 0.45, 0.45),
@@ -297,12 +411,12 @@ function drawAbsenteesFooter(
 ) {
   const dayAbsent = absentees.filter((a) => a.date === day);
   if (!dayAbsent.length) return;
-  let y = MARGIN + 24;
-  page.drawText('Abwesend (genehmigt):', { x: MARGIN, y, size: 9, font: bold });
+  let y = MARGIN_BOTTOM + 24;
+  page.drawText('Abwesend (genehmigt):', { x: MARGIN_X, y, size: 9, font: bold });
   y -= 12;
   for (const row of dayAbsent.slice(0, 8)) {
     const name = employeeNames?.[row.userId] ?? row.userId.slice(0, 8);
-    page.drawText(`· ${name} (${row.leaveType})`, { x: MARGIN + 6, y, size: 8, font });
+    page.drawText(`· ${name} (${row.leaveType})`, { x: MARGIN_X + 6, y, size: 8, font });
     y -= 10;
   }
 }
@@ -353,7 +467,7 @@ export async function buildScheduleWeekPdf(input: {
   if (!pdfDoc.getPageCount()) {
     const page = pdfDoc.addPage([...A4_LANDSCAPE]);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    page.drawText('Keine Einsätze in dieser Woche.', { x: MARGIN, y: 400, size: 12, font });
+    page.drawText('Keine Einsätze in dieser Woche.', { x: MARGIN_X, y: 400, size: 12, font });
   }
 
   return pdfDoc.save();

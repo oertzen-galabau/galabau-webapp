@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import {
-  updateEmployeeProfile,
   updateLeaveEntitlement,
   recalculateLeaveCarryFromPreviousYear,
   updateMemberRole,
@@ -39,14 +38,8 @@ import {
 } from '@/lib/team/member-access-status';
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
-import { WorkAreaSelect } from '@/components/team/work-area-select';
+import { EmployeeStammdatenForm } from '@/components/team/employee-stammdaten-form';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
-
-const SALUTATION_OPTIONS = [
-  { value: 'Herr', label: 'Herr' },
-  { value: 'Frau', label: 'Frau' },
-  { value: 'Divers', label: 'Divers' },
-];
 
 type PermCtx = {
   permissions: Set<PermissionKey>;
@@ -154,22 +147,34 @@ function OverviewTab({
 
       <div className="employee-quick-actions">
         <h2>Schnellaktionen</h2>
-        <div className="inline-actions">
-          <Link href={`/app/team/${member.id}?tab=stammdaten`} className="text-button">Stammdaten</Link>
+        <div className="inline-actions employee-quick-actions-buttons">
+          <Link
+            href={`/app/team/${member.id}?tab=stammdaten`}
+            className="secondary-button secondary-button--compact"
+          >
+            Stammdaten
+          </Link>
           {can(ctx, 'team.assign_role') && (
-            <Link href={`/app/team/${member.id}?tab=rolle`} className="text-button">Rolle ändern</Link>
+            <Link
+              href={`/app/team/${member.id}?tab=rolle`}
+              className="secondary-button secondary-button--compact"
+            >
+              Rolle ändern
+            </Link>
           )}
           {can(ctx, 'team.password_reset') && (
-            <form action={sendEmployeePasswordReset}>
+            <form action={sendEmployeePasswordReset} className="employee-quick-actions-form">
               <input type="hidden" name="user_id" value={member.id} />
-              <button type="submit" className="text-button">Passwort-Reset senden</button>
+              <button type="submit" className="secondary-button secondary-button--compact">
+                Passwort-Reset senden
+              </button>
             </form>
           )}
           {can(ctx, 'team.deactivate') && member.id !== ctx.userId && (
-            <form action={setMemberActive}>
+            <form action={setMemberActive} className="employee-quick-actions-form">
               <input type="hidden" name="user_id" value={member.id} />
               <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
-              <button type="submit" className="text-button">
+              <button type="submit" className="secondary-button secondary-button--compact">
                 {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
               </button>
             </form>
@@ -210,56 +215,7 @@ function StammdatenTab({ member, ctx, workAreas }: Props) {
     <section className="panel form-panel employee-section">
       <h2>Stammdaten</h2>
       {!editable && <p className="muted">Nur Lesezugriff.</p>}
-      <form action={updateEmployeeProfile} className="input-form">
-        <input type="hidden" name="user_id" value={member.id} />
-        <div className="input-form-core">
-          <label>Personalnummer
-            <input name="personnel_number" defaultValue={member.personnel_number ?? ''} disabled={!editable} />
-          </label>
-          <label>Anrede
-            <AppSelect
-              name="salutation"
-              defaultValue={member.salutation ?? ''}
-              disabled={!editable}
-              options={SALUTATION_OPTIONS}
-            />
-          </label>
-          <label>Vorname<input name="first_name" defaultValue={member.first_name} required disabled={!editable} /></label>
-          <label>Nachname<input name="last_name" defaultValue={member.last_name} required disabled={!editable} /></label>
-          <label>E-Mail<input name="email" type="email" defaultValue={member.email} required disabled={!editable} /></label>
-          <label>Telefon<input name="phone" type="tel" defaultValue={member.phone ?? ''} disabled={!editable} /></label>
-          <label>Berufbezeichnung<input name="job_title" defaultValue={member.job_title ?? ''} disabled={!editable} placeholder="z.B. Vorarbeiter, Gärtner" /></label>
-          <label>
-            Bereich (Einsatzplan)
-            <WorkAreaSelect
-              areas={workAreas}
-              defaultValue={member.work_area_id}
-              disabled={!editable}
-            />
-          </label>
-          <label>Bauleiter-Kürzel<input name="leader_code" defaultValue={member.leader_code ?? ''} disabled={!editable} placeholder="z.B. LG, MS" maxLength={8} /></label>
-          <label>Straße<input name="address" defaultValue={member.address ?? ''} disabled={!editable} /></label>
-          <label>PLZ<input name="zip_code" defaultValue={member.zip_code ?? ''} disabled={!editable} /></label>
-          <label>Ort<input name="city" defaultValue={member.city ?? ''} disabled={!editable} /></label>
-          <label>Geburtstag<input name="birthday" type="date" defaultValue={member.birthday ?? ''} disabled={!editable} /></label>
-          <label>Eintrittsdatum<input name="entry_date" type="date" defaultValue={member.entry_date ?? ''} disabled={!editable} /></label>
-          <label>Austrittsdatum<input name="exit_date" type="date" defaultValue={member.exit_date ?? ''} disabled={!editable} /></label>
-          <label className="input-form-checkbox">
-            <input
-              type="checkbox"
-              name="payroll_lkw_hours"
-              defaultChecked={(member.payroll_flags as { lkw_hours?: boolean })?.lkw_hours === true}
-              disabled={!editable}
-            />
-            LKW-Std berechtigt (Buchung 1001)
-          </label>
-        </div>
-        {editable && (
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Speichern</button>
-          </div>
-        )}
-      </form>
+      <EmployeeStammdatenForm member={member} editable={editable} workAreas={workAreas} />
     </section>
   );
 }
@@ -330,7 +286,7 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
               <form action={setMemberActive}>
                 <input type="hidden" name="user_id" value={member.id} />
                 <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
-                <button type="submit" className="primary-button primary-button--compact">
+                <button type="submit" className="secondary-button secondary-button--compact">
                   {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
                 </button>
               </form>
@@ -338,7 +294,7 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
             {canReset && (
               <form action={sendEmployeePasswordReset}>
                 <input type="hidden" name="user_id" value={member.id} />
-                <button type="submit" className="text-button">
+                <button type="submit" className="secondary-button secondary-button--compact">
                   Passwort-Reset senden
                 </button>
               </form>

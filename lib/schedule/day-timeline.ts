@@ -7,6 +7,8 @@ export const DAY_TIMELINE_END_MIN = DAY_TIMELINE_END_HOUR * 60;
 export const DAY_TIMELINE_TOTAL_MIN = DAY_TIMELINE_END_MIN - DAY_TIMELINE_START_MIN;
 /** Pixelhöhe pro Stunde im Tagesraster */
 export const DAY_TIMELINE_PX_PER_HOUR = 56;
+/** Max. nebeneinander sichtbare Einsätze; darüber horizontal scrollen */
+export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS = 4;
 
 export function timeToMinutes(t: string): number {
   const [h, m] = t.slice(0, 5).split(':').map(Number);
@@ -66,6 +68,8 @@ export type DayTimelineEventLayout = EntryBlockLayout & {
   columnCount: number;
   leftPercent: number;
   widthPercent: number;
+  /** >1 wenn das Raster breiter als der sichtbare Bereich ist (horizontal scrollen) */
+  gridWidthFactor: number;
 };
 
 const TIMELINE_H_PAD_PERCENT = 2;
@@ -118,17 +122,47 @@ function clusterOverlappingEntries(entries: DayTimelineEntryPick[]): DayTimeline
   return [...byRoot.values()];
 }
 
-function columnRect(columnIndex: number, columnCount: number): { leftPercent: number; widthPercent: number } {
+function columnRect(
+  columnIndex: number,
+  columnCount: number,
+): { leftPercent: number; widthPercent: number; gridWidthFactor: number } {
+  const maxVisible = DAY_TIMELINE_MAX_VISIBLE_COLUMNS;
+  const gridWidthFactor = columnCount > maxVisible ? columnCount / maxVisible : 1;
+
   if (columnCount <= 1) {
     return {
       leftPercent: TIMELINE_H_PAD_PERCENT,
       widthPercent: 100 - 2 * TIMELINE_H_PAD_PERCENT,
+      gridWidthFactor: 1,
     };
   }
-  const totalGap = (columnCount - 1) * TIMELINE_COL_GAP_PERCENT;
-  const widthPercent = (100 - 2 * TIMELINE_H_PAD_PERCENT - totalGap) / columnCount;
-  const leftPercent = TIMELINE_H_PAD_PERCENT + columnIndex * (widthPercent + TIMELINE_COL_GAP_PERCENT);
-  return { leftPercent, widthPercent };
+
+  if (columnCount <= maxVisible) {
+    const totalGap = (columnCount - 1) * TIMELINE_COL_GAP_PERCENT;
+    const widthPercent = (100 - 2 * TIMELINE_H_PAD_PERCENT - totalGap) / columnCount;
+    const leftPercent = TIMELINE_H_PAD_PERCENT + columnIndex * (widthPercent + TIMELINE_COL_GAP_PERCENT);
+    return { leftPercent, widthPercent, gridWidthFactor: 1 };
+  }
+
+  const layoutCols = maxVisible;
+  const totalGap = (layoutCols - 1) * TIMELINE_COL_GAP_PERCENT;
+  const slotWidthViewport = (100 - 2 * TIMELINE_H_PAD_PERCENT - totalGap) / layoutCols;
+  const leftViewport =
+    TIMELINE_H_PAD_PERCENT + columnIndex * (slotWidthViewport + TIMELINE_COL_GAP_PERCENT);
+  return {
+    leftPercent: leftViewport / gridWidthFactor,
+    widthPercent: slotWidthViewport / gridWidthFactor,
+    gridWidthFactor,
+  };
+}
+
+/** Breite des Tagesrasters in Prozent des sichtbaren Bereichs (100 = kein Horizontal-Scroll). */
+export function dayTimelineGridWidthPercent(layouts: Iterable<DayTimelineEventLayout>): number {
+  let factor = 1;
+  for (const layout of layouts) {
+    if (layout.gridWidthFactor > factor) factor = layout.gridWidthFactor;
+  }
+  return factor * 100;
 }
 
 function assignLanes(cluster: DayTimelineEntryPick[]): Map<string, number> {
@@ -173,13 +207,14 @@ export function layoutDayTimelineColumns(
     for (const entry of cluster) {
       const block = entryBlockLayout(entry.start_time, entry.end_time);
       const columnIndex = laneById.get(entry.id) ?? 0;
-      const { leftPercent, widthPercent } = columnRect(columnIndex, columnCount);
+      const { leftPercent, widthPercent, gridWidthFactor } = columnRect(columnIndex, columnCount);
       result.set(entry.id, {
         ...block,
         columnIndex,
         columnCount,
         leftPercent,
         widthPercent,
+        gridWidthFactor,
       });
     }
   }

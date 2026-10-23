@@ -1,7 +1,8 @@
 import { addSiteTeamMember, removeSiteTeamMember } from '@/lib/actions/site-team';
 import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
+import { SiteLeadsForm } from '@/components/sites/site-leads-form';
 import { AppSelect } from '@/components/ui/app-select';
-import type { EmployeeTeamOption } from '@/lib/sites/foremen-options';
+import type { ForemanOption, EmployeeTeamOption } from '@/lib/sites/foremen-options';
 
 export type SiteTeamMemberRow = {
   id: string;
@@ -12,23 +13,50 @@ export type SiteTeamMemberRow = {
 
 type Props = {
   siteId: string;
+  siteManagerUserId: string | null;
+  foremanUserId: string | null;
+  siteManagerOptions: ForemanOption[];
+  foremanOptions: ForemanOption[];
   members: SiteTeamMemberRow[];
   employeeOptions: EmployeeTeamOption[];
   canEdit: boolean;
 };
 
-export function SiteTeamSection({ siteId, members, employeeOptions, canEdit }: Props) {
+export function SiteTeamSection({
+  siteId,
+  siteManagerUserId,
+  foremanUserId,
+  siteManagerOptions,
+  foremanOptions,
+  members,
+  employeeOptions,
+  canEdit,
+}: Props) {
+  const leadUserIds = new Set(
+    [siteManagerUserId, foremanUserId].filter((id): id is string => Boolean(id)),
+  );
+  const additionalMembers = members.filter((m) => !leadUserIds.has(m.userId));
+
   return (
     <section className="site-detail-section">
       <h2>Baustellen-Team</h2>
       <p className="muted site-detail-section-lead">
-        Fest zugewiesene Vorarbeiter und Mitarbeiter sehen diese Baustelle in Zeiten, Dokumentation und
-        Tagesrapport.
+        Bauleiter, Vorarbeiter und weitere zugewiesene Mitarbeiter sehen diese Baustelle in Zeiten,
+        Dokumentation und Tagesrapport.
       </p>
 
-      {members.length > 0 ? (
+      <SiteLeadsForm
+        siteId={siteId}
+        siteManagerUserId={siteManagerUserId}
+        foremanUserId={foremanUserId}
+        siteManagerOptions={siteManagerOptions}
+        foremanOptions={foremanOptions}
+        canEdit={canEdit}
+      />
+
+      {additionalMembers.length > 0 ? (
         <ul className="site-entity-list">
-          {members.map((member) => (
+          {additionalMembers.map((member) => (
             <li key={member.id} className="site-entity-row site-team-member-row">
               <div>
                 <strong>{member.displayName}</strong>
@@ -47,7 +75,7 @@ export function SiteTeamSection({ siteId, members, employeeOptions, canEdit }: P
           ))}
         </ul>
       ) : (
-        <p className="muted">Noch niemand dem Baustellen-Team zugewiesen.</p>
+        <p className="muted">Keine weiteren Teammitglieder zugewiesen.</p>
       )}
 
       {canEdit && employeeOptions.length > 0 && (
@@ -57,6 +85,7 @@ export function SiteTeamSection({ siteId, members, employeeOptions, canEdit }: P
             <label className="input-form-span-full">
               Mitarbeiter hinzufügen
               <AppSelect
+                key={`site-team-add-${members.length}`}
                 name="user_id"
                 required
                 allowEmpty={false}
@@ -76,7 +105,7 @@ export function SiteTeamSection({ siteId, members, employeeOptions, canEdit }: P
         </form>
       )}
 
-      {canEdit && employeeOptions.length === 0 && members.length > 0 && (
+      {canEdit && employeeOptions.length === 0 && additionalMembers.length > 0 && (
         <p className="muted" style={{ marginTop: 12 }}>
           Alle aktiven Mitarbeiter sind bereits zugewiesen.
         </p>

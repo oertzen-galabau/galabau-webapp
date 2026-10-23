@@ -114,6 +114,7 @@ export type Site = {
   end_date: string | null;
   notes: string | null;
   responsible_user_id: string | null;
+  site_manager_user_id: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

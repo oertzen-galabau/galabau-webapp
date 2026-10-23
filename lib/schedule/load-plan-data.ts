@@ -27,7 +27,10 @@ export type ScheduleEquipmentRow = {
 };
 
 export type ScheduleEntryView = ScheduleEntry & {
-  site: Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>;
+  site: Pick<
+    Site,
+    'id' | 'name' | 'responsible_user_id' | 'site_manager_user_id' | 'street' | 'zip_code' | 'city' | 'address'
+  >;
   foreman: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'leader_code'> | null;
   members: ScheduleMemberRow[];
   equipment: ScheduleEquipmentRow[];
@@ -61,7 +64,8 @@ export type SchedulePlanData = {
   timeConflicts: ReturnType<typeof findTimeConflicts>;
   equipmentConflicts: ReturnType<typeof findEquipmentConflicts>;
   scheduleConflicts: ReturnType<typeof findTimeConflicts>;
-  responsibleLeaderBySiteId: Record<string, string>;
+  /** Kürzel (Initialen) des Bauleiters pro Baustelle */
+  siteManagerLeaderBySiteId: Record<string, string>;
 };
 
 function normalizeTime(t: string): string {
@@ -94,7 +98,7 @@ export async function loadSchedulePlanData(
       .from('schedule_entries')
       .select(`
         *,
-        sites(id, name, responsible_user_id, street, zip_code, city, address),
+        sites(id, name, responsible_user_id, site_manager_user_id, street, zip_code, city, address),
         schedule_entry_members(user_id, profiles(first_name, last_name, leader_code)),
         schedule_entry_equipment(
           equipment_id,
@@ -114,7 +118,7 @@ export async function loadSchedulePlanData(
       .lte('plan_date', weekEnd),
     supabase
       .from('sites')
-      .select('id, name, responsible_user_id')
+      .select('id, name, responsible_user_id, site_manager_user_id')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .order('name'),
@@ -170,24 +174,43 @@ export async function loadSchedulePlanData(
     foremen = data ?? [];
   }
 
-  const responsibleIds = [...new Set((sites ?? []).map((s) => s.responsible_user_id).filter(Boolean))] as string[];
-  const responsibleLeaderBySiteId: Record<string, string> = {};
-  if (responsibleIds.length) {
-    const { data: responsibles } = await supabase
+  const siteManagerUserIds = new Set<string>();
+  for (const s of sites ?? []) {
+    if (s.site_manager_user_id) siteManagerUserIds.add(s.site_manager_user_id);
+  }
+  for (const row of entriesRaw ?? []) {
+    const siteJoin = row.sites as { site_manager_user_id?: string | null } | { site_manager_user_id?: string | null }[] | null;
+    const joined = Array.isArray(siteJoin) ? siteJoin[0] : siteJoin;
+    if (joined?.site_manager_user_id) siteManagerUserIds.add(joined.site_manager_user_id);
+  }
+
+  const siteManagerLeaderByUserId: Record<string, string> = {};
+  const siteManagerLeaderBySiteId: Record<string, string> = {};
+  if (siteManagerUserIds.size > 0) {
+    const { data: siteManagers } = await supabase
       .from('profiles')
       .select('id, first_name, last_name, leader_code')
-      .in('id', responsibleIds);
+      .in('id', [...siteManagerUserIds]);
+    for (const p of siteManagers ?? []) {
+      siteManagerLeaderByUserId[p.id] = leaderCodeForProfile(p);
+    }
     for (const site of sites ?? []) {
-      if (!site.responsible_user_id) continue;
-      const p = responsibles?.find((r) => r.id === site.responsible_user_id);
-      responsibleLeaderBySiteId[site.id] = leaderCodeForProfile(p ?? null);
+      if (!site.site_manager_user_id) continue;
+      const label = siteManagerLeaderByUserId[site.site_manager_user_id];
+      if (label) siteManagerLeaderBySiteId[site.id] = label;
     }
   }
 
   const entries: ScheduleEntryView[] = (entriesRaw ?? []).map((row) => {
     const siteRaw = row.sites as
-      | Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>
-      | Pick<Site, 'id' | 'name' | 'responsible_user_id' | 'street' | 'zip_code' | 'city' | 'address'>[]
+      | Pick<
+          Site,
+          'id' | 'name' | 'responsible_user_id' | 'site_manager_user_id' | 'street' | 'zip_code' | 'city' | 'address'
+        >
+      | Pick<
+          Site,
+          'id' | 'name' | 'responsible_user_id' | 'site_manager_user_id' | 'street' | 'zip_code' | 'city' | 'address'
+        >[]
       | null;
     const site = Array.isArray(siteRaw) ? siteRaw[0] : siteRaw;
     const foreman = row.foreman_user_id
@@ -206,9 +229,11 @@ export async function loadSchedulePlanData(
         leader_code: p?.leader_code ?? null,
       };
     });
-    const leaderLabel = foreman
-      ? leaderCodeForProfile(foreman)
-      : (site?.id ? responsibleLeaderBySiteId[site.id] : '—') ?? '—';
+    const managerUserId = site?.site_manager_user_id ?? null;
+    const leaderLabel = managerUserId
+      ? siteManagerLeaderByUserId[managerUserId] ??
+        leaderCodeForProfile((employees ?? []).find((e) => e.id === managerUserId) ?? null)
+      : '—';
 
     const equipmentRows = (row.schedule_entry_equipment ?? []) as {
       equipment_id: string;
@@ -241,6 +266,7 @@ export async function loadSchedulePlanData(
         id: entry.site_id,
         name: '—',
         responsible_user_id: null,
+        site_manager_user_id: null,
         street: null,
         zip_code: null,
         city: null,
@@ -324,7 +350,7 @@ export async function loadSchedulePlanData(
     timeConflicts,
     equipmentConflicts,
     scheduleConflicts: [...timeConflicts, ...equipmentConflicts],
-    responsibleLeaderBySiteId,
+    siteManagerLeaderBySiteId,
   };
 }
 

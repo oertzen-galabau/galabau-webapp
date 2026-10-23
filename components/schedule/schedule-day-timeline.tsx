@@ -2,12 +2,15 @@
 
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import { scheduleEntryPhase } from '@/lib/schedule/entry-phase';
+import { sortedEntryTeamDisplay } from '@/lib/schedule/entry-member-labels';
 import {
   DAY_TIMELINE_END_HOUR,
   DAY_TIMELINE_PX_PER_HOUR,
   DAY_TIMELINE_START_HOUR,
   dayTimelineGridHeightPx,
   formatTimelineHourLabel,
+  DAY_TIMELINE_MAX_VISIBLE_COLUMNS,
+  dayTimelineGridWidthPercent,
   layoutDayTimelineColumns,
   nowLinePercent,
 } from '@/lib/schedule/day-timeline';
@@ -26,14 +29,6 @@ function siteLocationLine(site: ScheduleEntryView['site']): string | null {
   const street = site.street?.trim() || site.address?.trim() || '';
   const line = [street, cityLine].filter(Boolean).join(', ');
   return line || null;
-}
-
-function memberLine(entry: ScheduleEntryView): string {
-  const names = entry.members
-    .map((m) => `${m.first_name} ${m.last_name.charAt(0)}.`)
-    .join(', ');
-  const parts = [names, entry.external_workers_text?.trim()].filter(Boolean);
-  return parts.join(' · ') || '—';
 }
 
 function entryCardClassName(
@@ -73,6 +68,7 @@ export function ScheduleDayTimeline({
     (a, b) => a.start_time.localeCompare(b.start_time) || a.site.name.localeCompare(b.site.name, 'de'),
   );
   const layoutById = layoutDayTimelineColumns(sorted);
+  const gridWidthPercent = dayTimelineGridWidthPercent(layoutById.values());
 
   return (
     <div className="schedule-day-timeline">
@@ -89,7 +85,19 @@ export function ScheduleDayTimeline({
               </div>
             ))}
           </div>
-          <div className="schedule-day-timeline-grid" style={{ height: gridHeight }}>
+          <div className="schedule-day-timeline-grid-scroll">
+            <div
+              className={[
+                'schedule-day-timeline-grid',
+                gridWidthPercent > 100 ? 'schedule-day-timeline-grid--scroll-x' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{
+                height: gridHeight,
+                ...(gridWidthPercent > 100 ? { width: `${gridWidthPercent}%` } : {}),
+              }}
+            >
             {HOUR_SLOTS.map((hour, index) => (
               <div
                 key={hour}
@@ -117,7 +125,9 @@ export function ScheduleDayTimeline({
                 const location = siteLocationLine(entry.site);
                 const cardClass = [
                   entryCardClassName(entry, conflictEntryIds.has(entry.id), now),
-                  layout.columnCount > 1 ? 'schedule-day-timeline-event--narrow' : '',
+                  layout.columnCount > 1 && layout.columnCount <= DAY_TIMELINE_MAX_VISIBLE_COLUMNS
+                    ? 'schedule-day-timeline-event--narrow'
+                    : '',
                   canManage ? 'schedule-day-timeline-event--clickable' : '',
                 ]
                   .filter(Boolean)
@@ -129,6 +139,12 @@ export function ScheduleDayTimeline({
                   width: `${layout.widthPercent}%`,
                   zIndex: 10 + index,
                 };
+                const team = sortedEntryTeamDisplay(entry);
+                const equipmentNames = entry.equipment
+                  .map((eq) => eq.name.trim())
+                  .filter(Boolean);
+                const hasTeam = team.members.length > 0 || team.external.length > 0;
+                const hasEquipment = equipmentNames.length > 0;
                 const body = (
                   <>
                     <div className="schedule-day-timeline-event-head">
@@ -143,15 +159,64 @@ export function ScheduleDayTimeline({
                         <span className="muted schedule-day-timeline-event-location">{location}</span>
                       ) : null}
                     </div>
-                    <p className="schedule-day-timeline-event-team">{memberLine(entry)}</p>
-                    {entry.foreman ? (
-                      <p className="schedule-day-timeline-event-foreman">
-                        Vorarbeiter: {entry.foreman.first_name} {entry.foreman.last_name}
-                      </p>
-                    ) : null}
-                    {entry.equipmentLabel ? (
-                      <p className="schedule-day-timeline-event-equipment">{entry.equipmentLabel}</p>
-                    ) : null}
+                    {!hasTeam && !hasEquipment ? (
+                      <p className="schedule-day-timeline-event-details">—</p>
+                    ) : (
+                      <div className="schedule-day-timeline-event-details">
+                        {hasTeam ? (
+                          <>
+                            {team.members.length > 0 ? (
+                              <ul className="schedule-day-timeline-event-team-list">
+                                {team.members.map((line, lineIndex) => (
+                                  <li
+                                    key={`${entry.id}-m-${lineIndex}`}
+                                    className={
+                                      line.isForeman
+                                        ? 'schedule-day-timeline-event-team-list-item--foreman'
+                                        : undefined
+                                    }
+                                  >
+                                    {line.text}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            {team.external.length > 0 ? (
+                              <>
+                                {team.members.length > 0 ? (
+                                  <div
+                                    className="schedule-day-timeline-event-team-sep"
+                                    role="separator"
+                                    aria-hidden="true"
+                                  />
+                                ) : null}
+                                <ul className="schedule-day-timeline-event-team-list schedule-day-timeline-event-team-list--external">
+                                  {team.external.map((line, lineIndex) => (
+                                    <li key={`${entry.id}-x-${lineIndex}`}>{line}</li>
+                                  ))}
+                                </ul>
+                              </>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {hasEquipment ? (
+                          <>
+                            {hasTeam ? (
+                              <div
+                                className="schedule-day-timeline-event-team-sep"
+                                role="separator"
+                                aria-hidden="true"
+                              />
+                            ) : null}
+                            <ul className="schedule-day-timeline-event-team-list schedule-day-timeline-event-team-list--equipment">
+                              {equipmentNames.map((name, lineIndex) => (
+                                <li key={`${entry.id}-eq-${lineIndex}`}>{name}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
                     {entry.notes ? (
                       <p className="muted schedule-day-timeline-event-notes">{entry.notes}</p>
                     ) : null}
@@ -180,6 +245,7 @@ export function ScheduleDayTimeline({
                 );
               })
             )}
+            </div>
           </div>
         </div>
       </div>

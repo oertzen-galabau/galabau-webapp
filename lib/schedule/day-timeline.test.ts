@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DAY_TIMELINE_MAX_VISIBLE_COLUMNS,
   DAY_TIMELINE_START_MIN,
+  dayTimelineGridWidthPercent,
   entryBlockLayout,
   layoutDayTimelineColumns,
   nowLinePercent,
@@ -58,6 +60,24 @@ describe('layoutDayTimelineColumns', () => {
     assert.equal(map.get('a')?.columnCount, 1);
     assert.equal(map.get('b')?.columnCount, 1);
     assert.ok((map.get('a')?.widthPercent ?? 0) > 90);
+  });
+
+  it('behält Kartenbreite bei mehr als vier Überlappungen und erweitert das Raster', () => {
+    const entries = Array.from({ length: 6 }, (_, i) => ({
+      id: `e${i}`,
+      start_time: '07:30',
+      end_time: '16:00',
+    }));
+    const map = layoutDayTimelineColumns(entries);
+    assert.equal(map.get('e0')?.columnCount, 6);
+    assert.equal(map.get('e0')?.gridWidthFactor, 6 / DAY_TIMELINE_MAX_VISIBLE_COLUMNS);
+    const fourCol = layoutDayTimelineColumns(
+      entries.slice(0, DAY_TIMELINE_MAX_VISIBLE_COLUMNS),
+    );
+    const wideWidth = map.get('e0')?.widthPercent ?? 0;
+    const fourWidth = fourCol.get('e0')?.widthPercent ?? 0;
+    assert.ok(Math.abs(wideWidth * map.get('e0')!.gridWidthFactor - fourWidth) < 0.05);
+    assert.equal(dayTimelineGridWidthPercent(map.values()), 150);
   });
 
   it('drei parallele überlappende Einsätze', () => {

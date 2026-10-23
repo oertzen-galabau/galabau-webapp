@@ -3,6 +3,22 @@
 import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
+let openDialogCount = 0;
+
+function lockDocumentScroll() {
+  openDialogCount += 1;
+  if (openDialogCount === 1) {
+    document.documentElement.classList.add('dialog-open');
+  }
+}
+
+function unlockDocumentScroll() {
+  openDialogCount = Math.max(0, openDialogCount - 1);
+  if (openDialogCount === 0) {
+    document.documentElement.classList.remove('dialog-open');
+  }
+}
+
 type AppDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -30,6 +46,8 @@ export function AppDialog({
   useEffect(() => {
     if (!open) return;
 
+    lockDocumentScroll();
+
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
@@ -37,7 +55,10 @@ export function AppDialog({
     document.addEventListener('keydown', onKeyDown);
     panelRef.current?.focus();
 
-    return () => document.removeEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      unlockDocumentScroll();
+    };
   }, [open, onClose]);
 
   if (!open || typeof document === 'undefined') return null;

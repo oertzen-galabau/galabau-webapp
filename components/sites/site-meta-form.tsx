@@ -3,7 +3,6 @@
 import { useActionState } from 'react';
 import { updateSiteAction, type SiteFormState } from '@/lib/actions/admin';
 import { AppSelect } from '@/components/ui/app-select';
-import type { ForemanOption } from '@/lib/sites/foremen-options';
 import type { Site } from '@/lib/types/database';
 
 const initialState: SiteFormState = { error: null };
@@ -11,10 +10,9 @@ const initialState: SiteFormState = { error: null };
 type Props = {
   site: Site;
   canEdit: boolean;
-  foremanOptions: ForemanOption[];
 };
 
-export function SiteMetaForm({ site, canEdit, foremanOptions }: Props) {
+export function SiteMetaForm({ site, canEdit }: Props) {
   const [state, action, pending] = useActionState(updateSiteAction, initialState);
 
   return (
@@ -55,17 +53,6 @@ export function SiteMetaForm({ site, canEdit, foremanOptions }: Props) {
         <label>
           Kunde
           <input name="client_name" defaultValue={site.client_name ?? ''} readOnly={!canEdit} disabled={!canEdit} />
-        </label>
-        <label className="input-form-span-full">
-          Verantwortlicher Vorarbeiter
-          <AppSelect
-            name="responsible_user_id"
-            defaultValue={site.responsible_user_id ?? ''}
-            allowEmpty
-            placeholder="— optional —"
-            disabled={!canEdit}
-            options={foremanOptions}
-          />
         </label>
         <label>
           Von

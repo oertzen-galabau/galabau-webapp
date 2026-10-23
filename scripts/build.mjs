@@ -21,9 +21,9 @@ if (!env.SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const platformName = env.NEXT_PUBLIC_PLATFORM_NAME?.trim();
-if (platformName && platformName !== 'BauDiggi') {
+if (platformName && platformName !== 'BauDiggie') {
   console.warn(
-    `[build] WARNUNG: NEXT_PUBLIC_PLATFORM_NAME ist "${platformName}" — Marketing zeigt nicht "BauDiggi". Für Produktion auf BauDiggi setzen und neu bauen.`,
+    `[build] WARNUNG: NEXT_PUBLIC_PLATFORM_NAME ist "${platformName}" — Marketing zeigt nicht "BauDiggie". Für Produktion auf BauDiggie setzen und neu bauen.`,
   );
 }
 

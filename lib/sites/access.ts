@@ -65,6 +65,16 @@ export async function resolveAssignedSiteIds(
     ids.add(row.id);
   }
 
+  const { data: managerSites } = await supabase
+    .from('sites')
+    .select('id')
+    .eq('tenant_id', access.tenantId)
+    .eq('site_manager_user_id', access.userId);
+
+  for (const row of managerSites ?? []) {
+    ids.add(row.id);
+  }
+
   const { data: teamSites } = await supabase
     .from('site_team_members')
     .select('site_id')

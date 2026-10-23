@@ -18,7 +18,12 @@ import {
 } from '@/components/sites/site-time-entries-section';
 import { userCanAccessSite } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
-import { loadForemanOptions, loadTenantEmployeeTeamOptions } from '@/lib/sites/foremen-options';
+import {
+  loadForemanOptions,
+  loadSiteManagerOptions,
+  loadTenantEmployeeTeamOptions,
+  withProfileOption,
+} from '@/lib/sites/foremen-options';
 import type { TimeBlockType } from '@/lib/types/database';
 import { parseDailyLogReportType, tenantReportLabelsFromTenant } from '@/lib/documentation/report-labels';
 import { resolveOwnedDailyLogIds, userCanEditDailyLog, canViewAllReports } from '@/lib/documentation/report-access';
@@ -88,6 +93,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     badWeatherCount,
     segmentCount,
     foremanOptions,
+    siteManagerOptions,
     { data: teamRows },
     { data: masterSuppliers },
   ] = await Promise.all([
@@ -103,7 +109,8 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     countRows(supabase, 'daily_assignments', tenantId, id),
     countRows(supabase, 'bad_weather_days', tenantId, id),
     countRows(supabase, 'time_entry_segments', tenantId, id),
-    canManageSites ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
+    canManageTeam ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
+    canManageTeam ? loadSiteManagerOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
     supabase
       .from('site_team_members')
       .select('id, user_id, profiles(first_name, last_name, tenant_roles(name, slug))')
@@ -250,6 +257,13 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
   if (!site) notFound();
 
+  const [foremanOptionsForLeads, siteManagerOptionsForLeads] = canManageTeam
+    ? await Promise.all([
+        withProfileOption(supabase, tenantId, site.responsible_user_id, foremanOptions),
+        withProfileOption(supabase, tenantId, site.site_manager_user_id, siteManagerOptions),
+      ])
+    : [foremanOptions, siteManagerOptions];
+
   const canManage = canAccess(ctx, 'sites.manage');
   const canEdit = canManage && site.is_active;
   const canNavDocs = canAccess(ctx, 'nav.dokumentation');
@@ -287,9 +301,13 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
       <div className="order-layout">
         <section className="panel order-main">
-          <SiteMetaForm site={site} canEdit={canEdit} foremanOptions={foremanOptions} />
+          <SiteMetaForm site={site} canEdit={canEdit} />
           <SiteTeamSection
             siteId={id}
+            siteManagerUserId={site.site_manager_user_id}
+            foremanUserId={site.responsible_user_id}
+            siteManagerOptions={siteManagerOptionsForLeads}
+            foremanOptions={foremanOptionsForLeads}
             members={teamMembers}
             employeeOptions={employeeTeamOptions}
             canEdit={canManageTeam && site.is_active}

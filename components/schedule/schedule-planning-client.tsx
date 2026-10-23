@@ -298,7 +298,6 @@ export function SchedulePlanningClient({
   const [actionError, setActionError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [weekendExpanded, setWeekendExpanded] = useState(false);
-  const [sitesCollapsed, setSitesCollapsed] = useState(false);
 
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -683,10 +682,15 @@ export function SchedulePlanningClient({
                     className="primary-button primary-button--compact"
                     disabled={pending || selectedDayPublished || dayEntries.length === 0}
                     onClick={() => startTransition(async () => {
-                      const fd = new FormData();
-                      fd.set('plan_date', selectedDay);
-                      await publishScheduleDay(fd);
-                      router.refresh();
+                      setActionError(null);
+                      try {
+                        const fd = new FormData();
+                        fd.set('plan_date', selectedDay);
+                        await publishScheduleDay(fd);
+                        router.refresh();
+                      } catch (e) {
+                        setActionError(e instanceof Error ? e.message : 'Tag konnte nicht veröffentlicht werden');
+                      }
                     })}
                   >
                     Tag veröffentlichen
@@ -697,10 +701,15 @@ export function SchedulePlanningClient({
                     className="primary-button primary-button--compact"
                     disabled={pending || plan.published}
                     onClick={() => startTransition(async () => {
-                      const fd = new FormData();
-                      fd.set('week_start', plan.weekStart);
-                      await publishScheduleWeek(fd);
-                      router.refresh();
+                      setActionError(null);
+                      try {
+                        const fd = new FormData();
+                        fd.set('week_start', plan.weekStart);
+                        await publishScheduleWeek(fd);
+                        router.refresh();
+                      } catch (e) {
+                        setActionError(e instanceof Error ? e.message : 'Woche konnte nicht veröffentlicht werden');
+                      }
                     })}
                   >
                     Woche veröffentlichen
@@ -754,16 +763,7 @@ export function SchedulePlanningClient({
       >
         <ScheduleDndRoot>
         {canManage && (view === 'day' || view === 'week') ? (
-          <div className={`schedule-sites-bar${sitesCollapsed ? ' is-collapsed' : ''}`}>
-            <button
-              type="button"
-              className="schedule-sites-bar-label"
-              aria-expanded={!sitesCollapsed}
-              onClick={() => setSitesCollapsed((v) => !v)}
-            >
-              Baustellen{view === 'day' ? ` · ${formatGermanDate(selectedDay, { weekday: 'short', day: '2-digit', month: '2-digit' })}` : ''}
-              <span className="schedule-sites-bar-chevron" aria-hidden="true">{sitesCollapsed ? '▸' : '▾'}</span>
-            </button>
+          <div className="schedule-sites-bar">
             <div className="schedule-sites-bar-groups">
               {siteBarUnplanned.length > 0 ? (
                 <section className="schedule-sites-bar-group">

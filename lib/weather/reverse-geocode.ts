@@ -24,7 +24,7 @@ export async function reverseGeocodeLocation(
     url.searchParams.set('zoom', '10');
 
     const response = await fetch(url.toString(), {
-      headers: { 'User-Agent': 'BauDiggi-Baustellenmanagement/1.0 (contact@baudiggi.de)' },
+      headers: { 'User-Agent': 'BauDiggie-Baustellenmanagement/1.0 (contact@baudiggi.de)' },
       next: { revalidate: 86400 },
     });
 

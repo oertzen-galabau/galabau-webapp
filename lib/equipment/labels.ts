@@ -28,7 +28,7 @@ export function equipmentListSubtitle(item: {
 }): string {
   const parts: string[] = [];
   if (item.license_plate?.trim()) parts.push(item.license_plate.trim());
-  if (item.inventory_number?.trim()) parts.push(`Inv. ${item.inventory_number.trim()}`);
+  if (item.inventory_number?.trim()) parts.push(item.inventory_number.trim());
   return parts.join(' · ');
 }
 

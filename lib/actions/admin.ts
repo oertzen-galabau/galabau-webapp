@@ -20,6 +20,7 @@ import {
   insertDeliveryNote,
   isDeliveryBlockEmpty,
 } from '@/lib/documentation/save-delivery-note';
+import { computeLeaderCode } from '@/lib/schedule/leader-code';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -1214,9 +1215,11 @@ export async function updateEmployeeProfile(formData: FormData) {
     lkw_hours: formData.get('payroll_lkw_hours') === 'on',
   };
 
+  const firstName = formData.get('first_name') as string;
+  const lastName = formData.get('last_name') as string;
   const profileUpdate = {
-    first_name: formData.get('first_name') as string,
-    last_name: formData.get('last_name') as string,
+    first_name: firstName,
+    last_name: lastName,
     email,
     phone: (formData.get('phone') as string) || null,
     personnel_number: (formData.get('personnel_number') as string) || null,
@@ -1230,7 +1233,7 @@ export async function updateEmployeeProfile(formData: FormData) {
     exit_date: (formData.get('exit_date') as string) || null,
     job_title: (formData.get('job_title') as string) || null,
     work_area_id: ((formData.get('work_area_id') as string) || '').trim() || null,
-    leader_code: ((formData.get('leader_code') as string) || '').trim().toUpperCase() || null,
+    leader_code: computeLeaderCode(firstName, lastName),
   };
 
   const { error: authError } = await admin.auth.admin.updateUserById(targetUserId, { email });
@@ -1240,6 +1243,18 @@ export async function updateEmployeeProfile(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidateEmployeePaths(targetUserId);
+}
+
+export async function updateEmployeeProfileAction(
+  _prev: SiteFormState | null,
+  formData: FormData,
+): Promise<SiteFormState> {
+  try {
+    await updateEmployeeProfile(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    return siteFormError(e);
+  }
 }
 
 export async function setMemberActive(formData: FormData) {

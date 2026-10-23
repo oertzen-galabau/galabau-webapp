@@ -85,7 +85,7 @@ export function EquipmentListClient({ items, canManage }: Props) {
                   {!item.is_active ? <span className="muted">(inaktiv)</span> : null}
                 </span>
                 <span className="equipment-list-meta muted">
-                  {item.inventory_number ? `Inv. ${item.inventory_number}` : '—'}
+                  {item.inventory_number ?? '—'}
                   {' · '}
                   {item.serial_number ? `SN ${item.serial_number}` : '—'}
                   {' · '}

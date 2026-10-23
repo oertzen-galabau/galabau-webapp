@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
-import { insertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
+import { upsertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
 import { loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
 import { validatePublishPlanDate } from '@/lib/schedule/foreman-daily-report';
 import { syncDailyAssignmentsFromSchedule } from '@/lib/schedule/sync-assignments';
@@ -356,12 +356,16 @@ async function publishDaysAndSync(
 
   const now = new Date().toISOString();
   for (const planDate of uniqueDays) {
-    await supabase.from('schedule_day_publications').upsert({
-      tenant_id: ctx.tenantId,
-      plan_date: planDate,
-      published_at: now,
-      published_by: ctx.userId,
-    });
+    const { error } = await supabase.from('schedule_day_publications').upsert(
+      {
+        tenant_id: ctx.tenantId,
+        plan_date: planDate,
+        published_at: now,
+        published_by: ctx.userId,
+      },
+      { onConflict: 'tenant_id,plan_date' },
+    );
+    if (error) throw new Error(error.message);
   }
 
   for (const planDate of uniqueDays) {
@@ -443,23 +447,8 @@ export async function copyScheduleDay(formData: FormData) {
 
   await unpublishDayIfNeeded(supabase, ctx.tenantId, targetDay);
 
-  let copied = 0;
   for (const row of sourceEntries) {
-    const { data: exists } = await supabase
-      .from('schedule_entries')
-      .select('id')
-      .eq('tenant_id', ctx.tenantId)
-      .eq('site_id', row.site_id)
-      .eq('start_date', targetDay)
-      .maybeSingle();
-    if (exists) continue;
-
-    await insertScheduleEntryCopy(supabase, ctx.tenantId, ctx.userId, row, targetDay);
-    copied += 1;
-  }
-
-  if (copied === 0) {
-    throw new Error('Alle Baustellen vom Quelltag sind am Zieltag bereits eingeplant');
+    await upsertScheduleEntryCopy(supabase, ctx.tenantId, ctx.userId, row, targetDay);
   }
 
   revalidatePath(SCHEDULE_PATH);
@@ -496,16 +485,7 @@ export async function copyScheduleWeek(formData: FormData) {
     );
     const newDay = addDays(targetWeekStart, dayOffset);
 
-    const { data: exists } = await supabase
-      .from('schedule_entries')
-      .select('id')
-      .eq('tenant_id', ctx.tenantId)
-      .eq('site_id', row.site_id)
-      .eq('start_date', newDay)
-      .maybeSingle();
-    if (exists) continue;
-
-    await insertScheduleEntryCopy(supabase, ctx.tenantId, ctx.userId, row, newDay);
+    await upsertScheduleEntryCopy(supabase, ctx.tenantId, ctx.userId, row, newDay);
   }
 
   revalidatePath(SCHEDULE_PATH);

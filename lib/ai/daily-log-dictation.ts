@@ -97,7 +97,7 @@ const STRUCTURE_SCHEMA = {
 } as const;
 
 const STRUCTURE_PROMPT = [
-  'Du strukturierst ein Baustellen-Tagesrapport-Transkript für BauDiggi (Baustellenmanagement).',
+  'Du strukturierst ein Baustellen-Tagesrapport-Transkript für BauDiggie (Baustellenmanagement).',
   'Die Eingabe kann in jeder Sprache sein; alle Ausgabefelder müssen auf Deutsch formuliert sein.',
   'Extrahiere Wetter, Bemerkungen, Mitarbeiter mit Stunden, Leistungen mit Menge/Einheit sowie Maschinen/Material.',
   'Einheiten nur aus: Std., m, m², m³, kg, t. Bei fehlenden Werten null setzen.',

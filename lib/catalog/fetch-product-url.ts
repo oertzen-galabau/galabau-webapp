@@ -95,7 +95,7 @@ export async function fetchProductSuggestionFromUrl(rawUrl: string): Promise<Pro
         signal: controller.signal,
         headers: {
           Accept: 'text/html,application/xhtml+xml',
-          'User-Agent': 'BauDiggiCatalogBot/1.0',
+          'User-Agent': 'BauDiggieCatalogBot/1.0',
         },
       });
     } catch {
