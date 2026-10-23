@@ -27,6 +27,7 @@ export const PERMISSION_KEYS = [
   'urlaub.team_calendar',
   'sites.view',
   'sites.manage',
+  'sites.appearance',
   'sites.assign_team',
   'schedule.view',
   'schedule.manage',
@@ -110,6 +111,12 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     group: 'Baustellen',
   },
   { key: 'sites.manage', label: 'Baustellen bearbeiten', group: 'Baustellen', implies: ['sites.view'] },
+  {
+    key: 'sites.appearance',
+    label: 'Baustellen-Darstellung (Icon & Titelbild)',
+    group: 'Baustellen',
+    implies: ['sites.view'],
+  },
   { key: 'sites.assign_team', label: 'Baustellen-Team zuweisen', group: 'Baustellen', implies: ['sites.view'] },
   { key: 'schedule.view', label: 'Einsatzplan einsehen', group: 'Einsatzplanung' },
   { key: 'schedule.manage', label: 'Einsatzplan bearbeiten', group: 'Einsatzplanung', implies: ['schedule.view'] },
@@ -206,7 +213,7 @@ const BASE_EMPLOYEE: PermissionKey[] = [
 const FOREMAN_EXTRA: PermissionKey[] = [
   'nav.baustellen', 'nav.dokumentation', 'nav.rapporte', 'nav.partners', 'partners.view',
   'infoboard.assignments', 'infoboard.schedule_all', 'schedule.manage', 'schedule.publish', 'schedule.share',
-  'sites.view', 'sites.manage', 'documentation.manage', 'documentation.view_all', 'documentation.dictate',
+  'sites.view', 'sites.manage', 'sites.appearance', 'documentation.manage', 'documentation.view_all', 'documentation.dictate',
   'reports.generate', 'reports.send',
   'zeiten.view_all', 'zeiten.approve', 'zeiten.bookings.edit', 'zeiten.bad_weather.mark',
 ];

@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useActionState, useEffect } from 'react';
 import { saveSiteAction, type SiteFormState } from '@/lib/actions/admin';
 import { AppSelect } from '@/components/ui/app-select';
 import type { ForemanOption } from '@/lib/sites/foremen-options';
@@ -9,15 +10,24 @@ const initialState: SiteFormState = { error: null };
 
 type Props = {
   foremanOptions: ForemanOption[];
+  onSuccess?: () => void;
+  onCancel?: () => void;
 };
 
-export function SiteCreateForm({ foremanOptions }: Props) {
+export function SiteCreateForm({ foremanOptions, onSuccess, onCancel }: Props) {
+  const router = useRouter();
   const [state, action, pending] = useActionState(saveSiteAction, initialState);
+
+  useEffect(() => {
+    if (!state.ok || state.error) return;
+    router.refresh();
+    onSuccess?.();
+  }, [state.ok, state.error, onSuccess, router]);
 
   return (
     <form action={action} className="input-form">
       {state.error && <p className="form-error">{state.error}</p>}
-      {state.ok && !state.error && (
+      {state.ok && !state.error && !onSuccess && (
         <p className="form-feedback form-feedback--success">Baustelle wurde angelegt.</p>
       )}
       <div className="input-form-core">
@@ -65,8 +75,17 @@ export function SiteCreateForm({ foremanOptions }: Props) {
           </label>
         </div>
       </details>
-      <div className="input-form-actions">
-        <button type="submit" className="primary-button primary-button--compact" disabled={pending}>
+      <div className={onCancel ? 'dialog-actions' : 'input-form-actions'}>
+        {onCancel ? (
+          <button type="button" className="text-button" onClick={onCancel} disabled={pending}>
+            Abbrechen
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          className={onCancel ? 'primary-button' : 'primary-button primary-button--compact'}
+          disabled={pending}
+        >
           {pending ? 'Wird angelegt…' : 'Anlegen'}
         </button>
       </div>

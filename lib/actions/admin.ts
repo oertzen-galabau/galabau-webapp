@@ -65,6 +65,16 @@ export async function saveSite(formData: FormData) {
     );
   }
 
+  const { data: maxSortRow } = await supabase
+    .from('sites')
+    .select('list_sort_order')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('list_sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const list_sort_order = (maxSortRow?.list_sort_order ?? -1) + 1;
+
   const { data: site, error } = await supabase
     .from('sites')
     .insert({
@@ -78,6 +88,7 @@ export async function saveSite(formData: FormData) {
       directions: (formData.get('directions') as string) || null,
       notes: (formData.get('notes') as string) || null,
       responsible_user_id,
+      list_sort_order,
     })
     .select('id')
     .single();
@@ -657,6 +668,7 @@ export async function deleteSiteDocument(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath(`/app/baustellen/${data.site_id}`);
+  revalidatePath('/app/baustellen');
   revalidatePath('/app/dokumentation');
   revalidatePath('/app/dokumente');
 }

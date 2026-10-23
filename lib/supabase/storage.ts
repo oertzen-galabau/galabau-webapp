@@ -131,6 +131,18 @@ export async function uploadEquipmentPhoto(tenantId: string, equipmentId: string
   return path;
 }
 
+export function validateSiteCoverPhotoFile(file: File) {
+  validateEquipmentPhotoFile(file);
+}
+
+export async function uploadSiteCoverPhoto(tenantId: string, siteId: string, file: File) {
+  validateSiteCoverPhotoFile(file);
+  const ext = EQUIPMENT_PHOTO_EXT_BY_MIME[file.type] ?? 'jpg';
+  const path = buildStoragePath(tenantId, siteId, 'cover', `${Date.now()}.${ext}`);
+  await uploadPrivateFile(tenantId, 'site-documents', path, file);
+  return path;
+}
+
 export function validateTenantLogoFile(file: File) {
   if (file.size === 0) throw new Error('Keine Datei ausgewählt');
   if (file.size > TENANT_LOGO_MAX_BYTES) {

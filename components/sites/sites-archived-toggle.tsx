@@ -13,7 +13,7 @@ export function SitesArchivedToggle() {
       className="text-button"
       prefetch={false}
     >
-      {showArchived ? 'Archivierte ausblenden' : 'Archivierte anzeigen'}
+      {showArchived ? 'Abgeschlossene ausblenden' : 'Abgeschlossene anzeigen'}
     </Link>
   );
 }

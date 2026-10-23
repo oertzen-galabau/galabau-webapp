@@ -1,30 +1,17 @@
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { SiteCreateForm } from '@/components/sites/site-create-form';
+import { SiteCreateDialog } from '@/components/sites/site-create-dialog';
 import { SitesArchivedToggle } from '@/components/sites/sites-archived-toggle';
-import { resolveAccessibleSiteIds } from '@/lib/sites/access';
-import { formatSiteAddress } from '@/lib/sites/format-address';
+import { SitesListClient } from '@/components/sites/sites-list-client';
+import { canViewAllSites, resolveAccessibleSiteIds } from '@/lib/sites/access';
+import { loadSiteListCoverContext } from '@/lib/sites/load-list-covers';
 import { loadForemanOptions } from '@/lib/sites/foremen-options';
 import type { Site } from '@/lib/types/database';
 
 type PageProps = {
   searchParams: Promise<{ archived?: string }>;
 };
-
-function SiteCard({ site, archived }: { site: Site; archived?: boolean }) {
-  return (
-    <Link key={site.id} href={`/app/baustellen/${site.id}`} className="document-card">
-      <div className="document-preview"><span>🏗</span></div>
-      <div>
-        <span>{archived ? 'Archiviert' : 'Baustelle'}</span>
-        <strong>{site.name}</strong>
-        <small>{formatSiteAddress(site) ?? 'Keine Adresse'}</small>
-      </div>
-    </Link>
-  );
-}
 
 export default async function BaustellenPage({ searchParams }: PageProps) {
   const ctx = await requireTenantMember();
@@ -41,6 +28,7 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
     .select('*')
     .eq('tenant_id', ctx.tenant!.id)
     .eq('is_active', true)
+    .order('list_sort_order', { ascending: true })
     .order('name');
   if (accessibleIds !== null) {
     activeQuery = accessibleIds.length
@@ -65,11 +53,19 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
     : Promise.resolve({ data: [] as Site[] });
 
   const canManage = canAccess(ctx, 'sites.manage');
+  const canReorder = canManage && canViewAllSites(ctx);
   const [{ data: activeSites }, { data: archivedSites }, foremanOptions] = await Promise.all([
     activeQuery,
     archivedPromise,
     canManage ? loadForemanOptions(supabase, ctx.tenant!.id) : Promise.resolve([]),
   ]);
+
+  const allForCovers = [...(activeSites ?? []), ...(archivedSites ?? [])];
+  const { documentPathById, signedUrls } = await loadSiteListCoverContext(
+    supabase,
+    ctx.tenant!.id,
+    allForCovers,
+  );
 
   return (
     <>
@@ -78,42 +74,22 @@ export default async function BaustellenPage({ searchParams }: PageProps) {
           <h1>Baustellen</h1>
           <p>Stammdaten, Dokumente und Ansprechpartner je Baustelle.</p>
         </div>
-        <Suspense fallback={null}>
-          <SitesArchivedToggle />
-        </Suspense>
+        <div className="page-heading-actions">
+          <Suspense fallback={null}>
+            <SitesArchivedToggle />
+          </Suspense>
+          {canManage ? <SiteCreateDialog foremanOptions={foremanOptions} /> : null}
+        </div>
       </div>
 
-      {canManage && (
-        <section className="panel form-panel">
-          <h2>Neue Baustelle</h2>
-          <SiteCreateForm foremanOptions={foremanOptions} />
-        </section>
-      )}
-
-      {(activeSites ?? []).length === 0 && !(showArchived && (archivedSites ?? []).length > 0) ? (
-        <p className="muted" style={{ marginTop: 16 }}>Noch keine aktiven Baustellen.</p>
-      ) : (
-        <div className="document-grid" style={{ marginTop: 16 }}>
-          {(activeSites ?? []).map((site) => (
-            <SiteCard key={site.id} site={site} />
-          ))}
-        </div>
-      )}
-
-      {showArchived && (
-        <>
-          <h2 style={{ marginTop: 28, marginBottom: 0, fontSize: 'var(--text-ui)', fontWeight: 600 }}>Archiviert</h2>
-          {(archivedSites ?? []).length === 0 ? (
-            <p className="muted">Keine archivierten Baustellen.</p>
-          ) : (
-            <div className="document-grid" style={{ marginTop: 12 }}>
-              {(archivedSites ?? []).map((site) => (
-                <SiteCard key={site.id} site={site} archived />
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <SitesListClient
+        activeSites={activeSites ?? []}
+        archivedSites={archivedSites ?? []}
+        signedUrls={signedUrls}
+        documentPathById={documentPathById}
+        canReorder={canReorder}
+        showArchived={showArchived}
+      />
     </>
   );
 }

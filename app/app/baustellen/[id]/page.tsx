@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireTenantMember } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
+import { SiteAppearanceSection } from '@/components/sites/site-appearance-section';
 import { SiteMetaForm } from '@/components/sites/site-meta-form';
 import { SiteContactsSection } from '@/components/sites/site-contacts-section';
 import { SiteTeamSection, type SiteTeamMemberRow } from '@/components/sites/site-team-section';
@@ -265,6 +266,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     : [foremanOptions, siteManagerOptions];
 
   const canManage = canAccess(ctx, 'sites.manage');
+  const canEditAppearance = canAccess(ctx, 'sites.appearance') && site.is_active;
   const canEdit = canManage && site.is_active;
   const canNavDocs = canAccess(ctx, 'nav.dokumentation');
   const canGenerate = canAccess(ctx, 'reports.generate');
@@ -289,7 +291,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       <div className="page-heading order-heading">
         <div>
           <span className={`status-badge ${site.is_active ? 'active' : 'travel'}`}>
-            {site.is_active ? 'Aktiv' : 'Archiviert'}
+            {site.is_active ? 'Aktiv' : 'Abgeschlossen'}
           </span>
           <h1>{site.name}</h1>
           <p>{formatSiteAddress(site) ?? '—'} · Kunde: {site.client_name ?? '—'}</p>
@@ -352,6 +354,14 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
               canEdit={canEdit}
             />
           </section>
+
+          {canEditAppearance ? (
+            <SiteAppearanceSection
+              site={site}
+              documents={documents ?? []}
+              signedUrls={Object.fromEntries(signedUrls)}
+            />
+          ) : null}
         </aside>
       </div>
     </>

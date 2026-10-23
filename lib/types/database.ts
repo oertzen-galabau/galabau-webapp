@@ -116,6 +116,10 @@ export type Site = {
   notes: string | null;
   responsible_user_id: string | null;
   site_manager_user_id: string | null;
+  icon_key: string;
+  cover_image_path: string | null;
+  cover_document_id: string | null;
+  list_sort_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;

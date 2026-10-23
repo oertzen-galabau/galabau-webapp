@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
+import { CheckCircle2, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { removeSite } from '@/lib/actions/admin';
@@ -18,7 +18,7 @@ export function SiteDeleteButton({ siteId, siteName, mode }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const isArchive = mode === 'archive';
+  const isComplete = mode === 'archive';
 
   function confirmRemove() {
     setError(null);
@@ -40,27 +40,27 @@ export function SiteDeleteButton({ siteId, siteName, mode }: Props) {
     <>
       <button
         type="button"
-        className={isArchive ? 'text-button' : 'primary-button primary-button--danger'}
+        className={isComplete ? 'secondary-button' : 'primary-button primary-button--danger'}
         onClick={() => setOpen(true)}
         disabled={pending}
       >
-        <Trash2 size={17} />
-        {isArchive ? 'Archivieren' : 'Entfernen'}
+        {isComplete ? <CheckCircle2 size={17} aria-hidden /> : <Trash2 size={17} aria-hidden />}
+        {isComplete ? 'Abgeschlossen' : 'Entfernen'}
       </button>
       <ConfirmDialog
         open={open}
         onClose={() => setOpen(false)}
-        title={isArchive ? `${siteName} archivieren?` : `${siteName} endgültig löschen?`}
+        title={isComplete ? `${siteName} abschließen?` : `${siteName} endgültig löschen?`}
         message={
           error ??
-          (isArchive
-            ? 'Diese Baustelle enthält Dokumentation oder verknüpfte Daten und wird archiviert, nicht gelöscht. Sie erscheint nicht mehr in aktiven Listen, bleibt aber einsehbar.'
-            : 'Diese Baustelle wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.')
+          (isComplete
+            ? 'Die Baustelle wird als abgeschlossen markiert und verschwindet aus der aktiven Liste. Dokumentation, Zeiten und verknüpfte Daten bleiben erhalten und sind weiter einsehbar.'
+            : 'Diese Baustelle wurde noch nicht genutzt und wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.')
         }
-        confirmLabel={isArchive ? 'Archivieren' : 'Endgültig löschen'}
+        confirmLabel={isComplete ? 'Abschließen' : 'Endgültig löschen'}
         onConfirm={confirmRemove}
         pending={pending}
-        danger={!isArchive}
+        danger={!isComplete}
       />
     </>
   );
