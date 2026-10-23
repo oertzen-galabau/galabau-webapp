@@ -20,6 +20,13 @@ if (!env.SUPABASE_SERVICE_ROLE_KEY) {
   );
 }
 
+const platformName = env.NEXT_PUBLIC_PLATFORM_NAME?.trim();
+if (platformName && platformName !== 'BauDiggi') {
+  console.warn(
+    `[build] WARNUNG: NEXT_PUBLIC_PLATFORM_NAME ist "${platformName}" — Marketing zeigt nicht "BauDiggi". Für Produktion auf BauDiggi setzen und neu bauen.`,
+  );
+}
+
 const smtpReady = Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_FROM);
 if (!smtpReady) {
   console.warn(

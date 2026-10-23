@@ -17,7 +17,6 @@ import {
   UserPlus,
   Settings,
   Play,
-  Leaf,
 } from 'lucide-react';
 import { getPlatformName } from '@/lib/tenant/config';
 import {
@@ -212,17 +211,17 @@ function HeroMockup() {
         <div className="marketing-mockup-rows">
           <div className="marketing-mockup-row">
             <em />
-            <b>Innenhof Alsterufer</b>
+            <b>Rohbau Nordstraße</b>
             <small>07:30</small>
           </div>
           <div className="marketing-mockup-row">
             <em />
-            <b>Parkanlage West</b>
+            <b>Sanierung Gewerbehof</b>
             <small>08:15</small>
           </div>
           <div className="marketing-mockup-row">
             <em />
-            <b>Neubau Grünfläche</b>
+            <b>Neubau Bürokomplex</b>
             <small>09:00</small>
           </div>
         </div>
@@ -398,7 +397,7 @@ export function MarketingLanding() {
       <section id="einsatz" className="marketing-section marketing-section-alt">
         <div className="marketing-shell">
           <SectionHead
-            eyebrow="BauDiggi"
+            eyebrow={platform}
             title="Gemacht für Ihren Betrieb."
             text={`${platform} verbindet Büro und Baustelle — Zeiten, Doku und Rapporte ohne generisches Baukastensystem.`}
           />
@@ -529,7 +528,7 @@ export function MarketingLanding() {
         <div className="marketing-footer-grid">
           <div>
             <div className="marketing-footer-brand">
-              <span className="brand-symbol"><Leaf size={18} /></span>
+              <span className="brand-symbol"><HardHat size={18} /></span>
               <strong>{platform}</strong>
             </div>
             <p>
