@@ -23,6 +23,8 @@ type AppDialogProps = {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Zweite Zeile unter dem Titel (z. B. Datum in Bild-Lightbox). */
+  subtitle?: string;
   children: React.ReactNode;
   titleId?: string;
   panelClassName?: string;
@@ -34,6 +36,7 @@ export function AppDialog({
   open,
   onClose,
   title,
+  subtitle,
   children,
   titleId,
   panelClassName,
@@ -74,7 +77,14 @@ export function AppDialog({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id={headingId}>{title}</h2>
+        {subtitle ? (
+          <div className="dialog-panel-titleblock">
+            <h2 id={headingId}>{title}</h2>
+            <p className="dialog-panel-subtitle">{subtitle}</p>
+          </div>
+        ) : (
+          <h2 id={headingId}>{title}</h2>
+        )}
         <div className="dialog-panel-body">{children}</div>
         {footer}
       </div>

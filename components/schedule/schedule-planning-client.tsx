@@ -614,10 +614,10 @@ export function SchedulePlanningClient({
 
   return (
     <div className="schedule-page">
-      <header className="page-header schedule-header">
+      <header className="page-heading schedule-header">
         <div>
           <h1>Einsatzplanung</h1>
-          <p className="muted">
+          <p>
             {view === 'day'
               ? selectedDayPublished
                 ? `Tag veröffentlicht · ${formatGermanWeekdayDate(selectedDay)}`

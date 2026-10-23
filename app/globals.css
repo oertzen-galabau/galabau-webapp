@@ -5424,6 +5424,30 @@ button.schedule-day-timeline-event {
   padding: 0;
   overflow: hidden;
 }
+.dialog-panel--image .dialog-panel-titleblock {
+  flex-shrink: 0;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.dialog-panel--image .dialog-panel-titleblock h2 {
+  margin: 0;
+  font-size: clamp(15px, 2.8vw, 18px);
+  font-weight: 700;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.dialog-panel--image .dialog-panel-subtitle {
+  margin: 6px 0 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-soft);
+}
+.dialog-panel--image .dialog-panel-body {
+  padding: 0;
+  overflow: hidden;
+}
 .dialog-panel--image img {
   display: block;
   width: 100%;

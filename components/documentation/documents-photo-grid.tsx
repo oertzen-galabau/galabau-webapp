@@ -19,14 +19,36 @@ function formatDisplayDate(isoDate: string) {
   });
 }
 
-function lightboxTitle(item: DocumentationOverviewItem): string {
-  const date = formatDisplayDate(item.sortDate);
+function formatLightboxDate(isoDate: string) {
+  if (!isoDate) return '—';
+  return new Date(`${isoDate}T12:00:00`).toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function isGenericPhotoTitle(title: string | undefined, sortDate: string) {
+  const t = title?.trim();
+  if (!t) return true;
+  return t === `Foto · ${sortDate}`;
+}
+
+function lightboxHeading(item: DocumentationOverviewItem): string {
   const site = item.siteName?.trim();
-  if (site && item.title?.trim() && item.title !== `Foto · ${item.sortDate}`) {
-    return `${site} · ${date}`;
-  }
-  if (site) return `${site} · ${date}`;
-  return item.title?.trim() || `Foto · ${date}`;
+  const title = item.title?.trim();
+  if (site) return site;
+  if (title && !isGenericPhotoTitle(title, item.sortDate)) return title;
+  return 'Foto';
+}
+
+function lightboxCaption(item: DocumentationOverviewItem): string | null {
+  const title = item.title?.trim();
+  if (!title || isGenericPhotoTitle(title, item.sortDate)) return null;
+  const site = item.siteName?.trim();
+  if (site && title === site) return null;
+  return title;
 }
 
 export function DocumentsPhotoGrid({
@@ -38,6 +60,8 @@ export function DocumentsPhotoGrid({
   if (items.length === 0) {
     return <p className="muted">{emptyMessage}</p>;
   }
+
+  const lightboxCaptionText = lightbox ? lightboxCaption(lightbox) : null;
 
   return (
     <>
@@ -78,15 +102,16 @@ export function DocumentsPhotoGrid({
       <AppDialog
         open={Boolean(lightbox?.fileUrl)}
         onClose={() => setLightbox(null)}
-        title={lightbox ? lightboxTitle(lightbox) : ''}
+        title={lightbox ? lightboxHeading(lightbox) : ''}
+        subtitle={lightbox ? formatLightboxDate(lightbox.sortDate) : undefined}
         panelClassName="dialog-panel--image"
       >
         {lightbox?.fileUrl ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lightbox.fileUrl} alt={lightbox.title} />
-            {lightbox.title ? (
-              <p className="documents-photo-lightbox-caption muted">{lightbox.title}</p>
+            <img src={lightbox.fileUrl} alt={lightboxHeading(lightbox)} />
+            {lightboxCaptionText ? (
+              <p className="documents-photo-lightbox-caption muted">{lightboxCaptionText}</p>
             ) : null}
           </>
         ) : null}
