@@ -1276,6 +1276,9 @@ html.dialog-open body {
 .app-select-trigger-icon { width: 16px; height: 16px; flex: none; color: var(--text-soft); }
 .app-select-content {
   width: var(--anchor-width, 12rem); min-width: 12rem; max-width: min(100vw - 2rem, 24rem);
+  max-height: min(16rem, var(--available-height, 16rem));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   border-color: var(--line) !important; background: var(--surface-raised) !important;
   color: var(--text) !important; box-shadow: var(--shadow) !important;
 }
@@ -4321,6 +4324,15 @@ button.input-form-file-cta {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.schedule-member-table-group-row th {
+  border-top: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
 .schedule-member-table-check {
   width: 5.5rem;
   text-align: center;
@@ -4462,16 +4474,23 @@ button.input-form-file-cta {
   box-shadow: var(--shadow);
   overflow: hidden;
 }
-.schedule-week-grid {
+.schedule-week-grid-scroll {
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.schedule-week-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(9.25rem, 1fr));
   column-gap: 1px;
   row-gap: 0;
-  min-width: 0;
+  min-width: 100%;
   background: var(--line);
 }
-.schedule-week-grid.is-weekend-expanded { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.schedule-week-grid.is-weekend-expanded { grid-template-columns: repeat(7, minmax(9.25rem, 1fr)); }
 .schedule-week-grid--by-day { align-items: stretch; }
 .schedule-week-day-col {
   display: flex;
@@ -4565,7 +4584,7 @@ button.input-form-file-cta {
 .schedule-week-col-head-drop.schedule-drop-target { outline: 2px solid var(--brand); outline-offset: -2px; }
 .schedule-week-entry-slot { min-width: 0; z-index: 1; position: relative; padding: 0 6px; box-sizing: border-box; }
 .schedule-week-entry-drop { height: 100%; min-height: 100%; }
-.schedule-week-entry-drop .schedule-entry-card { touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.schedule-week-entry-drop .schedule-entry-card { touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .schedule-drop-target { outline: 2px solid var(--brand); outline-offset: -2px; }
 .schedule-entry-card { display: flex; width: 100%; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface-raised); text-align: left; cursor: pointer; }
 .schedule-entry-card-conflict {
@@ -4609,12 +4628,20 @@ button.input-form-file-cta {
 }
 .schedule-day-timeline-scroll {
   max-height: min(72vh, 840px);
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-.schedule-day-timeline-inner { display: flex; flex-direction: row; align-items: stretch; min-width: 0; }
+.schedule-day-timeline-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 100%;
+  width: max-content;
+}
 .schedule-day-timeline-hours {
+  position: sticky;
+  left: 0;
   flex: none;
   width: 52px;
   padding: 0 8px 0 4px;
@@ -4623,14 +4650,7 @@ button.input-form-file-cta {
   color: var(--text-soft);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  z-index: 2;
-}
-.schedule-day-timeline-grid-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  z-index: 3;
 }
 .schedule-day-timeline-hour-label {
   display: flex;
@@ -4721,7 +4741,7 @@ button.schedule-day-timeline-event {
 }
 .schedule-day-timeline-event--clickable {
   cursor: grab;
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
 }
 .schedule-day-timeline-event--clickable:active {
   cursor: grabbing;

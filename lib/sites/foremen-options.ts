@@ -21,32 +21,36 @@ export async function withProfileOption(
   return [{ value: profile.id, label }, ...options];
 }
 
-/** Aktive Vorarbeiter des Mandanten (System-Rolle slug vorarbeiter). */
+/** Vorarbeiter zuerst, danach alle weiteren aktiven Mitarbeiter (Baustellen-Vorarbeiter-Auswahl). */
 export async function loadForemanOptions(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<ForemanOption[]> {
   const { data: roles } = await supabase
     .from('tenant_roles')
-    .select('id')
+    .select('id, slug')
     .eq('tenant_id', tenantId)
     .eq('slug', 'vorarbeiter');
 
-  const roleIds = (roles ?? []).map((r) => r.id);
-  if (!roleIds.length) return [];
+  const foremanRoleIds = new Set((roles ?? []).map((r) => r.id));
 
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, first_name, last_name')
+    .select('id, first_name, last_name, tenant_role_id')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
-    .in('tenant_role_id', roleIds)
     .order('last_name');
 
-  return (profiles ?? []).map((p) => ({
+  const toOption = (p: { id: string; first_name: string; last_name: string }): ForemanOption => ({
     value: p.id,
     label: `${p.first_name} ${p.last_name}`.trim(),
-  }));
+  });
+
+  const list = profiles ?? [];
+  const foremen = list.filter((p) => p.tenant_role_id && foremanRoleIds.has(p.tenant_role_id));
+  const others = list.filter((p) => !p.tenant_role_id || !foremanRoleIds.has(p.tenant_role_id));
+
+  return [...foremen.map(toOption), ...others.map(toOption)];
 }
 
 export type EmployeeTeamOption = { value: string; label: string; roleLabel: string };

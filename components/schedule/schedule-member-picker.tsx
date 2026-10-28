@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type { LeaveDay } from '@/lib/schedule/conflicts';
 import {
   employeeDisplayName,
   filterScheduleEmployeesForPicker,
+  groupScheduleEmployeesForPicker,
   type ScheduleEmployeePick,
   type ScheduleWorkAreaPick,
 } from '@/lib/schedule/employee-filter';
@@ -44,10 +45,13 @@ export function ScheduleMemberPicker({
         showNonAssignable: false,
         planDates,
         leaveDays,
-      }).sort((a, b) =>
-        employeeDisplayName(a).localeCompare(employeeDisplayName(b), 'de'),
-      ),
+      }),
     [employees, workAreas, planDates, leaveDays],
+  );
+
+  const employeeGroups = useMemo(
+    () => groupScheduleEmployeesForPicker(visibleEmployees, workAreas),
+    [visibleEmployees, workAreas],
   );
 
   function toggleMember(id: string, checked: boolean) {
@@ -83,6 +87,37 @@ export function ScheduleMemberPicker({
     return <p className="muted">Keine aktiven Mitarbeiter im Team.</p>;
   }
 
+  function renderEmployeeRow(e: ScheduleEmployeePick) {
+    const name = employeeDisplayName(e);
+    return (
+      <tr key={e.id}>
+        <td>{name}</td>
+        <td className="schedule-member-table-check">
+          <label className="schedule-member-table-checkbox">
+            <input
+              type="checkbox"
+              checked={selectedIds.has(e.id)}
+              onChange={(ev) => toggleMember(e.id, ev.target.checked)}
+              disabled={disabled}
+              aria-label={`${name} einplanen`}
+            />
+          </label>
+        </td>
+        <td className="schedule-member-table-check">
+          <label className="schedule-member-table-checkbox">
+            <input
+              type="checkbox"
+              checked={foremanId === e.id}
+              onChange={(ev) => toggleForeman(e.id, ev.target.checked)}
+              disabled={disabled}
+              aria-label={`${name} als Vorarbeiter`}
+            />
+          </label>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <div className="schedule-member-picker">
       {hiddenSelectedCount > 0 ? (
@@ -106,36 +141,16 @@ export function ScheduleMemberPicker({
             </tr>
           </thead>
           <tbody>
-            {visibleEmployees.map((e) => {
-              const name = employeeDisplayName(e);
-              return (
-                <tr key={e.id}>
-                  <td>{name}</td>
-                  <td className="schedule-member-table-check">
-                    <label className="schedule-member-table-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(e.id)}
-                        onChange={(ev) => toggleMember(e.id, ev.target.checked)}
-                        disabled={disabled}
-                        aria-label={`${name} einplanen`}
-                      />
-                    </label>
-                  </td>
-                  <td className="schedule-member-table-check">
-                    <label className="schedule-member-table-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={foremanId === e.id}
-                        onChange={(ev) => toggleForeman(e.id, ev.target.checked)}
-                        disabled={disabled}
-                        aria-label={`${name} als Vorarbeiter`}
-                      />
-                    </label>
-                  </td>
+            {employeeGroups.map((group) => (
+              <Fragment key={group.key}>
+                <tr className="schedule-member-table-group-row">
+                  <th colSpan={3} scope="rowgroup">
+                    {group.label}
+                  </th>
                 </tr>
-              );
-            })}
+                {group.employees.map((e) => renderEmployeeRow(e))}
+              </Fragment>
+            ))}
           </tbody>
         </table>
         {visibleEmployees.length === 0 ? (

@@ -858,6 +858,7 @@ export function SchedulePlanningClient({
         {view === 'week' ? (
           <div className="schedule-board">
             <div className={`schedule-week-wrap${weekendExpanded ? ' is-weekend-expanded' : ''}`}>
+            <div className="schedule-week-grid-scroll">
             <div className={`schedule-week-grid schedule-week-grid--by-day${weekendExpanded ? ' is-weekend-expanded' : ''}`}>
               {visibleWeekDays.map((day) => {
                 const labelIdx = plan.weekDays.indexOf(day);
@@ -900,6 +901,7 @@ export function SchedulePlanningClient({
                   </div>
                 );
               })}
+            </div>
             </div>
             <button
               type="button"

@@ -1112,7 +1112,7 @@ export async function inviteEmployee(
         firstName,
         tempPassword,
       });
-      revalidatePath('/app/team');
+      revalidateEmployeePaths(userId);
       return result;
     } catch (inviteError) {
       await admin.auth.admin.deleteUser(userId);
@@ -1203,6 +1203,8 @@ export async function updateMemberRole(formData: FormData) {
 function revalidateEmployeePaths(userId: string) {
   revalidatePath('/app/team');
   revalidatePath(`/app/team/${userId}`);
+  revalidatePath('/app/baustellen', 'layout');
+  revalidatePath('/app/einsatzplanung');
 }
 
 async function assertTenantMember(
@@ -1330,6 +1332,8 @@ export async function deleteTeamMember(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath('/app/team');
+  revalidatePath('/app/baustellen', 'layout');
+  revalidatePath('/app/einsatzplanung');
 }
 
 export async function sendEmployeePasswordReset(formData: FormData) {

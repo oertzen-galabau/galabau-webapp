@@ -87,7 +87,10 @@ export function ScheduleDayTimeline({
   return (
     <div className="schedule-day-timeline">
       <div className="schedule-day-timeline-scroll">
-        <div className="schedule-day-timeline-inner">
+        <div
+          className="schedule-day-timeline-inner"
+          style={gridWidthPercent > 100 ? { minWidth: `${gridWidthPercent}%` } : undefined}
+        >
           <div className="schedule-day-timeline-hours" aria-hidden="true">
             {HOUR_SLOTS.map((hour) => (
               <div
@@ -99,19 +102,18 @@ export function ScheduleDayTimeline({
               </div>
             ))}
           </div>
-          <div className="schedule-day-timeline-grid-scroll">
-            <div
-              className={[
-                'schedule-day-timeline-grid',
-                gridWidthPercent > 100 ? 'schedule-day-timeline-grid--scroll-x' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              style={{
-                height: gridHeight,
-                ...(gridWidthPercent > 100 ? { width: `${gridWidthPercent}%` } : {}),
-              }}
-            >
+          <div
+            className={[
+              'schedule-day-timeline-grid',
+              gridWidthPercent > 100 ? 'schedule-day-timeline-grid--scroll-x' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{
+              height: gridHeight,
+              ...(gridWidthPercent > 100 ? { flex: `0 0 ${gridWidthPercent}%` } : {}),
+            }}
+          >
             {HOUR_SLOTS.map((hour, index) => (
               <div
                 key={hour}
@@ -266,7 +268,6 @@ export function ScheduleDayTimeline({
                 );
               })
             )}
-            </div>
           </div>
         </div>
       </div>

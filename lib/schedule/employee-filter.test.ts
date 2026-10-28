@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   filterScheduleEmployeesForPicker,
+  groupScheduleEmployeesForPicker,
   isAbsentOnAnyPlanDate,
   isEmployeeSelectableForSchedule,
 } from '@/lib/schedule/employee-filter';
@@ -20,14 +21,14 @@ const employees = [
 const leaveDays = [{ userId: 'u1', date: '2026-10-24', leaveType: 'vacation' }];
 
 describe('filterScheduleEmployeesForPicker', () => {
-  it('blendet nicht einplanbare Bereiche und Mitarbeiter ohne Bereich aus', () => {
+  it('blendet nicht einplanbare Bereiche aus, Mitarbeiter ohne Bereich bleiben sichtbar', () => {
     const visible = filterScheduleEmployeesForPicker(employees, workAreas, {
       areaKey: 'all',
       areaId: null,
       searchQuery: '',
       showNonAssignable: false,
     });
-    assert.deepEqual(visible.map((e) => e.id), ['u1']);
+    assert.deepEqual(visible.map((e) => e.id), ['u1', 'u3']);
   });
 
   it('filtert nach Bereich und Suche', () => {
@@ -49,7 +50,7 @@ describe('filterScheduleEmployeesForPicker', () => {
       planDates: ['2026-10-23', '2026-10-24'],
       leaveDays,
     });
-    assert.deepEqual(visible.map((e) => e.id), []);
+    assert.deepEqual(visible.map((e) => e.id), ['u3']);
   });
 });
 
@@ -72,7 +73,24 @@ describe('isEmployeeSelectableForSchedule', () => {
     );
     assert.equal(
       isEmployeeSelectableForSchedule(employees[2]!, workAreas, ['2026-10-23'], leaveDays),
-      false,
+      true,
     );
+  });
+});
+
+describe('groupScheduleEmployeesForPicker', () => {
+  it('ordnet Mitarbeiter ohne Bereich in eigene Gruppe', () => {
+    const visible = filterScheduleEmployeesForPicker(employees, workAreas, {
+      areaKey: 'all',
+      areaId: null,
+      searchQuery: '',
+      showNonAssignable: false,
+    });
+    const groups = groupScheduleEmployeesForPicker(visible, workAreas);
+    assert.equal(groups.length, 2);
+    assert.equal(groups[0]!.label, 'Baustelle');
+    assert.deepEqual(groups[0]!.employees.map((e) => e.id), ['u1']);
+    assert.equal(groups[1]!.label, 'Ohne Bereich');
+    assert.deepEqual(groups[1]!.employees.map((e) => e.id), ['u3']);
   });
 });
