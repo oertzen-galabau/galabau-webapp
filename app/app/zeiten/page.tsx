@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
-import { saveTimeEntry, resubmitTimeEntry } from '@/lib/actions/employee';
-import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
+import { saveTimeEntryAction, resubmitTimeEntryAction } from '@/lib/actions/employee';
+import { TimeEntrySaveForm } from '@/components/time-tracking/time-entry-save-form';
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
 import { fetchAccessibleSites, type AccessibleSiteRow } from '@/lib/sites/access';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
@@ -183,6 +183,22 @@ export default async function ZeitenPage() {
         </div>
       ) : null}
 
+      {(rejectedEntries ?? []).length > 0 ? (
+        <div className="callout callout-danger" role="alert" style={{ marginBottom: 16 }}>
+          <strong>
+            {(rejectedEntries ?? []).length === 1
+              ? '1 Zeiteintrag wurde abgelehnt'
+              : `${(rejectedEntries ?? []).length} Zeiteinträge wurden abgelehnt`}
+          </strong>
+          <p className="muted" style={{ margin: '8px 0' }}>
+            Bitte unten unter „Zu korrigieren“ anpassen und erneut einreichen.
+          </p>
+          <Link href="#korrektur" className="text-button">
+            Zur Korrektur
+          </Link>
+        </div>
+      ) : null}
+
       {(rejectedEntries ?? []).length > 0 && (
         <section className="panel form-panel" id="korrektur" style={{ marginBottom: 16 }}>
           <h2>Zu korrigieren</h2>
@@ -195,26 +211,25 @@ export default async function ZeitenPage() {
                 <strong>Abgelehnt am {entry.work_date}</strong>
                 <p>{entry.rejection_reason}</p>
               </div>
-              <form action={resubmitTimeEntry} className="input-form">
-                <input type="hidden" name="id" value={entry.id} />
-                <TimeEntryFormFields
-                  sites={sites}
-                  entry={entry}
-                  initialBlocks={(segmentsByEntry.get(entry.id) ?? [])
-                    .filter((segment) => segment.start_time && segment.end_time)
-                    .map((segment) => ({
-                      block_type: segment.block_type as import('@/lib/types/database').TimeBlockType,
-                      start_time: segment.start_time!.slice(0, 5),
-                      end_time: segment.end_time!.slice(0, 5),
-                      site_id: segment.site_id,
-                      travel_minutes: segment.travel_minutes,
-                    }))}
-                  submitLabel="Erneut einreichen"
-                  compact
-                  badWeatherSeasonStart={badWeatherSeasonStart}
-                  badWeatherSeasonEnd={badWeatherSeasonEnd}
-                />
-              </form>
+              <TimeEntrySaveForm
+                action={resubmitTimeEntryAction}
+                hiddenFields={<input type="hidden" name="id" value={entry.id} />}
+                sites={sites}
+                entry={entry}
+                initialBlocks={(segmentsByEntry.get(entry.id) ?? [])
+                  .filter((segment) => segment.start_time && segment.end_time)
+                  .map((segment) => ({
+                    block_type: segment.block_type as import('@/lib/types/database').TimeBlockType,
+                    start_time: segment.start_time!.slice(0, 5),
+                    end_time: segment.end_time!.slice(0, 5),
+                    site_id: segment.site_id,
+                    travel_minutes: segment.travel_minutes,
+                  }))}
+                submitLabel="Erneut einreichen"
+                compact
+                badWeatherSeasonStart={badWeatherSeasonStart}
+                badWeatherSeasonEnd={badWeatherSeasonEnd}
+              />
             </article>
           ))}
         </section>
@@ -227,15 +242,14 @@ export default async function ZeitenPage() {
             Zeiterfassung ist vorübergehend nicht möglich, weil keine Baustellen geladen werden konnten.
           </p>
         ) : (
-          <form action={saveTimeEntry} className="input-form">
-            <TimeEntryFormFields
-              sites={sites}
-              submitLabel="Speichern"
-              compact
-              badWeatherSeasonStart={badWeatherSeasonStart}
-              badWeatherSeasonEnd={badWeatherSeasonEnd}
-            />
-          </form>
+          <TimeEntrySaveForm
+            action={saveTimeEntryAction}
+            sites={sites}
+            submitLabel="Speichern"
+            compact
+            badWeatherSeasonStart={badWeatherSeasonStart}
+            badWeatherSeasonEnd={badWeatherSeasonEnd}
+          />
         )}
       </section>
 

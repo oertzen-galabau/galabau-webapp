@@ -3,8 +3,10 @@ import {
   assertBreakReasonsProvided,
   evaluateBreakCompliance,
   loadTenantTimeTrackingRules,
+  placeExpectedBreakTimes,
 } from '@/lib/time-tracking/break-rules';
 import {
+  alignTimelineToDayBounds,
   isTimelineMode,
   primarySiteIdFromBlocks,
   syncLegacyPauseFields,
@@ -67,6 +69,7 @@ export async function processTimeEntrySubmission(
   const timelineWarnings: string[] = [];
 
   if (timelineMode) {
+    segments = alignTimelineToDayBounds(segments, input.start_time, input.end_time);
     const validation = validateTimeline(segments, input.start_time, input.end_time, {
       requireFullCoverage: true,
     });
@@ -84,6 +87,20 @@ export async function processTimeEntrySubmission(
     lunch_start = syncedPauses.lunch_start;
     lunch_end = syncedPauses.lunch_end;
   } else {
+    const placed = placeExpectedBreakTimes({
+      startTime: input.start_time,
+      endTime: input.end_time,
+      rules,
+      breakfast: { start: breakfast_start, end: breakfast_end },
+      lunch: { start: lunch_start, end: lunch_end },
+      skipBreakfast: Boolean(input.missing_breakfast_reason?.trim()),
+      skipLunch: Boolean(input.missing_lunch_reason?.trim()),
+    });
+    breakfast_start = placed.breakfast_start;
+    breakfast_end = placed.breakfast_end;
+    lunch_start = placed.lunch_start;
+    lunch_end = placed.lunch_end;
+
     work_minutes = grossWorkMinutes;
     const breakfastStart = parseTime(breakfast_start);
     const breakfastEnd = parseTime(breakfast_end);

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { deleteTimeEntry, updateTimeEntry } from '@/lib/actions/employee';
+import { deleteTimeEntry, updateTimeEntryAction } from '@/lib/actions/employee';
 import {
   timeEntryStatusBadgeClass,
   timeEntryStatusLabel,
@@ -19,7 +20,7 @@ import {
   EditIconAction,
   TableIconActions,
 } from '@/components/ui/icon-action-button';
-import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
+import { TimeEntrySaveForm } from '@/components/time-tracking/time-entry-save-form';
 import { BookingPreviewList } from '@/components/payroll/booking-preview-list';
 import { computeBookingPreview } from '@/lib/payroll/booking-rules';
 import { driverTripLabel } from '@/lib/time-tracking/driver-trip';
@@ -63,24 +64,31 @@ export function TimeEntryOverviewRow({
   tenantConfig,
 }: Props) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [showBookings, setShowBookings] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   const deserializedConfig = deserializeTenantConfig(tenantConfig);
   const badWeatherCfg = deserializedConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
   const { season_start: badWeatherSeasonStart, season_end: badWeatherSeasonEnd } =
     getBadWeatherSeasonFromConfig(badWeatherCfg);
 
-  const bookingSegments: TimelineBlockInput[] = segments.map((segment) => ({
-    block_type: (segment.block_type ?? 'site_work') as TimeBlockType,
-    start_time: segment.start_time?.slice(0, 5) ?? '',
-    end_time: segment.end_time?.slice(0, 5) ?? '',
-    site_id: segment.site_id,
-    travel_minutes: segment.travel_minutes,
-  }));
+  const initialBlocks = useMemo(
+    () =>
+      segments
+        .filter((segment) => segment.start_time && segment.end_time)
+        .map((segment) => ({
+          block_type: (segment.block_type ?? 'site_work') as TimeBlockType,
+          start_time: segment.start_time!.slice(0, 5),
+          end_time: segment.end_time!.slice(0, 5),
+          site_id: segment.site_id,
+          travel_minutes: segment.travel_minutes,
+        })),
+    [segments],
+  );
+
+  const bookingSegments: TimelineBlockInput[] = initialBlocks;
 
   const preview = computeBookingPreview({
     entry,
@@ -91,26 +99,21 @@ export function TimeEntryOverviewRow({
 
   const editable = isTimeEntryEditable(entry);
   const deletable = isTimeEntryDeletable(entry, today);
+  const isRejected = entry.approval_status === 'rejected';
   const badgeClass = timeEntryStatusBadgeClass(entry.approval_status, !!entry.end_time);
   const showActions = editable || deletable;
 
-  function run(action: () => Promise<void>, onSuccess?: () => void) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-        onSuccess?.();
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Fehler');
-      }
-    });
-  }
-
-  function confirmDelete() {
-    const formData = new FormData();
-    formData.set('id', entry.id);
-    run(() => deleteTimeEntry(formData), () => setDeleteOpen(false));
+  async function confirmDelete() {
+    setDeletePending(true);
+    try {
+      const formData = new FormData();
+      formData.set('id', entry.id);
+      await deleteTimeEntry(formData);
+      setDeleteOpen(false);
+      router.refresh();
+    } finally {
+      setDeletePending(false);
+    }
   }
 
   return (
@@ -126,6 +129,11 @@ export function TimeEntryOverviewRow({
           <span className={`status-badge ${badgeClass}`}>
             {timeEntryStatusLabel(entry.approval_status, !!entry.end_time)}
           </span>
+          {isRejected && !editing ? (
+            <Link href="/app/zeiten#korrektur" className="text-button" style={{ marginLeft: 8 }}>
+              Korrigieren
+            </Link>
+          ) : null}
         </td>
         {showActions && (
           <td className="data-table-actions">
@@ -133,24 +141,18 @@ export function TimeEntryOverviewRow({
               {editable && (
                 editing ? (
                   <CancelEditIconAction
-                    disabled={pending}
-                    onClick={() => {
-                      setError(null);
-                      setEditing(false);
-                    }}
+                    disabled={deletePending}
+                    onClick={() => setEditing(false)}
                   />
                 ) : (
                   <EditIconAction
-                    disabled={pending}
-                    onClick={() => {
-                      setError(null);
-                      setEditing(true);
-                    }}
+                    disabled={deletePending}
+                    onClick={() => setEditing(true)}
                   />
                 )
               )}
               {deletable && (
-                <DeleteIconAction disabled={pending} onClick={() => setDeleteOpen(true)} />
+                <DeleteIconAction disabled={deletePending} onClick={() => setDeleteOpen(true)} />
               )}
             </TableIconActions>
           </td>
@@ -178,47 +180,37 @@ export function TimeEntryOverviewRow({
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
         title="Zeiteintrag löschen"
         message={`Zeiteintrag vom ${entry.work_date} wirklich löschen?`}
         confirmLabel="Löschen"
         danger
-        pending={pending}
+        pending={deletePending}
       />
 
       {editing && editable && (
         <tr className="time-entry-edit-row">
           <td colSpan={8}>
-            <form
-              className="input-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                formData.set('id', entry.id);
-                run(() => updateTimeEntry(formData), () => setEditing(false));
-              }}
-            >
-              <TimeEntryFormFields
-                sites={sites}
-                entry={entry}
-                initialBlocks={segments
-                  .filter((segment) => segment.start_time && segment.end_time)
-                  .map((segment) => ({
-                    block_type: (segment.block_type ?? 'site_work') as import('@/lib/types/database').TimeBlockType,
-                    start_time: segment.start_time!.slice(0, 5),
-                    end_time: segment.end_time!.slice(0, 5),
-                    site_id: segment.site_id,
-                    travel_minutes: segment.travel_minutes,
-                  }))}
-                submitLabel="Speichern"
-                minDate={minEditableWorkDate(today)}
-                maxDate={today}
-                compact
-                badWeatherSeasonStart={badWeatherSeasonStart}
-                badWeatherSeasonEnd={badWeatherSeasonEnd}
-              />
-            </form>
-            {error && <p className="dialog-error">{error}</p>}
+            {isRejected && entry.rejection_reason ? (
+              <div className="callout callout-danger" style={{ marginBottom: 16 }}>
+                <strong>Ablehnungsgrund</strong>
+                <p>{entry.rejection_reason}</p>
+              </div>
+            ) : null}
+            <TimeEntrySaveForm
+              action={updateTimeEntryAction}
+              hiddenFields={<input type="hidden" name="id" value={entry.id} />}
+              sites={sites}
+              entry={entry}
+              initialBlocks={initialBlocks}
+              submitLabel="Speichern"
+              minDate={minEditableWorkDate(today)}
+              maxDate={today}
+              compact
+              badWeatherSeasonStart={badWeatherSeasonStart}
+              badWeatherSeasonEnd={badWeatherSeasonEnd}
+              onSuccess={() => setEditing(false)}
+            />
           </td>
         </tr>
       )}

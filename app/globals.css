@@ -305,7 +305,8 @@ button { cursor: pointer; }
   background: color-mix(in srgb, var(--brand) 8%, var(--surface-raised));
 }
 .header-clock--breakfast,
-.header-clock--lunch {
+.header-clock--lunch,
+.header-clock--paused {
   border-color: color-mix(in srgb, var(--warning) 50%, var(--line));
   background: color-mix(in srgb, var(--warning) 10%, var(--surface-raised));
 }
@@ -350,7 +351,8 @@ button { cursor: pointer; }
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 16%, transparent);
 }
 .header-clock--breakfast .header-clock-dot,
-.header-clock--lunch .header-clock-dot {
+.header-clock--lunch .header-clock-dot,
+.header-clock--paused .header-clock-dot {
   background: var(--warning);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 16%, transparent);
 }

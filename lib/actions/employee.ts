@@ -6,8 +6,10 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { parseSegmentsFromForm } from '@/lib/time-tracking/form-parsing';
 import { processTimeEntrySubmission } from '@/lib/time-tracking/submission';
+import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import {
   deriveWorkDayState,
+  resolveNextPauseSlot,
   todayWorkDate,
   toTimeString,
   type TimeEntryLike,
@@ -202,6 +204,48 @@ export async function clockLunchEnd() {
   revalidateTimePaths();
 }
 
+export async function clockPauseStart() {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'zeiten.record');
+  const { tenantId, userId } = ctx;
+
+  const supabase = await createClient();
+  const workDate = todayWorkDate();
+  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
+  assertState(entry, ['working']);
+
+  const rules = await loadTenantTimeTrackingRules(supabase, tenantId);
+  const slot = resolveNextPauseSlot(entry, new Date(), rules);
+  if (!slot) throw new Error('Keine Pause mehr verfügbar.');
+
+  const now = toTimeString(new Date());
+  const patch =
+    slot === 'breakfast' ? { breakfast_start: now } : { lunch_start: now };
+  const { error } = await supabase.from('time_entries').update(patch).eq('id', entry!.id);
+  if (error) throw new Error(error.message);
+  revalidateTimePaths();
+}
+
+export async function clockPauseEnd() {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'zeiten.record');
+  const { tenantId, userId } = ctx;
+
+  const supabase = await createClient();
+  const workDate = todayWorkDate();
+  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
+  const state = deriveWorkDayState(entry);
+  if (state !== 'breakfast' && state !== 'lunch') {
+    throw new Error('Keine laufende Pause.');
+  }
+
+  const now = toTimeString(new Date());
+  const patch = state === 'breakfast' ? { breakfast_end: now } : { lunch_end: now };
+  const { error } = await supabase.from('time_entries').update(patch).eq('id', entry!.id);
+  if (error) throw new Error(error.message);
+  revalidateTimePaths();
+}
+
 export type ClockOutPayload = {
   driverTrip: DriverTrip;
   segments: SegmentInput[];
@@ -335,6 +379,41 @@ function parseTimeEntryForm(formData: FormData) {
     notes: (formData.get('notes') as string) || null,
     segments,
   };
+}
+
+export type TimeEntryFormState = { ok?: boolean; error?: string | null };
+
+async function wrapTimeEntryFormAction(
+  run: (formData: FormData) => Promise<void>,
+  formData: FormData,
+): Promise<TimeEntryFormState> {
+  try {
+    await run(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Speichern fehlgeschlagen.' };
+  }
+}
+
+export async function saveTimeEntryAction(
+  _prev: TimeEntryFormState | null,
+  formData: FormData,
+): Promise<TimeEntryFormState> {
+  return wrapTimeEntryFormAction(saveTimeEntry, formData);
+}
+
+export async function resubmitTimeEntryAction(
+  _prev: TimeEntryFormState | null,
+  formData: FormData,
+): Promise<TimeEntryFormState> {
+  return wrapTimeEntryFormAction(resubmitTimeEntry, formData);
+}
+
+export async function updateTimeEntryAction(
+  _prev: TimeEntryFormState | null,
+  formData: FormData,
+): Promise<TimeEntryFormState> {
+  return wrapTimeEntryFormAction(updateTimeEntry, formData);
 }
 
 export async function saveTimeEntry(formData: FormData) {

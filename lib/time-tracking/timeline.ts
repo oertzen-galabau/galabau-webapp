@@ -49,6 +49,24 @@ export function normalizeTimelineBlocks(blocks: TimelineBlockInput[]): TimelineB
     .sort((a, b) => (parseTime(a.start_time) ?? 0) - (parseTime(b.start_time) ?? 0));
 }
 
+/** Erster/letzter Block an Tages-Start/Ende anbinden (Bearbeiten ohne manuelle Block-Pflege). */
+export function alignTimelineToDayBounds(
+  blocks: TimelineBlockInput[],
+  dayStart: string,
+  dayEnd: string,
+): TimelineBlockInput[] {
+  const normalized = normalizeTimelineBlocks(blocks.filter((b) => b.start_time && b.end_time));
+  if (normalized.length === 0) return blocks;
+
+  const start = dayStart.slice(0, 5);
+  const end = dayEnd.slice(0, 5);
+  return normalized.map((block, index) => ({
+    ...block,
+    start_time: index === 0 ? start : block.start_time,
+    end_time: index === normalized.length - 1 ? end : block.end_time,
+  }));
+}
+
 export function validateTimeline(
   blocks: TimelineBlockInput[],
   dayStart: string,

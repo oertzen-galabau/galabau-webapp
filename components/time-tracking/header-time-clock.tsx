@@ -1,22 +1,16 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock3, Pause, Play, Square } from 'lucide-react';
-import {
-  clockBreakfastEnd,
-  clockBreakfastStart,
-  clockInWork,
-  clockLunchEnd,
-  clockLunchStart,
-} from '@/lib/actions/employee';
+import { clockInWork, clockPauseEnd, clockPauseStart } from '@/lib/actions/employee';
 import type { TimeEntry } from '@/lib/types/database';
 import {
-  breakfastAvailable,
+  adjustLiveDisplaySeconds,
   computeLiveWorkSeconds,
   deriveWorkDayState,
-  lunchAvailable,
-  workDayStateLabel,
+  headerClockStateLabel,
+  pauseAvailable,
 } from '@/lib/time-tracking/work-day';
 import {
   ClockOutDialog,
@@ -38,27 +32,44 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [clockOutContext, setClockOutContext] = useState<ClockOutContext | null>(null);
   const [loadingClockOut, setLoadingClockOut] = useState(false);
+  const freshClockInRef = useRef(false);
+  const [displayBaselineSeconds, setDisplayBaselineSeconds] = useState<number | null>(null);
 
   const state = deriveWorkDayState(todayEntry);
-  const statusLabel = workDayStateLabel(state);
+  const statusLabel = headerClockStateLabel(state);
 
   useEffect(() => {
-    if (state !== 'working') return;
-    const interval = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(interval);
-  }, [state]);
+    if (state === 'working') {
+      setNow(new Date());
+      if (freshClockInRef.current && todayEntry) {
+        const baseline = computeLiveWorkSeconds(todayEntry, new Date());
+        setDisplayBaselineSeconds(baseline);
+        freshClockInRef.current = false;
+      }
+      const interval = window.setInterval(() => setNow(new Date()), 1000);
+      return () => window.clearInterval(interval);
+    }
+    if (state === 'idle') {
+      setDisplayBaselineSeconds(null);
+    }
+  }, [state, todayEntry]);
 
-  const displaySeconds = computeLiveWorkSeconds(todayEntry, now);
+  const serverSeconds = computeLiveWorkSeconds(todayEntry, now);
+  const displaySeconds = adjustLiveDisplaySeconds(serverSeconds, displayBaselineSeconds);
 
   if (!canRecord) return null;
 
-  function run(action: () => Promise<void>) {
+  function run(action: () => Promise<void>, options?: { markFreshClockIn?: boolean }) {
     setError(null);
+    if (options?.markFreshClockIn) {
+      freshClockInRef.current = true;
+    }
     startTransition(async () => {
       try {
         await action();
         router.refresh();
       } catch (err) {
+        freshClockInRef.current = false;
         setError(err instanceof Error ? err.message : 'Fehler');
       }
     });
@@ -84,19 +95,10 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     setClockOutContext(null);
   }
 
-  function startBreak() {
-    if (breakfastAvailable(todayEntry)) {
-      run(clockBreakfastStart);
-      return;
-    }
-    if (lunchAvailable(todayEntry)) {
-      run(clockLunchStart);
-    }
-  }
-
-  const canBreak = breakfastAvailable(todayEntry) || lunchAvailable(todayEntry);
-  const breakLabel = breakfastAvailable(todayEntry) ? 'Frühstück' : 'Mittag';
+  const canBreak = pauseAvailable(todayEntry);
   const timeLabel = formatDurationHMS(displaySeconds);
+  const pauseActive = state === 'breakfast' || state === 'lunch';
+  const clockStateClass = pauseActive ? 'paused' : state;
 
   if (state === 'idle') {
     return (
@@ -104,7 +106,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
         type="button"
         className="header-clock header-clock--idle header-clock-cta"
         disabled={pending}
-        onClick={() => run(clockInWork)}
+        onClick={() => run(clockInWork, { markFreshClockIn: true })}
         title={error ?? undefined}
       >
         <Play size={18} fill="currentColor" />
@@ -116,7 +118,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
   return (
     <>
       <div
-        className={`header-clock header-clock--${state}`}
+        className={`header-clock header-clock--${clockStateClass}`}
         title={error ?? undefined}
         role="group"
         aria-label="Zeiterfassung"
@@ -139,11 +141,11 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
                   type="button"
                   className="header-clock-action header-clock-action--secondary"
                   disabled={pending}
-                  onClick={startBreak}
-                  aria-label={`${breakLabel}spause starten`}
+                  onClick={() => run(clockPauseStart)}
+                  aria-label="Pause starten"
                 >
                   <Pause size={16} fill="currentColor" />
-                  <span>{breakLabel}</span>
+                  <span>Pause</span>
                 </button>
               )}
               <button
@@ -159,12 +161,12 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
             </>
           )}
 
-          {(state === 'breakfast' || state === 'lunch') && (
+          {pauseActive && (
             <button
               type="button"
               className="header-clock-action header-clock-action--primary"
               disabled={pending}
-              onClick={() => run(state === 'breakfast' ? clockBreakfastEnd : clockLunchEnd)}
+              onClick={() => run(clockPauseEnd)}
               aria-label="Pause beenden"
             >
               <Play size={16} fill="currentColor" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppSelect } from '@/components/ui/app-select';
 import type { TimeBlockType } from '@/lib/types/database';
 import {
@@ -23,6 +23,8 @@ type Props = {
   dayEnd: string;
   initialBlocks?: TimelineBlockInput[];
   onChange?: (blocks: TimelineBlockInput[]) => void;
+  /** Setzt Zeilen zurück, wenn sich die Vorgabe von außen ändert (z. B. Eintrag-ID). */
+  syncKey?: string;
   variant?: 'default' | 'compact';
   defaultSiteId?: string | null;
 };
@@ -47,12 +49,32 @@ export function TimeEntryTimelineFields({
   dayEnd,
   initialBlocks = [],
   onChange,
+  syncKey,
   variant = 'default',
   defaultSiteId = null,
 }: Props) {
   const [rows, setRows] = useState<TimelineBlockInput[]>(
     initialBlocks.length > 0 ? initialBlocks : [emptyBlock(defaultSiteId)],
   );
+
+  useEffect(() => {
+    if (syncKey === undefined) return;
+    setRows(initialBlocks.length > 0 ? initialBlocks : [emptyBlock(defaultSiteId)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when syncKey changes
+  }, [syncKey]);
+
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const hasTimedBlocks = rows.some((row) => row.start_time && row.end_time);
+    if (!hasTimedBlocks) return;
+    setRows((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      next[0] = { ...next[0], start_time: dayStart.slice(0, 5) };
+      next[next.length - 1] = { ...next[next.length - 1], end_time: dayEnd.slice(0, 5) };
+      return next;
+    });
+  }, [dayStart, dayEnd]);
 
   function emit(next: TimelineBlockInput[]) {
     setRows(next);
@@ -160,7 +182,7 @@ export function TimeEntryTimelineFields({
                 name="block_start[]"
                 value={row.start_time}
                 onChange={(event) => updateRow(index, { start_time: event.target.value })}
-                required
+                required={Boolean(row.start_time || row.end_time)}
               />
             </label>
 
@@ -171,7 +193,7 @@ export function TimeEntryTimelineFields({
                 name="block_end[]"
                 value={row.end_time}
                 onChange={(event) => updateRow(index, { end_time: event.target.value })}
-                required
+                required={Boolean(row.start_time || row.end_time)}
               />
             </label>
           </div>

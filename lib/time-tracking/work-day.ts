@@ -1,4 +1,17 @@
+import { parseTime } from '@/lib/utils/time';
+import type { TenantTimeTrackingRules } from '@/lib/types/database';
+
 export type WorkDayState = 'idle' | 'working' | 'breakfast' | 'lunch' | 'finished';
+
+export type PauseSlotRules = Pick<
+  TenantTimeTrackingRules,
+  | 'breakfast_enabled'
+  | 'breakfast_window_start'
+  | 'breakfast_window_end'
+  | 'lunch_enabled'
+  | 'lunch_window_start'
+  | 'lunch_window_end'
+>;
 
 export type TimeEntryLike = {
   start_time: string | null;
@@ -53,6 +66,12 @@ export function workDayStateLabel(state: WorkDayState): string {
   }
 }
 
+/** Neutrales Label für die Header-Stempeluhr während einer Pause. */
+export function headerClockStateLabel(state: WorkDayState): string {
+  if (state === 'breakfast' || state === 'lunch') return 'Pause';
+  return workDayStateLabel(state);
+}
+
 export function timerCssState(state: WorkDayState): 'idle' | 'running' | 'paused' | 'done' {
   switch (state) {
     case 'working':
@@ -84,10 +103,79 @@ export function hasRecordedBreak(entry: TimeEntryLike | null): boolean {
 
 export function parseTimeToSeconds(value: string | null): number | null {
   if (!value) return null;
-  const parts = value.split(':').map(Number);
-  if (parts.some((n) => Number.isNaN(n))) return null;
-  const [h, m, s = 0] = parts;
+  let raw = value.trim();
+  if (raw.includes('T')) {
+    raw = raw.split('T')[1]?.split(/[+Z]/)[0] ?? raw;
+  } else {
+    raw = raw.split(/[+Z]/)[0] ?? raw;
+  }
+  const segments = raw.split(':');
+  if (segments.length < 2) return null;
+  const h = Number(segments[0]);
+  const m = Number(segments[1]);
+  const s = Math.floor(Number(segments[2]?.split('.')[0] ?? 0));
+  if ([h, m, s].some((n) => Number.isNaN(n))) return null;
   return h * 3600 + m * 60 + s;
+}
+
+export function adjustLiveDisplaySeconds(
+  serverSeconds: number,
+  baselineSeconds: number | null,
+): number {
+  if (baselineSeconds == null) return serverSeconds;
+  return Math.max(0, serverSeconds - baselineSeconds);
+}
+
+function isMinuteInWindow(minute: number, windowStart: string, windowEnd: string): boolean {
+  const start = parseTime(windowStart.slice(0, 5)) ?? 0;
+  const end = parseTime(windowEnd.slice(0, 5)) ?? 24 * 60;
+  return minute >= start && minute <= end;
+}
+
+function pauseSlotIsFree(entry: TimeEntryLike, slot: 'breakfast' | 'lunch'): boolean {
+  if (slot === 'breakfast') return !entry.breakfast_start;
+  return !entry.lunch_start;
+}
+
+/** Wählt den passenden Pausen-Slot (ohne erzwungenes Frühstück zuerst). */
+export function resolveNextPauseSlot(
+  entry: TimeEntryLike | null,
+  now: Date,
+  rules: PauseSlotRules,
+  timeZone = 'Europe/Berlin',
+): 'breakfast' | 'lunch' | null {
+  if (!entry?.start_time || entry.end_time) return null;
+
+  const breakfastFree = pauseSlotIsFree(entry, 'breakfast');
+  const lunchFree = pauseSlotIsFree(entry, 'lunch');
+  if (!breakfastFree && !lunchFree) return null;
+
+  const nowMinute = Math.floor((parseTimeToSeconds(toTimeString(now, timeZone)) ?? 0) / 60);
+
+  if (
+    rules.breakfast_enabled &&
+    breakfastFree &&
+    isMinuteInWindow(nowMinute, rules.breakfast_window_start, rules.breakfast_window_end)
+  ) {
+    return 'breakfast';
+  }
+
+  if (
+    rules.lunch_enabled &&
+    lunchFree &&
+    isMinuteInWindow(nowMinute, rules.lunch_window_start, rules.lunch_window_end)
+  ) {
+    return 'lunch';
+  }
+
+  if (lunchFree) return 'lunch';
+  if (breakfastFree) return 'breakfast';
+  return null;
+}
+
+export function pauseAvailable(entry: TimeEntryLike | null): boolean {
+  if (!entry?.start_time || entry.end_time) return false;
+  return pauseSlotIsFree(entry, 'breakfast') || pauseSlotIsFree(entry, 'lunch');
 }
 
 function secondsSinceMidnight(date: Date, timeZone = 'Europe/Berlin'): number {

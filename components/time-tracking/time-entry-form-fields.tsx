@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { TimeEntry } from '@/lib/types/database';
 import { TimeEntryTimelineFields, type SiteOption } from '@/components/time-tracking/time-entry-timeline-fields';
 import { BadWeatherClaimField } from '@/components/time-tracking/bad-weather-claim-field';
@@ -33,8 +34,8 @@ export function TimeEntryFormFields({
   badWeatherSeasonEnd,
 }: Props) {
   const today = todayWorkDate();
-  const startTime = entry?.start_time?.slice(0, 5) ?? '07:00';
-  const endTime = entry?.end_time?.slice(0, 5) ?? '16:00';
+  const [startTime, setStartTime] = useState(entry?.start_time?.slice(0, 5) ?? '07:00');
+  const [endTime, setEndTime] = useState(entry?.end_time?.slice(0, 5) ?? '16:00');
 
   const timeInputs = (
     <>
@@ -52,7 +53,8 @@ export function TimeEntryFormFields({
         <input
           type="time"
           name="start_time"
-          defaultValue={startTime}
+          value={startTime}
+          onChange={(event) => setStartTime(event.target.value)}
           required
         />
       </label>
@@ -60,7 +62,8 @@ export function TimeEntryFormFields({
         <input
           type="time"
           name="end_time"
-          defaultValue={endTime}
+          value={endTime}
+          onChange={(event) => setEndTime(event.target.value)}
           required
         />
       </label>
@@ -93,6 +96,7 @@ export function TimeEntryFormFields({
           dayStart={startTime}
           dayEnd={endTime}
           initialBlocks={initialBlocks ?? []}
+          syncKey={`${entry?.id ?? 'new'}-${startTime}-${endTime}`}
         />
       </div>
       <label>Grund fehlendes Frühstück

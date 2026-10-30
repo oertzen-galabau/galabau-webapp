@@ -52,6 +52,103 @@ export async function loadTenantTimeTrackingRules(
   return data as TenantTimeTrackingRules;
 }
 
+function minutesToTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
+function hasCompleteBreak(times?: { start: string | null; end: string | null }): boolean {
+  if (!times) return false;
+  const start = parseTime(times.start);
+  const end = parseTime(times.end);
+  return start != null && end != null && end > start;
+}
+
+function placeBreakInDay(
+  dayStart: number,
+  dayEnd: number,
+  windowStart: string,
+  windowEnd: string,
+  duration: number,
+): { start: string; end: string } | null {
+  if (duration <= 0) return null;
+  const winStart = parseTime(windowStart) ?? dayStart;
+  const start = Math.max(dayStart, winStart);
+  const end = start + duration;
+  if (end > dayEnd) return null;
+  const winEnd = parseTime(windowEnd);
+  if (winEnd != null && start >= winEnd) return null;
+  return { start: minutesToTime(start), end: minutesToTime(end) };
+}
+
+/** Setzt erwartete Pausen ins Zeitfenster, wenn der Nutzer nur Start/Ende angibt. */
+export function placeExpectedBreakTimes(params: {
+  startTime: string;
+  endTime: string;
+  rules: TenantTimeTrackingRules;
+  breakfast?: { start: string | null; end: string | null };
+  lunch?: { start: string | null; end: string | null };
+  skipBreakfast?: boolean;
+  skipLunch?: boolean;
+}): {
+  breakfast_start: string | null;
+  breakfast_end: string | null;
+  lunch_start: string | null;
+  lunch_end: string | null;
+} {
+  const keepBreakfast = hasCompleteBreak(params.breakfast);
+  const keepLunch = hasCompleteBreak(params.lunch);
+  const fallback = {
+    breakfast_start: keepBreakfast ? params.breakfast!.start : null,
+    breakfast_end: keepBreakfast ? params.breakfast!.end : null,
+    lunch_start: keepLunch ? params.lunch!.start : null,
+    lunch_end: keepLunch ? params.lunch!.end : null,
+  };
+
+  const dayStart = parseTime(params.startTime);
+  const dayEnd = parseTime(params.endTime);
+  if (dayStart == null || dayEnd == null || dayEnd <= dayStart) return fallback;
+
+  const expectations = getBreakExpectations(params.rules, dayEnd - dayStart);
+  let breakfast_start = fallback.breakfast_start;
+  let breakfast_end = fallback.breakfast_end;
+  let lunch_start = fallback.lunch_start;
+  let lunch_end = fallback.lunch_end;
+
+  const breakfastExpected = expectations.find((item) => item.kind === 'breakfast');
+  if (!keepBreakfast && !params.skipBreakfast && breakfastExpected) {
+    const placed = placeBreakInDay(
+      dayStart,
+      dayEnd,
+      breakfastExpected.windowStart,
+      breakfastExpected.windowEnd,
+      breakfastExpected.expectedMinutes,
+    );
+    if (placed) {
+      breakfast_start = placed.start;
+      breakfast_end = placed.end;
+    }
+  }
+
+  const lunchExpected = expectations.find((item) => item.kind === 'lunch');
+  if (!keepLunch && !params.skipLunch && lunchExpected) {
+    const placed = placeBreakInDay(
+      dayStart,
+      dayEnd,
+      lunchExpected.windowStart,
+      lunchExpected.windowEnd,
+      lunchExpected.expectedMinutes,
+    );
+    if (placed) {
+      lunch_start = placed.start;
+      lunch_end = placed.end;
+    }
+  }
+
+  return { breakfast_start, breakfast_end, lunch_start, lunch_end };
+}
+
 export function getBreakExpectations(
   rules: TenantTimeTrackingRules,
   grossWorkMinutes: number,
