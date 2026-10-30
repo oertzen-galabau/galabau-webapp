@@ -4,6 +4,7 @@ import { canViewAllReports, resolveOwnedDailyLogIds } from '@/lib/documentation/
 import {
   mergeAndSortOverviewItems,
   OVERVIEW_PER_SOURCE_LIMIT,
+  SITE_DOCUMENTS_OVERVIEW_SELECT,
   siteDocumentKind,
   type DocumentationOverviewItem,
   type SiteFilterOption,
@@ -206,7 +207,7 @@ async function loadSiteDocuments(
 ): Promise<DocumentationOverviewItem[]> {
   let query = supabase
     .from('site_documents')
-    .select('id, title, category, file_url, created_at, site_id, sites(name)')
+    .select(SITE_DOCUMENTS_OVERVIEW_SELECT)
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(OVERVIEW_PER_SOURCE_LIMIT);
@@ -217,7 +218,8 @@ async function loadSiteDocuments(
   } else if (categoryFilter === 'leistungsverzeichnis') {
     query = query.eq('category', 'leistungsverzeichnis');
   }
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
 
   const rows = (data ?? []).filter((row) => {
     if (categoryFilter !== 'other') return true;

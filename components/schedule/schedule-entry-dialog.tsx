@@ -12,6 +12,7 @@ import {
   buildExternalWorkersText,
   parseExternalWorkersText,
 } from '@/lib/schedule/external-workers-text';
+import { findEquipmentUsageOnPlanDates } from '@/lib/schedule/equipment-day-exclusive';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { partnerOptionLabel } from '@/lib/partners/kind';
@@ -39,6 +40,7 @@ type Props = {
   leaveDays: LeaveDay[];
   subcontractors: ScheduleSubcontractorOption[];
   equipment: SchedulePlanData['equipment'];
+  entries: SchedulePlanData['entries'];
   defaultSiteId?: string;
   defaultDay?: string;
   weekDays?: string[];
@@ -54,6 +56,7 @@ export function ScheduleEntryDialog({
   leaveDays,
   subcontractors,
   equipment,
+  entries,
   defaultSiteId,
   defaultDay,
   weekDays,
@@ -83,6 +86,9 @@ export function ScheduleEntryDialog({
   useEffect(() => {
     setPlanDates([...initialPlanDays]);
   }, [formKey, initialPlanDays.join(',')]);
+
+  const equipmentPlanDates = planDates.length ? planDates : initialPlanDays;
+  const excludeEntryId = entry?.id ?? null;
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -234,18 +240,38 @@ export function ScheduleEntryDialog({
             </p>
           ) : (
             <div className="input-form-checkboxes">
-              {equipment.map((item) => (
-                <label key={item.id} className="input-form-checkbox">
-                  <input
-                    type="checkbox"
-                    name="equipment_id[]"
-                    value={item.id}
-                    disabled={pending}
-                    defaultChecked={equipmentSet.has(item.id)}
-                  />
-                  {equipmentScheduleLabel(item)}
-                </label>
-              ))}
+              {equipment.map((item) => {
+                const usageElsewhere = findEquipmentUsageOnPlanDates(
+                  entries,
+                  equipmentPlanDates,
+                  item.id,
+                  excludeEntryId,
+                );
+                const blocked = Boolean(usageElsewhere);
+                return (
+                  <label
+                    key={item.id}
+                    className="input-form-checkbox"
+                  >
+                    <input
+                      type="checkbox"
+                      name="equipment_id[]"
+                      value={item.id}
+                      disabled={pending || blocked}
+                      defaultChecked={equipmentSet.has(item.id)}
+                    />
+                    <span>
+                      {equipmentScheduleLabel(item)}
+                      {usageElsewhere ? (
+                        <small className="muted schedule-entry-equipment-blocked">
+                          {' '}
+                          — bereits: {usageElsewhere.siteName}
+                        </small>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>

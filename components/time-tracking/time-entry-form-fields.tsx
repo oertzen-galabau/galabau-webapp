@@ -1,8 +1,11 @@
+'use client';
+
 import type { TimeEntry } from '@/lib/types/database';
 import { TimeEntryTimelineFields, type SiteOption } from '@/components/time-tracking/time-entry-timeline-fields';
 import { BadWeatherClaimField } from '@/components/time-tracking/bad-weather-claim-field';
 import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
+import { DriverTripSelect } from '@/components/time-tracking/driver-trip-select';
 
 type Site = SiteOption;
 
@@ -66,13 +69,9 @@ export function TimeEntryFormFields({
 
   const checkboxes = (
     <>
-      <label className="input-form-checkbox">
-        <input
-          type="checkbox"
-          name="is_driver"
-          defaultChecked={entry?.is_driver === true}
-        />
-        Heute Fahrer (Zuschlag nach Freigabe)
+      <label>Fahrt als Fahrer
+        <DriverTripSelect entry={entry} />
+        <span className="muted input-form-field-hint">Zuschlag nach Freigabe</span>
       </label>
       {badWeatherSeasonStart && badWeatherSeasonEnd ? (
         <BadWeatherClaimField

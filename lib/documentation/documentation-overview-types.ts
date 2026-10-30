@@ -27,6 +27,14 @@ export type SiteFilterOption = {
 export const OVERVIEW_PER_SOURCE_LIMIT = 150;
 export const OVERVIEW_MERGED_LIMIT = 200;
 
+/**
+ * Select für die Dokumente-Übersicht.
+ * `sites.cover_document_id` und `site_documents.site_id` sind zwei Relationen
+ * zu `sites` — ohne FK-Hint schlägt PostgREST mit „more than one relationship“ fehl.
+ */
+export const SITE_DOCUMENTS_OVERVIEW_SELECT =
+  'id, title, category, file_url, created_at, site_id, sites!site_documents_site_id_fkey(name)';
+
 export function kindLabel(kind: DocumentationOverviewKind): string {
   switch (kind) {
     case 'site_plan':

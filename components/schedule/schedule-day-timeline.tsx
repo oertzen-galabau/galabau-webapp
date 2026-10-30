@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import type { ScheduleEntryView } from '@/lib/schedule/load-plan-data';
 import { scheduleEntryPhase } from '@/lib/schedule/entry-phase';
 import { sortedEntryTeamDisplay } from '@/lib/schedule/entry-member-labels';
@@ -10,7 +11,6 @@ import {
   dayTimelineGridHeightPx,
   formatTimelineHourLabel,
   dayTimelineGridWidthPercent,
-  dayTimelineMaxVisibleColumns,
   layoutDayTimelineColumns,
   nowLinePercent,
 } from '@/lib/schedule/day-timeline';
@@ -20,6 +20,10 @@ import {
   ScheduleEntryDropWrap,
 } from '@/components/schedule/schedule-entry-dnd-wrap';
 import { useDayTimelineCompactViewport } from '@/lib/schedule/use-day-timeline-compact';
+import {
+  dayTimelineMaxVisibleColumnsFallback,
+  useDayTimelineMaxVisibleColumns,
+} from '@/lib/schedule/use-day-timeline-max-columns';
 
 type Props = {
   entries: ScheduleEntryView[];
@@ -67,8 +71,13 @@ export function ScheduleDayTimeline({
   conflictEntryIds,
   onEdit,
 }: Props) {
+  const gridScrollRef = useRef<HTMLDivElement>(null);
   const compactViewport = useDayTimelineCompactViewport();
-  const maxVisibleColumns = dayTimelineMaxVisibleColumns(compactViewport);
+  const measuredMaxColumns = useDayTimelineMaxVisibleColumns(gridScrollRef);
+  const maxVisibleColumns =
+    measuredMaxColumns > 0
+      ? measuredMaxColumns
+      : dayTimelineMaxVisibleColumnsFallback(compactViewport);
   const gridHeight = dayTimelineGridHeightPx();
   const nowPct = nowLinePercent(now, selectedDay);
 
@@ -84,13 +93,12 @@ export function ScheduleDayTimeline({
   );
   const gridWidthPercent = dayTimelineGridWidthPercent(layoutById.values());
 
+  const needsHorizontalScroll = gridWidthPercent > 100;
+
   return (
     <div className="schedule-day-timeline">
       <div className="schedule-day-timeline-scroll">
-        <div
-          className="schedule-day-timeline-inner"
-          style={gridWidthPercent > 100 ? { minWidth: `${gridWidthPercent}%` } : undefined}
-        >
+        <div className="schedule-day-timeline-inner">
           <div className="schedule-day-timeline-hours" aria-hidden="true">
             {HOUR_SLOTS.map((hour) => (
               <div
@@ -103,15 +111,24 @@ export function ScheduleDayTimeline({
             ))}
           </div>
           <div
+            ref={gridScrollRef}
+            className={[
+              'schedule-day-timeline-grid-scroll',
+              needsHorizontalScroll ? 'schedule-day-timeline-grid-scroll--wide' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+          <div
             className={[
               'schedule-day-timeline-grid',
-              gridWidthPercent > 100 ? 'schedule-day-timeline-grid--scroll-x' : '',
+              needsHorizontalScroll ? 'schedule-day-timeline-grid--scroll-x' : '',
             ]
               .filter(Boolean)
               .join(' ')}
             style={{
               height: gridHeight,
-              ...(gridWidthPercent > 100 ? { flex: `0 0 ${gridWidthPercent}%` } : {}),
+              ...(needsHorizontalScroll ? { width: `${gridWidthPercent}%` } : {}),
             }}
           >
             {HOUR_SLOTS.map((hour, index) => (
@@ -268,6 +285,7 @@ export function ScheduleDayTimeline({
                 );
               })
             )}
+          </div>
           </div>
         </div>
       </div>

@@ -22,6 +22,7 @@ import {
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import { BookingPreviewList } from '@/components/payroll/booking-preview-list';
 import { computeBookingPreview } from '@/lib/payroll/booking-rules';
+import { driverTripLabel } from '@/lib/time-tracking/driver-trip';
 import {
   deserializeTenantConfig,
   getBadWeatherSeasonFromConfig,
@@ -120,7 +121,7 @@ export function TimeEntryOverviewRow({
         <td className="data-table-col--optional">{entry.start_time?.slice(0, 5)}</td>
         <td className="data-table-col--optional">{entry.end_time?.slice(0, 5) ?? '—'}</td>
         <td>{entry.end_time ? formatMinutes(entry.work_minutes) : '—'}</td>
-        <td>{entry.is_driver ? 'Ja' : 'Nein'}</td>
+        <td>{driverTripLabel(entry)}</td>
         <td>
           <span className={`status-badge ${badgeClass}`}>
             {timeEntryStatusLabel(entry.approval_status, !!entry.end_time)}

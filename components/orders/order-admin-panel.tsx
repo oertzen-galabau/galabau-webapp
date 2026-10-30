@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { Fragment, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateCatalogOrderStatus } from '@/lib/actions/orders';
 import { downloadOrderPdf } from '@/lib/orders/download-pdf-client';
-import { formatOrderEuro, ORDER_STATUS_LABELS } from '@/lib/orders/labels';
+import { formatOrderEuro, ORDER_STATUS_LABELS, orderStatusBadgeClass } from '@/lib/orders/labels';
 import type { CatalogOrder, CatalogOrderItem, ClothingStatus } from '@/lib/types/database';
 import { AppSelect } from '@/components/ui/app-select';
+import { OrderLineItemsList } from '@/components/orders/order-line-items-list';
 import { OrderSendDialog } from '@/components/orders/order-send-dialog';
 
 export type AdminCatalogOrder = CatalogOrder & {
@@ -32,6 +33,7 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
   const [statusFilter, setStatusFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [sendOpen, setSendOpen] = useState(false);
   const [sendOrderIds, setSendOrderIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -54,6 +56,7 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
   });
 
   const selectedInFilter = filtered.filter((o) => selected.has(o.id));
+  const colCount = (canShare ? 1 : 0) + 5;
 
   function toggleSelect(orderId: string, checked: boolean) {
     setSelected((prev) => {
@@ -71,6 +74,15 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
         if (checked) next.add(o.id);
         else next.delete(o.id);
       }
+      return next;
+    });
+  }
+
+  function toggleExpanded(orderId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
       return next;
     });
   }
@@ -156,80 +168,106 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
 
       {filtered.length === 0 && <p className="muted">Keine Bestellungen für den Filter.</p>}
 
-      {filtered.map((order) => {
-        const employee = order.profiles
-          ? `${order.profiles.first_name} ${order.profiles.last_name}`.trim()
-          : '—';
-        return (
-          <details key={order.id} className="order-detail-block" style={{ marginBottom: 12 }}>
-            <summary className="flex flex-wrap items-center gap-2">
-              {canShare ? (
-                <input
-                  type="checkbox"
-                  checked={selected.has(order.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => toggleSelect(order.id, e.target.checked)}
-                  aria-label="Bestellung auswählen"
-                />
-              ) : null}
-              <span>
-                {new Date(order.created_at).toLocaleDateString('de-DE')}
-                {' · '}
-                {employee}
-                {' · '}
-                {formatOrderEuro(order.total_eur)}
-                {' · '}
-                {ORDER_STATUS_LABELS[order.status]}
-              </span>
-            </summary>
-            <ul className="simple-list">
-              {order.catalog_order_items
-                .slice()
-                .sort((a, b) => a.sort_order - b.sort_order)
-                .map((line) => (
-                  <li key={line.id}>
-                    {line.category_name}: {line.clothing_style}
-                    {' · '}
-                    Gr. {line.size}, {line.quantity}×
-                    {line.name_print ? ` · Namensdruck: ${line.name_print}` : ''}
-                  </li>
-                ))}
-            </ul>
-            {canShare ? (
-              <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="secondary-button secondary-button--compact"
-                  onClick={() => downloadPdf([order.id])}
-                >
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button secondary-button--compact"
-                  onClick={() => openSend([order.id])}
-                >
-                  Per Mail senden
-                </button>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-              <span className="muted">Status:</span>
-              {STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={order.status === opt.value ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
-                  disabled={pending || order.status === opt.value}
-                  onClick={() => setStatus(order.id, opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </details>
-        );
-      })}
+      {filtered.length > 0 ? (
+        <div className="data-table-wrap">
+          <table className="data-table order-orders-table">
+            <thead>
+              <tr>
+                {canShare ? (
+                  <th scope="col" aria-label="Auswahl" />
+                ) : null}
+                <th scope="col">Datum</th>
+                <th scope="col">Mitarbeiter</th>
+                <th scope="col">Summe</th>
+                <th scope="col">Status</th>
+                <th scope="col">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((order) => {
+                const employee = order.profiles
+                  ? `${order.profiles.first_name} ${order.profiles.last_name}`.trim()
+                  : '—';
+                const lineCount = order.catalog_order_items.length;
+                const isExpanded = expanded.has(order.id);
+                return (
+                  <Fragment key={order.id}>
+                    <tr>
+                      {canShare ? (
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(order.id)}
+                            onChange={(e) => toggleSelect(order.id, e.target.checked)}
+                            aria-label="Bestellung auswählen"
+                          />
+                        </td>
+                      ) : null}
+                      <td>{new Date(order.created_at).toLocaleDateString('de-DE')}</td>
+                      <td>{employee}</td>
+                      <td>{formatOrderEuro(order.total_eur)}</td>
+                      <td className="order-orders-table__status">
+                        {canManage ? (
+                          <AppSelect
+                            value={order.status}
+                            onValueChange={(v) => setStatus(order.id, v as ClothingStatus)}
+                            options={STATUS_OPTIONS}
+                            allowEmpty={false}
+                            disabled={pending}
+                            aria-label={`Status für ${employee}`}
+                          />
+                        ) : (
+                          <span className={`status-badge ${orderStatusBadgeClass(order.status)}`}>
+                            {ORDER_STATUS_LABELS[order.status]}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="inline-actions">
+                          {canShare ? (
+                            <>
+                              <button
+                                type="button"
+                                className="secondary-button secondary-button--compact"
+                                onClick={() => downloadPdf([order.id])}
+                              >
+                                PDF
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button secondary-button--compact"
+                                onClick={() => openSend([order.id])}
+                              >
+                                Mail
+                              </button>
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="text-button"
+                            aria-expanded={isExpanded}
+                            onClick={() => toggleExpanded(order.id)}
+                          >
+                            {lineCount} Position{lineCount === 1 ? '' : 'en'}
+                            {isExpanded ? ' ▲' : ' ▼'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded ? (
+                      <tr className="order-positions-row">
+                        <td colSpan={colCount}>
+                          <OrderLineItemsList items={order.catalog_order_items} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {canShare ? (
         <OrderSendDialog

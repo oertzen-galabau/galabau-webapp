@@ -4178,6 +4178,15 @@ button.input-form-file-cta {
     @apply font-sans;
   }
 }
+/* Bestellübersicht: Status in Zeile, Positionen optional */
+.order-orders-table .order-orders-table__status { min-width: 9.5rem; }
+.order-orders-table .inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.order-positions-row td {
+  padding-top: 0;
+  background: color-mix(in srgb, var(--surface-muted, #f5f3ef) 55%, transparent);
+}
+.order-line-items-list { margin: 0; }
+
 /* Bestellformular: Artikelzeilen */
 .order-cart-table td.oc-qty input { max-width: 80px; }
 
@@ -4744,7 +4753,8 @@ button.input-form-file-cta {
 }
 .schedule-day-timeline-scroll {
   max-height: min(72vh, 840px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -4753,11 +4763,8 @@ button.input-form-file-cta {
   flex-direction: row;
   align-items: stretch;
   min-width: 100%;
-  width: max-content;
 }
 .schedule-day-timeline-hours {
-  position: sticky;
-  left: 0;
   flex: none;
   width: 52px;
   padding: 0 8px 0 4px;
@@ -4766,7 +4773,18 @@ button.input-form-file-cta {
   color: var(--text-soft);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  z-index: 3;
+  z-index: 2;
+}
+.schedule-day-timeline-grid-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.schedule-day-timeline-grid-scroll--wide {
+  scrollbar-gutter: stable;
 }
 .schedule-day-timeline-hour-label {
   display: flex;
@@ -4777,8 +4795,9 @@ button.input-form-file-cta {
 }
 .schedule-day-timeline-grid {
   position: relative;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
 }
 .schedule-day-timeline-grid--scroll-x {
   min-width: 100%;

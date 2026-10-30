@@ -130,7 +130,7 @@ export default async function ZeitenFreigabePage() {
                   <th className="data-table-col--optional">Start</th>
                   <th className="data-table-col--optional">Ende</th>
                   <th>Arbeitszeit</th>
-                  <th>Fahrer</th>
+                  <th>Fahrt</th>
                   <th className="data-table-col--optional">KUG</th>
                   <th>Buchungen</th>
                   <th>Aktion</th>

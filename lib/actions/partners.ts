@@ -578,4 +578,109 @@ export async function resolvePartnerName(
   };
 }
 
+function readTenantContactPersonFields(formData: FormData) {
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) throw new Error('Name ist erforderlich');
+  return {
+    name,
+    role_title: String(formData.get('role_title') ?? '').trim() || null,
+    phone: String(formData.get('phone') ?? '').trim() || null,
+    email: String(formData.get('email') ?? '').trim() || null,
+  };
+}
+
+function revalidateTenantContactPersonsPath() {
+  revalidatePath(partnerSettingsListPath('ansprechpartner'));
+}
+
+async function revalidateSitesForContactPerson(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  contactPersonId: string,
+) {
+  const { data: links } = await supabase
+    .from('site_contact_person_links')
+    .select('site_id')
+    .eq('tenant_id', tenantId)
+    .eq('contact_person_id', contactPersonId);
+  for (const link of links ?? []) {
+    revalidatePath(`/app/baustellen/${link.site_id}`);
+  }
+}
+
+export async function createTenantContactPerson(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePartnerManage(ctx);
+  const { tenantId } = ctx;
+
+  const supabase = await createClient();
+  const fields = readTenantContactPersonFields(formData);
+  const { error } = await supabase.from('tenant_contact_persons').insert({
+    tenant_id: tenantId,
+    ...fields,
+    is_active: true,
+  });
+  if (error) throw new Error(error.message);
+  revalidateTenantContactPersonsPath();
+}
+
+export async function updateTenantContactPerson(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePartnerManage(ctx);
+  const { tenantId } = ctx;
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Ansprechpartner fehlt');
+
+  const supabase = await createClient();
+  const fields = readTenantContactPersonFields(formData);
+  const { error } = await supabase
+    .from('tenant_contact_persons')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  await revalidateSitesForContactPerson(supabase, tenantId, id);
+  revalidateTenantContactPersonsPath();
+}
+
+export async function setTenantContactPersonActive(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePartnerManage(ctx);
+  const { tenantId } = ctx;
+
+  const id = String(formData.get('id') ?? '');
+  const isActive = formData.get('is_active') === 'true';
+  if (!id) throw new Error('Ansprechpartner fehlt');
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenant_contact_persons')
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  await revalidateSitesForContactPerson(supabase, tenantId, id);
+  revalidateTenantContactPersonsPath();
+}
+
+export async function deleteTenantContactPerson(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePartnerManage(ctx);
+  const { tenantId } = ctx;
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Ansprechpartner fehlt');
+
+  const supabase = await createClient();
+  await revalidateSitesForContactPerson(supabase, tenantId, id);
+  const { error } = await supabase
+    .from('tenant_contact_persons')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  revalidateTenantContactPersonsPath();
+}
+
 export { partnerKindFromTab };

@@ -126,7 +126,7 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                 : activeTab === 'bestellbudget'
                   ? 'Standard-Jahresbudget für Arbeitskleidung pro Mitarbeiter.'
                   : activeTab === 'stammdaten'
-                    ? 'Subunternehmer, Lieferanten und Fahrzeuge & Geräte für Dokumentation und Einsatzplanung.'
+                    ? 'Subunternehmer, Lieferanten, Ansprechpartner und Fahrzeuge & Geräte für Baustellen und Einsatzplanung.'
                     : activeTab === 'bereiche'
                       ? 'Bereiche für Mitarbeiter (Baustelle, Verwaltung …) und Filter in der Einsatzplanung.'
                     : activeTab === 'gps'

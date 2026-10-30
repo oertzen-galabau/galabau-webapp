@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   kindLabel,
   mergeAndSortOverviewItems,
+  SITE_DOCUMENTS_OVERVIEW_SELECT,
   siteDocumentKind,
   type DocumentationOverviewItem,
 } from '@/lib/documentation/documentation-overview-types';
@@ -51,5 +52,13 @@ describe('documentation overview', () => {
   it('labels kinds for display', () => {
     assert.equal(kindLabel('pdf_report'), 'PDF-Rapport');
     assert.equal(kindLabel('delivery_note'), 'Lieferschein');
+  });
+
+  it('disambiguates site_documents → sites after cover_document_id FK', () => {
+    assert.match(
+      SITE_DOCUMENTS_OVERVIEW_SELECT,
+      /sites!site_documents_site_id_fkey\(name\)/,
+    );
+    assert.equal(SITE_DOCUMENTS_OVERVIEW_SELECT.includes('sites(name)'), false);
   });
 });

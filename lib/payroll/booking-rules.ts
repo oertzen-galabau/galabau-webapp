@@ -20,6 +20,8 @@ import {
   type PayrollRuleKey,
   type TenantPayrollConfig,
 } from '@/lib/payroll/tenant-rules';
+import { driverPayrollFactor, resolveDriverTrip } from '@/lib/time-tracking/driver-trip';
+import type { DriverTrip } from '@/lib/types/database';
 
 export type SegmentInput = TimelineBlockInput;
 
@@ -36,6 +38,7 @@ export type BookingRuleContext = {
     | 'travel_minutes'
     | 'work_minutes'
     | 'is_driver'
+    | 'driver_trip'
   >;
   segments: SegmentInput[];
   payrollFlags?: PayrollFlags;
@@ -94,7 +97,9 @@ export function computeBookingPreview(ctx: BookingRuleContext): {
   const lines: BookingPreviewLine[] = [];
   const warnings: string[] = [];
   const netMinutes = computeNetWorkMinutes(ctx.entry);
-  const isDriver = ctx.entry.is_driver === true;
+  const driverTrip: DriverTrip = resolveDriverTrip(ctx.entry);
+  const payrollFactor = driverPayrollFactor(driverTrip);
+  const isDriver = payrollFactor > 0;
   const lkwHours = ctx.payrollFlags?.lkw_hours === true;
   const codeLabels = ctx.tenantConfig.codeLabels;
 
@@ -116,10 +121,11 @@ export function computeBookingPreview(ctx: BookingRuleContext): {
     const threshold = cfg.threshold_minutes ?? 420;
     const taxFree = netMinutes >= threshold;
     const code = taxFree ? cfg.tax_free_code! : cfg.taxable_code!;
+    const amount = Number(cfg.amount_eur ?? 6) * payrollFactor;
     lines.push({
       booking_code: code,
       label: label(code, codeLabels),
-      quantity: Number(cfg.amount_eur ?? 6),
+      quantity: Math.round(amount * 100) / 100,
       unit: 'eur',
     });
   }
@@ -138,12 +144,13 @@ export function computeBookingPreview(ctx: BookingRuleContext): {
 
       if (isDriver && isRuleEnabled(ctx, 'driver_travel_time')) {
         const code = driverCfg.code!;
+        const travelMinutes = segment.travel_minutes * payrollFactor;
         lines.push({
           booking_code: code,
           label: label(code, codeLabels),
-          quantity: roundHours(segment.travel_minutes),
+          quantity: roundHours(travelMinutes),
           unit: 'hours',
-          notes: `Wegezeit ${segment.travel_minutes} Min.`,
+          notes: `Wegezeit ${Math.round(travelMinutes)} Min.`,
         });
       } else if (!isDriver && isRuleEnabled(ctx, 'passenger_travel_allowance')) {
         const threshold = passengerCfg.threshold_minutes ?? 420;

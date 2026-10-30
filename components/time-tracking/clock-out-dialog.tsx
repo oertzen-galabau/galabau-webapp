@@ -19,6 +19,8 @@ import {
   type TimelineBlockInput,
 } from '@/lib/time-tracking/timeline';
 import { formatMinutes, parseTime } from '@/lib/utils/time';
+import type { DriverTrip } from '@/lib/types/database';
+import { DriverTripSelect } from '@/components/time-tracking/driver-trip-select';
 
 export type ClockOutContext = Awaited<ReturnType<typeof getClockOutContext>>;
 
@@ -58,7 +60,7 @@ function ClockOutDialogSession({
   const initialSiteId =
     context.assignedSiteId ?? primarySiteIdFromBlocks(context.defaultTimeline) ?? '';
 
-  const [isDriver, setIsDriver] = useState(false);
+  const [driverTrip, setDriverTrip] = useState<DriverTrip>('none');
   const [badWeatherClaimed, setBadWeatherClaimed] = useState(false);
   const [timelineBlocks, setTimelineBlocks] = useState<TimelineBlockInput[]>(context.defaultTimeline);
   const [missingBreakfastReason, setMissingBreakfastReason] = useState('');
@@ -160,7 +162,7 @@ function ClockOutDialogSession({
     }
 
     const payload: ClockOutPayload = {
-      isDriver,
+      driverTrip,
       badWeatherClaimed: context.isBadWeatherSeason ? badWeatherClaimed : false,
       segments: timelineBlocks,
       missingBreakfastReason: missingBreakfastReason.trim() || null,
@@ -263,16 +265,13 @@ function ClockOutDialogSession({
         </p>
       </div>
 
-      <div className="clock-out-toggles">
-        <label className="clock-out-toggle input-form-checkbox">
-          <input
-            type="checkbox"
-            checked={isDriver}
-            onChange={(event) => setIsDriver(event.target.checked)}
-          />
-          <span>Fahrer heute (Zuschlag nach Freigabe)</span>
-        </label>
+      <div className="dialog-field">
+        <span className="clock-out-summary-label">Fahrt als Fahrer</span>
+        <DriverTripSelect value={driverTrip} onValueChange={setDriverTrip} />
+        <p className="muted clock-out-hint">Zuschlag nach Freigabe — Hin/Zurück jeweils 50 %.</p>
+      </div>
 
+      <div className="clock-out-toggles">
         {context.isBadWeatherSeason ? (
           <label className="clock-out-toggle input-form-checkbox">
             <input

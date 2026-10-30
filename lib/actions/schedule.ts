@@ -7,6 +7,7 @@ import { upsertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
 import { loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
 import { validatePublishPlanDate } from '@/lib/schedule/foreman-daily-report';
 import { syncDailyAssignmentsFromSchedule } from '@/lib/schedule/sync-assignments';
+import { assertEquipmentAvailableOnDays } from '@/lib/schedule/equipment-day-exclusive';
 import {
   assertNewScheduleMembersAllowed,
   assertScheduleMemberUpdatesAllowed,
@@ -70,9 +71,11 @@ async function replaceScheduleEntryEquipment(
   supabase: Awaited<ReturnType<typeof createClient>>,
   tenantId: string,
   entryId: string,
+  planDate: string,
   equipmentIds: string[],
 ) {
   await assertEquipmentInTenant(supabase, tenantId, equipmentIds);
+  await assertEquipmentAvailableOnDays(supabase, tenantId, equipmentIds, [planDate], entryId);
   await supabase.from('schedule_entry_equipment').delete().eq('schedule_entry_id', entryId);
   if (!equipmentIds.length) return;
   const { error } = await supabase.from('schedule_entry_equipment').insert(
@@ -173,7 +176,7 @@ async function insertEntryFromForm(
   }
 
   const equipmentIds = formData.getAll('equipment_id[]').map(String).filter(Boolean);
-  await replaceScheduleEntryEquipment(supabase, ctx.tenantId, data.id, equipmentIds);
+  await replaceScheduleEntryEquipment(supabase, ctx.tenantId, data.id, planDate, equipmentIds);
 
   return data.id;
 }
@@ -281,7 +284,7 @@ export async function updateScheduleEntry(formData: FormData) {
   }
 
   const equipmentIds = formData.getAll('equipment_id[]').map(String).filter(Boolean);
-  await replaceScheduleEntryEquipment(supabase, ctx.tenantId, entryId, equipmentIds);
+  await replaceScheduleEntryEquipment(supabase, ctx.tenantId, entryId, planDate, equipmentIds);
 
   revalidatePath(SCHEDULE_PATH);
 }

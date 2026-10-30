@@ -14,7 +14,7 @@ function getSnapshot() {
 }
 
 function getServerSnapshot() {
-  return true;
+  return false;
 }
 
 /** Schmaler Viewport → max. 3 Baustellen nebeneinander im Tagesraster. */

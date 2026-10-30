@@ -20,6 +20,7 @@ const UNIT_OPTIONS = [
 ];
 import type { PayrollBooking, PayrollBookingCode, TimeEntry } from '@/lib/types/database';
 import { computeBookingPreview } from '@/lib/payroll/booking-rules';
+import { driverTripLabel } from '@/lib/time-tracking/driver-trip';
 import type { SegmentInput } from '@/lib/payroll/booking-rules';
 import { deserializeTenantConfig, type SerializableTenantPayrollConfig } from '@/lib/payroll/tenant-rules';
 
@@ -82,7 +83,7 @@ export function TimeApprovalRow({
         <td className="data-table-col--optional">{entry.start_time?.slice(0, 5)}</td>
         <td className="data-table-col--optional">{entry.end_time?.slice(0, 5)}</td>
         <td>{formatMinutes(entry.work_minutes)}</td>
-        <td>{entry.is_driver ? 'Ja' : 'Nein'}</td>
+        <td>{driverTripLabel(entry)}</td>
         <td className="data-table-col--optional">
           {entry.bad_weather_claimed ? 'Gemeldet' : '—'}
         </td>

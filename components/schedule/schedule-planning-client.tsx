@@ -1019,6 +1019,7 @@ export function SchedulePlanningClient({
           leaveDays={plan.leaveDays}
           subcontractors={plan.subcontractors}
           equipment={plan.equipment}
+          entries={plan.entries}
           defaultSiteId={dialogDefaults.siteId}
           defaultDay={dialogDefaults.day ?? selectedDay}
           weekDays={plan.weekDays}

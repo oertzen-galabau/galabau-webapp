@@ -93,7 +93,24 @@ export function findEquipmentConflicts(slots: ScheduleEquipmentSlot[]): Schedule
     list.push(s);
     byEquipment.set(s.equipmentId, list);
   }
-  return findOverlappingEntryPairs(byEquipment).map((c) => ({ ...c, kind: 'equipment' as const }));
+
+  const conflicts: ScheduleConflict[] = [];
+  for (const groupSlots of byEquipment.values()) {
+    for (let i = 0; i < groupSlots.length; i++) {
+      for (let j = i + 1; j < groupSlots.length; j++) {
+        const a = groupSlots[i];
+        const b = groupSlots[j];
+        if (a.entryId === b.entryId) continue;
+        const daysA = eachDayInRange(a.startDate, a.endDate);
+        const daysB = new Set(eachDayInRange(b.startDate, b.endDate));
+        for (const day of daysA) {
+          if (!daysB.has(day)) continue;
+          conflicts.push({ entryIds: [a.entryId, b.entryId], date: day, kind: 'equipment' });
+        }
+      }
+    }
+  }
+  return conflicts;
 }
 
 export function scheduleConflictEntryIds(conflicts: ScheduleConflict[]): Set<string> {

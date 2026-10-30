@@ -5,7 +5,7 @@ import { canAccess } from '@/lib/auth/session';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
 import { SiteAppearanceSection } from '@/components/sites/site-appearance-section';
 import { SiteMetaForm } from '@/components/sites/site-meta-form';
-import { SiteContactsSection } from '@/components/sites/site-contacts-section';
+import { SiteContactsSection, type SiteContactAssignment } from '@/components/sites/site-contacts-section';
 import { SiteTeamSection, type SiteTeamMemberRow } from '@/components/sites/site-team-section';
 import { SiteSuppliersSection } from '@/components/sites/site-suppliers-section';
 import { SiteAppointmentsSection } from '@/components/sites/site-appointments-section';
@@ -27,7 +27,7 @@ import {
   loadTenantEmployeeTeamOptions,
   withProfileOption,
 } from '@/lib/sites/foremen-options';
-import type { TimeBlockType } from '@/lib/types/database';
+import type { TenantContactPerson, TimeBlockType } from '@/lib/types/database';
 import { parseDailyLogReportType, tenantReportLabelsFromTenant } from '@/lib/documentation/report-labels';
 import { resolveOwnedDailyLogIds, userCanEditDailyLog, canViewAllReports } from '@/lib/documentation/report-access';
 
@@ -84,7 +84,8 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
   const [
     { data: site },
-    { data: contacts },
+    { data: contactLinks },
+    { data: contactCatalog },
     { data: suppliers },
     { data: documents },
     { data: appointments },
@@ -101,7 +102,16 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     partnerCatalog,
   ] = await Promise.all([
     supabase.from('sites').select('*').eq('id', id).eq('tenant_id', tenantId).single(),
-    supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
+    supabase
+      .from('site_contact_person_links')
+      .select('id, contact_person:tenant_contact_persons(*)')
+      .eq('site_id', id),
+    supabase
+      .from('tenant_contact_persons')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('is_active', { ascending: false })
+      .order('name'),
     supabase
       .from('site_suppliers')
       .select(
@@ -136,6 +146,16 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
   ]);
 
   const siteSuppliers = mapSiteSuppliers(suppliers as Parameters<typeof mapSiteSuppliers>[0]);
+
+  const contactAssignments: SiteContactAssignment[] = (contactLinks ?? [])
+    .map((row) => {
+      const contactRaw = row.contact_person;
+      const contact = (Array.isArray(contactRaw) ? contactRaw[0] : contactRaw) as TenantContactPerson | null;
+      if (!contact) return null;
+      return { linkId: row.id as string, contact };
+    })
+    .filter((row): row is SiteContactAssignment => row !== null)
+    .sort((a, b) => a.contact.name.localeCompare(b.contact.name, 'de'));
 
   const { data: siteReports } = await siteReportsPromise;
 
@@ -325,7 +345,13 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
             employeeOptions={employeeTeamOptions}
             canEdit={canManageTeam && site.is_active}
           />
-          <SiteContactsSection siteId={id} contacts={contacts ?? []} canEdit={canEdit} />
+          <SiteContactsSection
+            siteId={id}
+            assignments={contactAssignments}
+            catalog={(contactCatalog ?? []) as TenantContactPerson[]}
+            canEdit={canEdit}
+            canManagePartners={canAccess(ctx, 'partners.manage')}
+          />
           <SiteSuppliersSection
             siteId={id}
             suppliers={siteSuppliers}

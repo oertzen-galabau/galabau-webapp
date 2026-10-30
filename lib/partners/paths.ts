@@ -4,5 +4,6 @@ export function partnerSettingsListPath(partnerTab: PartnerTabId = 'subunternehm
   const base = '/app/einstellungen?tab=stammdaten';
   if (partnerTab === 'lieferanten') return `${base}&partners=lieferanten`;
   if (partnerTab === 'fahrzeuge') return `${base}&partners=fahrzeuge`;
+  if (partnerTab === 'ansprechpartner') return `${base}&partners=ansprechpartner`;
   return base;
 }

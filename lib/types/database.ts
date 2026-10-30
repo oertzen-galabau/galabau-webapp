@@ -125,6 +125,8 @@ export type Site = {
   updated_at: string;
 };
 
+export type DriverTrip = 'none' | 'round_trip' | 'outbound' | 'return';
+
 export type TimeEntry = {
   id: string;
   tenant_id: string;
@@ -140,6 +142,7 @@ export type TimeEntry = {
   travel_minutes: number;
   work_minutes: number;
   is_driver: boolean | null;
+  driver_trip: DriverTrip;
   bad_weather_claimed: boolean;
   bad_weather_confirmed: boolean | null;
   notes: string | null;
@@ -376,6 +379,26 @@ export type SiteSupplierContactLink = {
   tenant_id: string;
   site_supplier_id: string;
   partner_contact_id: string;
+  created_at: string;
+};
+
+export type TenantContactPerson = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  role_title: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SiteContactPersonLink = {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  contact_person_id: string;
   created_at: string;
 };
 

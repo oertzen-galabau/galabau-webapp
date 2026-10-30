@@ -72,6 +72,29 @@ describe('findEquipmentConflicts', () => {
     assert.equal(conflicts.length, 1);
     assert.equal(conflicts[0].kind, 'equipment');
   });
+
+  it('findet Doppelbelegung auch ohne zeitliche Überschneidung', () => {
+    const conflicts = findEquipmentConflicts([
+      {
+        entryId: 'a',
+        equipmentId: 'eq1',
+        startDate: '2026-10-09',
+        endDate: '2026-10-09',
+        startTime: '07:00',
+        endTime: '12:00',
+      },
+      {
+        entryId: 'b',
+        equipmentId: 'eq1',
+        startDate: '2026-10-09',
+        endDate: '2026-10-09',
+        startTime: '13:00',
+        endTime: '16:00',
+      },
+    ]);
+    assert.equal(conflicts.length, 1);
+    assert.equal(conflicts[0].date, '2026-10-09');
+  });
 });
 
 describe('expandLeaveRequests', () => {

@@ -27,6 +27,8 @@ import {
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
 import { isBadWeatherSeason } from '@/lib/payroll/constants';
+import type { DriverTrip } from '@/lib/types/database';
+import { isDriverFlagFromTrip, parseDriverTrip } from '@/lib/time-tracking/driver-trip';
 import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_BRAND_COLOR,
@@ -201,7 +203,7 @@ export async function clockLunchEnd() {
 }
 
 export type ClockOutPayload = {
-  isDriver: boolean;
+  driverTrip: DriverTrip;
   segments: SegmentInput[];
   badWeatherClaimed?: boolean;
   missingBreakfastReason?: string | null;
@@ -252,7 +254,8 @@ export async function clockOutWork(_legacyNoBreakReason?: string | null, payload
       lunch_end: processed.lunch_end,
       missing_breakfast_reason: processed.missing_breakfast_reason,
       missing_lunch_reason: processed.missing_lunch_reason,
-      is_driver: payload?.isDriver ?? false,
+      driver_trip: payload?.driverTrip ?? 'none',
+      is_driver: isDriverFlagFromTrip(payload?.driverTrip ?? 'none'),
       bad_weather_claimed: badWeatherClaimed,
       bad_weather_confirmed: null,
       approval_status: 'pending',
@@ -315,6 +318,7 @@ async function sanitizeBadWeatherClaimed(
 
 function parseTimeEntryForm(formData: FormData) {
   const segments = parseSegmentsFromForm(formData);
+  const driver_trip = parseDriverTrip(formData.get('driver_trip'));
   return {
     work_date: formData.get('work_date') as string,
     start_time: formData.get('start_time') as string,
@@ -325,7 +329,8 @@ function parseTimeEntryForm(formData: FormData) {
     lunch_end: (formData.get('lunch_end') as string) || null,
     missing_breakfast_reason: (formData.get('missing_breakfast_reason') as string) || null,
     missing_lunch_reason: (formData.get('missing_lunch_reason') as string) || null,
-    is_driver: formData.get('is_driver') === 'on' || formData.get('is_driver') === 'true',
+    driver_trip,
+    is_driver: isDriverFlagFromTrip(driver_trip),
     bad_weather_claimed: formData.get('bad_weather_claimed') === 'on',
     notes: (formData.get('notes') as string) || null,
     segments,
@@ -368,6 +373,7 @@ export async function saveTimeEntry(formData: FormData) {
     travel_minutes: processed.travel_minutes,
     work_minutes: processed.work_minutes,
     site_id: processed.site_id,
+    driver_trip: entryFields.driver_trip,
     is_driver: entryFields.is_driver,
     bad_weather_claimed: entryFields.bad_weather_claimed,
     notes: entryFields.notes,
@@ -432,6 +438,7 @@ export async function resubmitTimeEntry(formData: FormData) {
       travel_minutes: processed.travel_minutes,
       work_minutes: processed.work_minutes,
       site_id: processed.site_id,
+      driver_trip: entryFields.driver_trip,
       is_driver: entryFields.is_driver,
       bad_weather_claimed: entryFields.bad_weather_claimed,
       notes: entryFields.notes,
@@ -573,6 +580,7 @@ export async function updateTimeEntry(formData: FormData) {
       travel_minutes: processed.travel_minutes,
       work_minutes: processed.work_minutes,
       site_id: processed.site_id,
+      driver_trip: entryFields.driver_trip,
       is_driver: entryFields.is_driver,
       bad_weather_claimed: entryFields.bad_weather_claimed,
       notes: entryFields.notes,

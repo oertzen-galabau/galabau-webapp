@@ -78,10 +78,13 @@ describe('layoutDayTimelineColumns', () => {
     const wideWidth = map.get('e0')?.widthPercent ?? 0;
     const fourWidth = fourCol.get('e0')?.widthPercent ?? 0;
     assert.ok(Math.abs(wideWidth * map.get('e0')!.gridWidthFactor - fourWidth) < 0.05);
-    assert.equal(dayTimelineGridWidthPercent(map.values()), 150);
+    assert.equal(
+      dayTimelineGridWidthPercent(map.values()),
+      (6 / DAY_TIMELINE_MAX_VISIBLE_COLUMNS) * 100,
+    );
   });
 
-  it('nutzt auf schmalen Viewports max. drei sichtbare Spalten', () => {
+  it('nutzt weniger sichtbare Spalten im Compact-Fallback', () => {
     const entries = Array.from({ length: 4 }, (_, i) => ({
       id: `e${i}`,
       start_time: '07:30',
@@ -91,7 +94,12 @@ describe('layoutDayTimelineColumns', () => {
       maxVisibleColumns: DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT,
     });
     assert.equal(map.get('e0')?.gridWidthFactor, 4 / DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT);
-    assert.ok(Math.abs(dayTimelineGridWidthPercent(map.values()) - 400 / 3) < 1e-9);
+    assert.ok(
+      Math.abs(
+        dayTimelineGridWidthPercent(map.values()) -
+          (4 / DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT) * 100,
+      ) < 1e-9,
+    );
   });
 
   it('drei parallele überlappende Einsätze', () => {

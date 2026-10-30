@@ -17,7 +17,8 @@ import { formatLeaveType } from '@/lib/leave/labels';
 import type { LeaveBalanceBreakdown, LeaveBalanceRow } from '@/lib/leave/balance';
 import type { BudgetBreakdown } from '@/lib/orders/budget';
 import { OrderBudgetMetrics } from '@/components/orders/order-budget-metrics';
-import { formatOrderEuro, ORDER_STATUS_LABELS } from '@/lib/orders/labels';
+import { MemberCatalogOrdersTable } from '@/components/orders/member-catalog-orders-table';
+import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from '@/lib/orders/labels';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
 import type {
   ClothingOrder,
@@ -555,26 +556,7 @@ function BestellungenTab({
 
       <section className="panel employee-section">
         <h2>Katalog-Bestellungen</h2>
-        {catalogOrders.length === 0 && <p className="muted">Keine Bestellungen.</p>}
-        {catalogOrders.map((order) => (
-          <details key={order.id} style={{ marginBottom: 8 }}>
-            <summary>
-              {new Date(order.created_at).toLocaleDateString('de-DE')}
-              {' · '}
-              {formatOrderEuro(order.total_eur)}
-              {' · '}
-              {ORDER_STATUS_LABELS[order.status]}
-            </summary>
-            <ul className="simple-list">
-              {order.catalog_order_items.map((line) => (
-                <li key={line.id}>
-                  {line.clothing_style}, Gr. {line.size}, {line.quantity}×
-                  {line.name_print ? ` · Namensdruck: ${line.name_print}` : ''}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ))}
+        <MemberCatalogOrdersTable orders={catalogOrders} />
       </section>
 
       {orders.length > 0 && (
@@ -592,7 +574,11 @@ function BestellungenTab({
                     <td>{order.item_type}</td>
                     <td>{order.size}</td>
                     <td>{order.quantity}</td>
-                    <td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td>
+                    <td>
+                      <span className={`status-badge ${orderStatusBadgeClass(order.status)}`}>
+                        {ORDER_STATUS_LABELS[order.status] ?? order.status}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

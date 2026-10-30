@@ -28,7 +28,7 @@ export default async function BuchungenPage({
 
   let bookingsQuery = supabase
     .from('payroll_bookings')
-    .select('user_id, booking_code, unit, quantity, profiles(first_name, last_name)')
+    .select('user_id, booking_code, unit, quantity, profiles!payroll_bookings_user_id_fkey(first_name, last_name)')
     .eq('tenant_id', ctx.tenant!.id)
     .gte('work_date', `${month}-01`)
     .lte('work_date', `${month}-31`);
@@ -37,7 +37,10 @@ export default async function BuchungenPage({
     bookingsQuery = bookingsQuery.eq('user_id', ctx.userId);
   }
 
-  const [{ data: bookings }, { data: codes }] = await Promise.all([
+  const [
+    { data: bookings, error: bookingsError },
+    { data: codes, error: codesError },
+  ] = await Promise.all([
     bookingsQuery,
     supabase
       .from('payroll_booking_codes')
@@ -111,6 +114,16 @@ export default async function BuchungenPage({
 
       <section className="panel">
         <h2>{canViewAll ? 'Alle Mitarbeiter' : 'Meine Buchungen'}</h2>
+        {bookingsError ? (
+          <p className="callout callout-warning" role="alert">
+            Buchungen konnten nicht geladen werden: {bookingsError.message}
+          </p>
+        ) : null}
+        {codesError ? (
+          <p className="callout callout-warning" role="alert">
+            Buchungscodes konnten nicht geladen werden: {codesError.message}
+          </p>
+        ) : null}
         {rows.length > 0 ? (
           <div className="data-table-wrap">
             <table className="data-table">

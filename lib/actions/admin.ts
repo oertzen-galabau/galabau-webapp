@@ -504,35 +504,72 @@ export async function removeSite(formData: FormData): Promise<{ action: 'archive
   return { action: 'deleted' };
 }
 
-export async function saveSiteContacts(formData: FormData) {
+export async function assignSiteContactPersons(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'sites.manage');
   const { tenantId } = ctx;
 
   const supabase = await createClient();
   const siteId = formData.get('site_id') as string;
+  if (!siteId) throw new Error('Baustelle fehlt');
   await assertSiteInTenant(supabase, tenantId, siteId);
-  const names = formData.getAll('name[]');
-  const roles = formData.getAll('role[]');
-  const phones = formData.getAll('phone[]');
-  const emails = formData.getAll('email[]');
-  const rowCount = names.length;
 
-  for (let i = 0; i < rowCount; i++) {
-    const name = String(names[i] ?? '').trim();
-    if (!name) continue;
-    const { error } = await supabase.from('site_contacts').insert({
+  const contactIds = [...new Set(formData.getAll('contact_person_id[]').map(String).filter(Boolean))];
+  if (contactIds.length === 0) throw new Error('Bitte mindestens einen Ansprechpartner wählen');
+
+  const { data: persons, error: personsError } = await supabase
+    .from('tenant_contact_persons')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .in('id', contactIds);
+  if (personsError) throw new Error(personsError.message);
+  if ((persons ?? []).length !== contactIds.length) {
+    throw new Error('Mindestens ein Ansprechpartner ist ungültig oder inaktiv');
+  }
+
+  const { error: insertError } = await supabase.from('site_contact_person_links').insert(
+    contactIds.map((contactPersonId) => ({
       tenant_id: tenantId,
       site_id: siteId,
-      name,
-      role: String(roles[i] ?? '').trim() || null,
-      phone: String(phones[i] ?? '').trim() || null,
-      email: String(emails[i] ?? '').trim() || null,
-    });
-    if (error) throw new Error(error.message);
+      contact_person_id: contactPersonId,
+    })),
+  );
+  if (insertError) {
+    if (insertError.code === '23505') {
+      throw new Error('Mindestens ein Ansprechpartner ist dieser Baustelle bereits zugeordnet');
+    }
+    throw new Error(insertError.message);
   }
 
   revalidatePath(`/app/baustellen/${siteId}`);
+}
+
+export async function unlinkSiteContactPerson(formData: FormData) {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'sites.manage');
+  const { tenantId } = ctx;
+
+  const id = formData.get('id') as string;
+  if (!id) throw new Error('Kein Eintrag ausgewählt');
+
+  const supabase = await createClient();
+  const { data, error: fetchError } = await supabase
+    .from('site_contact_person_links')
+    .select('id, site_id')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!data) throw new Error('Zuordnung nicht gefunden');
+
+  const { error } = await supabase
+    .from('site_contact_person_links')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/app/baustellen/${data.site_id}`);
 }
 
 export async function saveSiteAppointments(formData: FormData) {
@@ -570,7 +607,7 @@ export async function saveSiteAppointments(formData: FormData) {
 }
 
 async function deleteSiteEntity(
-  table: 'site_contacts' | 'site_suppliers' | 'site_appointments' | 'site_documents',
+  table: 'site_suppliers' | 'site_appointments' | 'site_documents',
   id: string,
   tenantId: string,
 ) {
@@ -591,47 +628,12 @@ async function deleteSiteEntity(
   return data.site_id as string;
 }
 
-export async function deleteSiteContact(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'sites.manage');
-  const id = formData.get('id') as string;
-  if (!id) throw new Error('Kein Eintrag ausgewählt');
-  const siteId = await deleteSiteEntity('site_contacts', id, ctx.tenantId);
-  revalidatePath(`/app/baustellen/${siteId}`);
-}
-
 export async function deleteSiteSupplier(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'sites.manage');
   const id = formData.get('id') as string;
   if (!id) throw new Error('Kein Eintrag ausgewählt');
   const siteId = await deleteSiteEntity('site_suppliers', id, ctx.tenantId);
-  revalidatePath(`/app/baustellen/${siteId}`);
-}
-
-export async function updateSiteContact(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'sites.manage');
-  const { tenantId } = ctx;
-
-  const id = formData.get('id') as string;
-  const siteId = formData.get('site_id') as string;
-  const name = String(formData.get('name') ?? '').trim();
-  if (!id || !siteId || !name) throw new Error('Pflichtfelder fehlen.');
-
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from('site_contacts')
-    .update({
-      name,
-      role: String(formData.get('role') ?? '').trim() || null,
-      phone: String(formData.get('phone') ?? '').trim() || null,
-      email: String(formData.get('email') ?? '').trim() || null,
-    })
-    .eq('id', id)
-    .eq('site_id', siteId)
-    .eq('tenant_id', tenantId);
-  if (error) throw new Error(error.message);
   revalidatePath(`/app/baustellen/${siteId}`);
 }
 

@@ -7,10 +7,10 @@ export const DAY_TIMELINE_END_MIN = DAY_TIMELINE_END_HOUR * 60;
 export const DAY_TIMELINE_TOTAL_MIN = DAY_TIMELINE_END_MIN - DAY_TIMELINE_START_MIN;
 /** Pixelhöhe pro Stunde im Tagesraster */
 export const DAY_TIMELINE_PX_PER_HOUR = 56;
-/** Max. nebeneinander sichtbare Einsätze; darüber horizontal scrollen */
-export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS = 4;
-/** Auf schmalen Viewports (s. `DAY_TIMELINE_COMPACT_MEDIA_QUERY`) */
-export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT = 3;
+/** Max. nebeneinander sichtbare Einsätze; darüber horizontal scrollen (Fallback vor Messung) */
+export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS = 5;
+/** Auf schmalen Viewports (s. `DAY_TIMELINE_COMPACT_MEDIA_QUERY`, Fallback) */
+export const DAY_TIMELINE_MAX_VISIBLE_COLUMNS_COMPACT = 4;
 export const DAY_TIMELINE_COMPACT_MEDIA_QUERY = '(max-width: 760px)';
 
 export function dayTimelineMaxVisibleColumns(compactViewport: boolean): number {

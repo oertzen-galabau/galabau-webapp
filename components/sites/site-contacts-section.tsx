@@ -1,52 +1,55 @@
-import { saveSiteContacts } from '@/lib/actions/admin';
 import { SiteContactRow } from '@/components/sites/site-contact-row';
-import { DynamicFormRows } from '@/components/ui/dynamic-form-rows';
+import { SiteContactAssignForm } from '@/components/sites/site-contact-assign-form';
+import { partnerSettingsListPath } from '@/lib/partners/paths';
+import type { TenantContactPerson } from '@/lib/types/database';
 
-type Contact = {
-  id: string;
-  name: string;
-  role: string | null;
-  phone: string | null;
-  email: string | null;
+export type SiteContactAssignment = {
+  linkId: string;
+  contact: TenantContactPerson;
 };
 
 type Props = {
   siteId: string;
-  contacts: Contact[];
+  assignments: SiteContactAssignment[];
+  catalog: TenantContactPerson[];
   canEdit: boolean;
+  canManagePartners: boolean;
 };
 
-const CONTACT_FIELDS = [
-  { name: 'name[]', label: 'Name', required: true },
-  { name: 'role[]', label: 'Rolle', placeholder: 'z.B. Bauleiter' },
-  { name: 'phone[]', label: 'Telefon', type: 'tel' },
-  { name: 'email[]', label: 'E-Mail', type: 'email' },
-];
+export function SiteContactsSection({
+  siteId,
+  assignments,
+  catalog,
+  canEdit,
+  canManagePartners,
+}: Props) {
+  const assignedIds = assignments.map((row) => row.contact.id);
+  const stammdatenHref = partnerSettingsListPath('ansprechpartner');
 
-export function SiteContactsSection({ siteId, contacts, canEdit }: Props) {
   return (
     <section className="site-detail-section">
       <h2>Ansprechpartner</h2>
+      <p className="muted">Kontakte aus den Stammdaten — Pflege unter Einstellungen → Stammdaten → Ansprechpartner.</p>
 
-      {contacts.length > 0 ? (
+      {assignments.length > 0 ? (
         <ul className="site-entity-list">
-          {contacts.map((contact) => (
-            <SiteContactRow key={contact.id} siteId={siteId} contact={contact} canEdit={canEdit} />
+          {assignments.map((row) => (
+            <SiteContactRow key={row.linkId} linkId={row.linkId} contact={row.contact} canEdit={canEdit} />
           ))}
         </ul>
       ) : (
-        <p className="muted">Noch keine Ansprechpartner erfasst.</p>
+        <p className="muted">Noch keine Ansprechpartner zugeordnet.</p>
       )}
 
-      {canEdit && (
-        <form action={saveSiteContacts} className="input-form">
-          <input type="hidden" name="site_id" value={siteId} />
-          <DynamicFormRows fields={CONTACT_FIELDS} />
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Ansprechpartner speichern</button>
-          </div>
-        </form>
-      )}
+      {canEdit ? (
+        <SiteContactAssignForm
+          siteId={siteId}
+          catalog={catalog}
+          assignedIds={assignedIds}
+          canManagePartners={canManagePartners}
+          stammdatenHref={stammdatenHref}
+        />
+      ) : null}
     </section>
   );
 }

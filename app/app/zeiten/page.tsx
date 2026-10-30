@@ -4,7 +4,7 @@ import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { saveTimeEntry, resubmitTimeEntry } from '@/lib/actions/employee';
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
-import { fetchAccessibleSites } from '@/lib/sites/access';
+import { fetchAccessibleSites, type AccessibleSiteRow } from '@/lib/sites/access';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { formatMinutes } from '@/lib/utils/time';
 import {
@@ -14,6 +14,10 @@ import {
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
 import type { PayrollBooking } from '@/lib/types/database';
+
+function loadErrorMessage(error: { message: string } | null | undefined, fallback: string) {
+  return error?.message ? `${fallback}: ${error.message}` : null;
+}
 
 export default async function ZeitenPage() {
   const ctx = await requireTenantMember();
@@ -29,11 +33,21 @@ export default async function ZeitenPage() {
   const { season_start: badWeatherSeasonStart, season_end: badWeatherSeasonEnd } =
     getBadWeatherSeasonFromConfig(badWeatherCfg);
 
+  const loadErrors: string[] = [];
+
+  let sites: AccessibleSiteRow[] = [];
+  try {
+    sites = await fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes');
+  } catch (err) {
+    loadErrors.push(
+      err instanceof Error ? err.message : 'Baustellen konnten nicht geladen werden.',
+    );
+  }
+
   const [
-    { data: entries },
-    { data: rejectedEntries },
-    sites,
-    { data: bookingCodes },
+    { data: entries, error: entriesError },
+    { data: rejectedEntries, error: rejectedError },
+    { data: bookingCodes, error: bookingCodesError },
   ] = await Promise.all([
     supabase
       .from('time_entries')
@@ -47,7 +61,6 @@ export default async function ZeitenPage() {
       .eq('user_id', ctx.userId)
       .eq('approval_status', 'rejected')
       .order('work_date', { ascending: false }),
-    fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes'),
     supabase
       .from('payroll_booking_codes')
       .select('*')
@@ -56,20 +69,48 @@ export default async function ZeitenPage() {
       .order('sort_order'),
   ]);
 
+  for (const msg of [
+    loadErrorMessage(entriesError, 'Zeiteinträge konnten nicht geladen werden'),
+    loadErrorMessage(rejectedError, 'Abgelehnte Zeiteinträge konnten nicht geladen werden'),
+    loadErrorMessage(bookingCodesError, 'Buchungscodes konnten nicht geladen werden'),
+  ]) {
+    if (msg) loadErrors.push(msg);
+  }
+
   const allEntryIds = (entries ?? []).map((e) => e.id);
 
-  const [{ data: allSegments }, { data: allBookings }] = allEntryIds.length > 0
-    ? await Promise.all([
-        supabase
-          .from('time_entry_segments')
-          .select('time_entry_id, site_id, travel_minutes, start_time, end_time, block_type')
-          .in('time_entry_id', allEntryIds),
-        supabase
-          .from('payroll_bookings')
-          .select('*')
-          .in('time_entry_id', allEntryIds),
-      ])
-    : [{ data: [] }, { data: [] }];
+  let allSegments: {
+    time_entry_id: string;
+    site_id: string | null;
+    travel_minutes: number;
+    start_time: string | null;
+    end_time: string | null;
+    block_type: string | null;
+  }[] = [];
+  let allBookings: PayrollBooking[] = [];
+
+  if (allEntryIds.length > 0) {
+    const [
+      { data: segmentRows, error: segmentsError },
+      { data: bookingRows, error: bookingsError },
+    ] = await Promise.all([
+      supabase
+        .from('time_entry_segments')
+        .select('time_entry_id, site_id, travel_minutes, start_time, end_time, block_type')
+        .in('time_entry_id', allEntryIds),
+      supabase.from('payroll_bookings').select('*').in('time_entry_id', allEntryIds),
+    ]);
+
+    allSegments = segmentRows ?? [];
+    allBookings = (bookingRows ?? []) as PayrollBooking[];
+
+    for (const msg of [
+      loadErrorMessage(segmentsError, 'Tagesaufteilung konnte nicht geladen werden'),
+      loadErrorMessage(bookingsError, 'Buchungen konnten nicht geladen werden'),
+    ]) {
+      if (msg) loadErrors.push(msg);
+    }
+  }
 
   const segmentsByEntry = new Map<
     string,
@@ -81,7 +122,7 @@ export default async function ZeitenPage() {
       block_type: string;
     }[]
   >();
-  for (const seg of allSegments ?? []) {
+  for (const seg of allSegments) {
     const list = segmentsByEntry.get(seg.time_entry_id) ?? [];
     list.push({
       site_id: seg.site_id,
@@ -94,7 +135,7 @@ export default async function ZeitenPage() {
   }
 
   const bookingsByEntry = new Map<string, PayrollBooking[]>();
-  for (const b of allBookings ?? []) {
+  for (const b of allBookings) {
     if (!b.time_entry_id) continue;
     const list = bookingsByEntry.get(b.time_entry_id) ?? [];
     list.push(b);
@@ -107,6 +148,7 @@ export default async function ZeitenPage() {
     .filter((e) => e.approval_status === 'approved')
     .reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const today = todayWorkDate();
+  const formsDisabled = sites.length === 0;
 
   return (
     <>
@@ -129,6 +171,17 @@ export default async function ZeitenPage() {
           </Link>
         </div>
       </div>
+
+      {loadErrors.length > 0 ? (
+        <div className="callout callout-warning" role="alert" style={{ marginBottom: 16 }}>
+          <strong>Einige Daten konnten nicht geladen werden</strong>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {loadErrors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {(rejectedEntries ?? []).length > 0 && (
         <section className="panel form-panel" id="korrektur" style={{ marginBottom: 16 }}>
@@ -169,15 +222,21 @@ export default async function ZeitenPage() {
 
       <section className="panel form-panel">
         <h2>Neuer Zeiteintrag</h2>
-        <form action={saveTimeEntry} className="input-form">
-          <TimeEntryFormFields
-            sites={sites ?? []}
-            submitLabel="Speichern"
-            compact
-            badWeatherSeasonStart={badWeatherSeasonStart}
-            badWeatherSeasonEnd={badWeatherSeasonEnd}
-          />
-        </form>
+        {formsDisabled ? (
+          <p className="muted">
+            Zeiterfassung ist vorübergehend nicht möglich, weil keine Baustellen geladen werden konnten.
+          </p>
+        ) : (
+          <form action={saveTimeEntry} className="input-form">
+            <TimeEntryFormFields
+              sites={sites}
+              submitLabel="Speichern"
+              compact
+              badWeatherSeasonStart={badWeatherSeasonStart}
+              badWeatherSeasonEnd={badWeatherSeasonEnd}
+            />
+          </form>
+        )}
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
@@ -194,7 +253,7 @@ export default async function ZeitenPage() {
                 <th className="data-table-col--optional">Start</th>
                 <th className="data-table-col--optional">Ende</th>
                 <th>Arbeitszeit</th>
-                <th>Fahrer</th>
+                <th>Fahrt</th>
                 <th>Status</th>
                 <th className="data-table-col--optional">Aktion</th>
               </tr>
@@ -215,6 +274,9 @@ export default async function ZeitenPage() {
             </tbody>
           </table>
         </div>
+        {(entries ?? []).length === 0 && !entriesError ? (
+          <p className="muted">Keine Zeiteinträge in diesem Monat.</p>
+        ) : null}
       </section>
     </>
   );

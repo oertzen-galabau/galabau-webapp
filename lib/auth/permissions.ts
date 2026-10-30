@@ -88,7 +88,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'nav.rapporte', label: 'Dokumente', group: 'Navigation' },
   { key: 'nav.nachrichten', label: 'Nachrichten', group: 'Navigation' },
   { key: 'nav.bestellungen', label: 'Bestellungen', group: 'Navigation' },
-  { key: 'nav.partners', label: 'Stammdaten (Einstellungen)', group: 'Navigation' },
+  { key: 'nav.partners', label: 'Stammdaten inkl. Ansprechpartner (Einstellungen)', group: 'Navigation' },
   { key: 'nav.team', label: 'Team', group: 'Navigation' },
   { key: 'nav.einstellungen', label: 'Einstellungen', group: 'Navigation' },
   { key: 'nav.rollen', label: 'Rollen & Berechtigungen', group: 'Navigation' },

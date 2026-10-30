@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { assertEquipmentAvailableOnDays } from '@/lib/schedule/equipment-day-exclusive';
 
 export type ScheduleEntryRow = {
   site_id: string;
@@ -88,10 +89,12 @@ async function replaceScheduleEntryEquipment(
   supabase: SupabaseClient,
   tenantId: string,
   entryId: string,
+  planDate: string,
   equipmentIds: string[],
 ) {
   const uniqueIds = [...new Set(equipmentIds)];
   await assertEquipmentInTenant(supabase, tenantId, uniqueIds);
+  await assertEquipmentAvailableOnDays(supabase, tenantId, uniqueIds, [planDate], entryId);
   await supabase.from('schedule_entry_equipment').delete().eq('schedule_entry_id', entryId);
   if (!uniqueIds.length) return;
   const { error } = await supabase.from('schedule_entry_equipment').insert(
@@ -108,12 +111,13 @@ async function applyEntryRelations(
   supabase: SupabaseClient,
   tenantId: string,
   entryId: string,
+  planDate: string,
   row: ScheduleEntryRow,
 ) {
   const memberUserIds = (row.schedule_entry_members ?? []).map((m) => m.user_id);
   const equipmentIds = (row.schedule_entry_equipment ?? []).map((e) => e.equipment_id);
   await replaceScheduleEntryMembers(supabase, tenantId, entryId, memberUserIds);
-  await replaceScheduleEntryEquipment(supabase, tenantId, entryId, equipmentIds);
+  await replaceScheduleEntryEquipment(supabase, tenantId, entryId, planDate, equipmentIds);
 }
 
 /** Legt einen Einsatz an einem Tag an (Kopie inkl. Mitglieder/Geräte). */
@@ -145,7 +149,7 @@ export async function insertScheduleEntryCopy(
     .single();
   if (error) throw new Error(error.message);
 
-  await applyEntryRelations(supabase, tenantId, created.id, copy);
+  await applyEntryRelations(supabase, tenantId, created.id, planDate, copy);
 
   return created.id;
 }
@@ -186,7 +190,7 @@ export async function upsertScheduleEntryCopy(
       .eq('tenant_id', tenantId);
     if (error) throw new Error(error.message);
 
-    await applyEntryRelations(supabase, tenantId, existing.id, copy);
+    await applyEntryRelations(supabase, tenantId, existing.id, planDate, copy);
     return 'updated';
   }
 
