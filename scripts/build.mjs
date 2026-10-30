@@ -20,6 +20,19 @@ if (!env.SUPABASE_SERVICE_ROLE_KEY) {
   );
 }
 
+const invitePepperReady = Boolean(env.INVITE_TOKEN_PEPPER || env.PASSWORD_RESET_PEPPER);
+if (!invitePepperReady) {
+  console.warn(
+    '[build] WARNUNG: INVITE_TOKEN_PEPPER oder PASSWORD_RESET_PEPPER fehlen — Mitarbeiter-Einladungen schlagen in Produktion fehl. Auf Hostinger setzen und App neu starten.',
+  );
+}
+
+if (!env.PASSWORD_RESET_PEPPER) {
+  console.warn(
+    '[build] WARNUNG: PASSWORD_RESET_PEPPER fehlt — Passwort-Reset per E-Mail-Code funktioniert in Produktion nicht.',
+  );
+}
+
 const platformName = env.NEXT_PUBLIC_PLATFORM_NAME?.trim();
 if (platformName && platformName !== 'BauDiggie') {
   console.warn(

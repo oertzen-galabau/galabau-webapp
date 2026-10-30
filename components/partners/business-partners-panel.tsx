@@ -4,6 +4,7 @@ import { PartnerTabs } from '@/components/partners/partner-tabs';
 import { PartnerRow } from '@/components/partners/partner-row';
 import { PartnerCreateForm } from '@/components/partners/partner-create-form';
 import { EquipmentPanel } from '@/components/equipment/equipment-panel';
+import { loadPartnerCatalog } from '@/lib/partners/load-catalog';
 import { partnerKindFromTab, type PartnerTabId } from '@/lib/partners/kind';
 import type { TenantBusinessPartner } from '@/lib/types/database';
 
@@ -34,6 +35,8 @@ export async function BusinessPartnersPanel({ ctx, activePartnerTab }: Props) {
     .order('name');
 
   const list = (partners ?? []) as TenantBusinessPartner[];
+  const catalog = await loadPartnerCatalog(supabase, ctx.tenant!.id, kind);
+  const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
 
   return (
     <>
@@ -46,9 +49,35 @@ export async function BusinessPartnersPanel({ ctx, activePartnerTab }: Props) {
         </section>
       )}
 
-      <section className="panel team-list" style={{ marginTop: 16 }}>
+      <section className="panel partner-table-panel" style={{ marginTop: 16 }}>
         {list.length > 0 ? (
-          list.map((partner) => <PartnerRow key={partner.id} partner={partner} canManage={canManage} />)
+          <div className="data-table-wrap">
+            <table className="data-table partner-table">
+              <thead>
+                <tr>
+                  <th scope="col">Firma</th>
+                  <th scope="col">Hauptkontakt</th>
+                  <th scope="col" className="data-table-col--optional">Bemerkung</th>
+                  <th scope="col">Status</th>
+                  {canManage && <th scope="col" className="partner-table-actions-head">Aktionen</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((partner) => {
+                  const nested = catalogById.get(partner.id);
+                  return (
+                    <PartnerRow
+                      key={partner.id}
+                      partner={partner}
+                      locations={nested?.locations ?? []}
+                      contacts={nested?.contacts ?? []}
+                      canManage={canManage}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="muted" style={{ padding: '1rem 1.25rem' }}>
             Noch keine Einträge in dieser Kategorie.

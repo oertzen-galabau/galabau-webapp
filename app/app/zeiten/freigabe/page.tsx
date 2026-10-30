@@ -22,10 +22,14 @@ export default async function ZeitenFreigabePage() {
   const tenantPayrollConfig = await loadTenantPayrollConfig(supabase, ctx.tenant!.id);
   const tenantConfigSerialized = serializeTenantConfig(tenantPayrollConfig);
 
-  const [{ data: pendingEntries }, { data: bookingCodes }, { data: badWeatherDays }] = await Promise.all([
+  const [
+    { data: pendingEntries, error: pendingEntriesError },
+    { data: bookingCodes },
+    { data: badWeatherDays },
+  ] = await Promise.all([
     supabase
       .from('time_entries')
-      .select('*, sites(name), profiles(first_name, last_name)')
+      .select('*, sites(name), profiles!time_entries_user_id_fkey(first_name, last_name)')
       .eq('approval_status', 'pending')
       .order('submitted_at', { ascending: true }),
     supabase
@@ -111,6 +115,11 @@ export default async function ZeitenFreigabePage() {
         {canMarkBadWeather && (
           <BadWeatherFreigabeControl markedDates={badWeatherDates} suggestedDates={pendingDates} />
         )}
+        {pendingEntriesError ? (
+          <p className="callout callout-warning" role="alert">
+            Zeiteinträge konnten nicht geladen werden: {pendingEntriesError.message}
+          </p>
+        ) : null}
         {pendingWithMeta.length > 0 ? (
           <div className="data-table-wrap">
             <table className="data-table">

@@ -7,6 +7,7 @@ import {
   splitOrderTotal,
   type BudgetBreakdown,
 } from '@/lib/orders/budget';
+import { resolveCatalogUnitPriceEur } from '@/lib/orders/catalog-item-price';
 import { resolveItemSizeOptions, type SizePresetsMap } from '@/lib/orders/catalog-sizes';
 import { formatOrderEuro } from '@/lib/orders/labels';
 import type { OrderCatalogCategory, OrderCatalogCategorySizeKind, OrderCatalogItem } from '@/lib/types/database';
@@ -71,7 +72,13 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
       .map((item) => {
         const line = lines[item.id];
         if (!line || line.quantity <= 0) return null;
-        return { unitPriceEur: item.price != null ? Number(item.price) : null, quantity: line.quantity };
+        return {
+          unitPriceEur: resolveCatalogUnitPriceEur(
+            { price: item.price != null ? Number(item.price) : null, size_prices: item.size_prices ?? {} },
+            line.size,
+          ),
+          quantity: line.quantity,
+        };
       })
       .filter(Boolean) as { unitPriceEur: number | null; quantity: number }[];
     const total = cartTotalEur(cartLines);
@@ -142,7 +149,17 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
                       <td className="oc-nr">{item.article_number ?? '—'}</td>
                       <td className="oc-style">{item.clothing_style}</td>
                       <td className="oc-series">{item.series ?? '—'}</td>
-                      <td className="oc-price">{item.price != null ? formatOrderEuro(Number(item.price)) : '—'}</td>
+                      <td className="oc-price">
+                        {formatOrderEuro(
+                          resolveCatalogUnitPriceEur(
+                            {
+                              price: item.price != null ? Number(item.price) : null,
+                              size_prices: item.size_prices ?? {},
+                            },
+                            line.size,
+                          ),
+                        )}
+                      </td>
                       <td className="oc-size" data-label="Größe">
                         {sizeOptions.length > 0 ? (
                           <AppSelect

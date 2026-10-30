@@ -1,7 +1,10 @@
 import Link from 'next/link';
-import { linkSiteSupplier } from '@/lib/actions/partners';
+import { SiteSupplierLinkForm } from '@/components/sites/site-supplier-link-form';
 import { SiteSupplierRow } from '@/components/sites/site-supplier-row';
-import { partnerOptionLabel } from '@/lib/partners/kind';
+import { siteSupplierLinkKey, type MasterPartnerCatalogEntry } from '@/lib/partners/catalog';
+import type { TenantBusinessPartnerContact, TenantBusinessPartnerLocation } from '@/lib/types/database';
+
+type LinkedContact = Pick<TenantBusinessPartnerContact, 'id' | 'name' | 'role_title' | 'phone' | 'email'>;
 
 type SiteSupplier = {
   id: string;
@@ -11,18 +14,15 @@ type SiteSupplier = {
   email: string | null;
   notes: string | null;
   partner_id: string | null;
-};
-
-type MasterSupplier = {
-  id: string;
-  name: string;
-  contact_person: string | null;
+  partner_location_id: string | null;
+  location: Pick<TenantBusinessPartnerLocation, 'id' | 'label' | 'street' | 'postal_code' | 'city' | 'phone'> | null;
+  linkedContacts: LinkedContact[];
 };
 
 type Props = {
   siteId: string;
   suppliers: SiteSupplier[];
-  masterSuppliers: MasterSupplier[];
+  partnerCatalog: MasterPartnerCatalogEntry[];
   canEdit: boolean;
   canManagePartners: boolean;
 };
@@ -30,14 +30,14 @@ type Props = {
 export function SiteSuppliersSection({
   siteId,
   suppliers,
-  masterSuppliers,
+  partnerCatalog,
   canEdit,
   canManagePartners,
 }: Props) {
-  const linkedPartnerIds = new Set(
-    suppliers.map((s) => s.partner_id).filter((id): id is string => Boolean(id)),
-  );
-  const availableToLink = masterSuppliers.filter((p) => !linkedPartnerIds.has(p.id));
+  const catalogByPartnerId = new Map(partnerCatalog.map((entry) => [entry.id, entry]));
+  const linkedKeys = suppliers
+    .filter((row) => row.partner_id)
+    .map((row) => siteSupplierLinkKey(row.partner_id!, row.partner_location_id));
 
   return (
     <section className="site-detail-section">
@@ -46,34 +46,24 @@ export function SiteSuppliersSection({
       {suppliers.length > 0 ? (
         <ul className="site-entity-list">
           {suppliers.map((supplier) => (
-            <SiteSupplierRow key={supplier.id} siteId={siteId} supplier={supplier} canEdit={canEdit} />
+            <SiteSupplierRow
+              key={supplier.id}
+              siteId={siteId}
+              supplier={supplier}
+              catalogEntry={supplier.partner_id ? catalogByPartnerId.get(supplier.partner_id) ?? null : null}
+              canEdit={canEdit}
+            />
           ))}
         </ul>
       ) : (
         <p className="muted">Noch keine Lieferanten dieser Baustelle zugeordnet.</p>
       )}
 
-      {canEdit && availableToLink.length > 0 && (
-        <form action={linkSiteSupplier} className="input-form">
-          <input type="hidden" name="site_id" value={siteId} />
-          <label>
-            Lieferant aus Stammliste
-            <select name="partner_id" required defaultValue="">
-              <option value="" disabled>— wählen —</option>
-              {availableToLink.map((partner) => (
-                <option key={partner.id} value={partner.id}>
-                  {partnerOptionLabel(partner)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="input-form-actions">
-            <button type="submit" className="primary-button primary-button--compact">Lieferant zuordnen</button>
-          </div>
-        </form>
+      {canEdit && partnerCatalog.length > 0 && (
+        <SiteSupplierLinkForm siteId={siteId} catalog={partnerCatalog} linkedKeys={linkedKeys} />
       )}
 
-      {canEdit && availableToLink.length === 0 && masterSuppliers.length === 0 && (
+      {canEdit && partnerCatalog.length === 0 && (
         <p className="muted">
           {canManagePartners ? (
             <>

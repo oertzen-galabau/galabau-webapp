@@ -42,6 +42,18 @@ function presetForCategory(
   return sizePresets.clothing;
 }
 
+function initialSizePriceInputs(
+  item: OrderCatalogItem | null,
+  offeredSizes: string[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const size of offeredSizes) {
+    const v = item?.size_prices?.[size];
+    map[size] = v != null ? formatPriceForInput(v) : '';
+  }
+  return map;
+}
+
 function initialSizesForItem(
   item: OrderCatalogItem | null,
   category: OrderCatalogCategory | undefined,
@@ -100,15 +112,33 @@ function OrderCatalogItemForm({
     [categories, categoryId],
   );
   const sizeKind = selectedCategory?.size_kind ?? 'clothing';
-  const [sizes, setSizes] = useState<string[]>(() =>
-    initialSizesForItem(item, categories.find((c) => c.id === initialCategoryId(item, categories)), sizePresets),
+  const initialSizes = initialSizesForItem(
+    item,
+    categories.find((c) => c.id === initialCategoryId(item, categories)),
+    sizePresets,
+  );
+  const [sizes, setSizes] = useState<string[]>(() => initialSizes);
+  const [sizePrices, setSizePrices] = useState<Record<string, string>>(() =>
+    initialSizePriceInputs(item, initialSizes),
   );
 
   useEffect(() => {
-    setSizes(initialSizesForItem(item, selectedCategory, sizePresets));
+    const nextSizes = initialSizesForItem(item, selectedCategory, sizePresets);
+    setSizes(nextSizes);
+    setSizePrices(initialSizePriceInputs(item, nextSizes));
     // Größenauswahl bei Kategoriewechsel zurücksetzen
     // eslint-disable-next-line react-hooks/exhaustive-deps -- nur bei categoryId
   }, [categoryId]);
+
+  useEffect(() => {
+    setSizePrices((prev) => {
+      const next: Record<string, string> = {};
+      for (const size of sizes) {
+        next[size] = prev[size] ?? '';
+      }
+      return next;
+    });
+  }, [sizes]);
 
   function addSize() {
     const next = sizeInput.trim();
@@ -144,7 +174,17 @@ function OrderCatalogItemForm({
       const s = data.suggestion ?? {};
       if (s.clothingStyle) setClothingStyle(s.clothingStyle);
       if (s.articleNumber) setArticleNumber(s.articleNumber);
-      if (s.price != null) setPrice(formatPriceForInput(s.price));
+      if (s.price != null) {
+        const formatted = formatPriceForInput(s.price);
+        setPrice(formatted);
+        setSizePrices((prev) => {
+          const next: Record<string, string> = { ...prev };
+          for (const size of sizes) {
+            next[size] = formatted;
+          }
+          return next;
+        });
+      }
       setImportMessage(s.message ?? 'Daten aus dem Shop übernommen. Bitte prüfen und ggf. anpassen.');
     } catch {
       setImportError('Import fehlgeschlagen');
@@ -313,6 +353,42 @@ function OrderCatalogItemForm({
                   </label>
                 );
               })}
+            </div>
+          </div>
+        )}
+        {sizes.length > 0 && (
+          <div className="input-form-span-full">
+            <p className="muted" style={{ marginBottom: 8 }}>
+              Preis pro Größe (optional). Leer lassen, wenn der allgemeine Preis (EUR) gelten soll.
+            </p>
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Größe</th>
+                    <th>Preis (EUR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sizes.map((size) => (
+                    <tr key={size}>
+                      <td>{size}</td>
+                      <td>
+                        <input
+                          name={`size_prices[${size}]`}
+                          inputMode="decimal"
+                          value={sizePrices[size] ?? ''}
+                          onChange={(e) =>
+                            setSizePrices((prev) => ({ ...prev, [size]: e.target.value }))
+                          }
+                          placeholder={price.trim() || '—'}
+                          aria-label={`Preis Größe ${size}`}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

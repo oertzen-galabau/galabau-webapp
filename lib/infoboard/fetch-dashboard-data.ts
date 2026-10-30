@@ -24,6 +24,7 @@ import { businessDaysBetween } from '@/lib/utils/time';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import type { SessionContext } from '@/lib/auth/session';
 import { canAccess } from '@/lib/auth/session';
+import { compareInfoboardPostsForList } from '@/lib/infoboard/post-types';
 import { approvalEmptyQuip } from '@/lib/time-tracking/approval-empty-quips';
 import {
   buildScheduleRowsForDay,
@@ -202,7 +203,7 @@ export async function fetchInfoboardPayload(
     canApprove
       ? supabase
           .from('time_entries')
-          .select('id, work_date, work_minutes, profiles(first_name, last_name)')
+          .select('id, work_date, work_minutes, profiles!time_entries_user_id_fkey(first_name, last_name)')
           .eq('tenant_id', tenantId)
           .eq('approval_status', 'pending')
           .order('submitted_at', { ascending: true })
@@ -218,7 +219,9 @@ export async function fetchInfoboardPayload(
     canViewPosts
       ? supabase
           .from('infoboard_posts')
-          .select('id, title, content, post_type, published_at, created_at')
+          .select(
+            'id, title, content, post_type, published_at, created_at, is_important, important_until',
+          )
           .eq('tenant_id', tenantId)
           .order('published_at', { ascending: false, nullsFirst: false })
           .limit(30)
@@ -387,15 +390,19 @@ export async function fetchInfoboardPayload(
 
   const readInfoboardPostIds = new Set((readInfoboardPosts ?? []).map((row) => row.post_id));
 
-  const infoboardPostRows = (posts ?? []).map((post) => ({
-    id: post.id,
-    title: post.title,
-    content: post.content,
-    postType: post.post_type,
-    publishedAt: post.published_at,
-    createdAt: post.created_at,
-    isUnread: !readInfoboardPostIds.has(post.id),
-  }));
+  const infoboardPostRows = (posts ?? [])
+    .map((post) => ({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      postType: post.post_type,
+      publishedAt: post.published_at,
+      createdAt: post.created_at,
+      isUnread: !readInfoboardPostIds.has(post.id),
+      isImportant: Boolean(post.is_important),
+      importantUntil: post.important_until ?? null,
+    }))
+    .sort((a, b) => compareInfoboardPostsForList(a, b, now));
 
   const greeting = greetingForHour(currentHour());
   const firstName = ctx.profile.first_name || 'Team';

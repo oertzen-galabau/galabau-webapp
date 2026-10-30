@@ -10,6 +10,7 @@ import {
   splitOrderTotal,
   type CartLineInput,
 } from '@/lib/orders/budget';
+import { resolveCatalogUnitPriceEur } from '@/lib/orders/catalog-item-price';
 import { resolveItemSizeOptions } from '@/lib/orders/catalog-sizes';
 import { loadClothingOrderBudgetBreakdown } from '@/lib/orders/load-budget';
 import { loadOrderCatalogSizePresets } from '@/lib/orders/load-size-presets';
@@ -103,7 +104,13 @@ export async function submitCatalogOrder(formData: FormData) {
 
   const cartInputs: CartLineInput[] = parsedLines.map((line) => {
     const item = byId.get(line.catalogItemId)!;
-    return { unitPriceEur: item.price != null ? Number(item.price) : null, quantity: line.quantity };
+    return {
+      unitPriceEur: resolveCatalogUnitPriceEur(
+        { price: item.price != null ? Number(item.price) : null, size_prices: item.size_prices ?? {} },
+        line.size,
+      ),
+      quantity: line.quantity,
+    };
   });
   const totalEur = cartTotalEur(cartInputs);
 
@@ -130,7 +137,10 @@ export async function submitCatalogOrder(formData: FormData) {
     const item = byId.get(line.catalogItemId)! as OrderCatalogItem & {
       order_catalog_categories: { name: string } | null;
     };
-    const unitPrice = item.price != null ? Number(item.price) : null;
+    const unitPrice = resolveCatalogUnitPriceEur(
+      { price: item.price != null ? Number(item.price) : null, size_prices: item.size_prices ?? {} },
+      line.size,
+    );
     return {
       order_id: order.id,
       tenant_id: tenantId,

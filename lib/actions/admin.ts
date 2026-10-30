@@ -1119,10 +1119,9 @@ export async function inviteEmployee(
       throw inviteError;
     }
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'Mitarbeiter konnte nicht angelegt werden.',
-    };
+    const raw = error instanceof Error ? error.message : 'Mitarbeiter konnte nicht angelegt werden.';
+    const { formatProductionConfigError } = await import('@/lib/auth/production-config-errors');
+    return { ok: false, error: formatProductionConfigError(raw) };
   }
 }
 
@@ -1166,10 +1165,9 @@ export async function regenerateEmployeeInvite(
     revalidateEmployeePaths(targetUserId);
     return result;
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'Einladung konnte nicht erneuert werden.',
-    };
+    const raw = error instanceof Error ? error.message : 'Einladung konnte nicht erneuert werden.';
+    const { formatProductionConfigError } = await import('@/lib/auth/production-config-errors');
+    return { ok: false, error: formatProductionConfigError(raw) };
   }
 }
 

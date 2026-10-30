@@ -9,7 +9,13 @@ import {
   saveOrderCatalogCategory,
   setOrderCatalogItemActive,
 } from '@/lib/actions/order-catalog';
-import { CATEGORY_SIZE_KIND_LABELS, formatItemSizesDisplay, type SizePresetsMap } from '@/lib/orders/catalog-sizes';
+import { formatCatalogItemPriceLabel } from '@/lib/orders/catalog-item-price';
+import {
+  CATEGORY_SIZE_KIND_LABELS,
+  formatItemSizesDisplay,
+  resolveItemSizeOptions,
+  type SizePresetsMap,
+} from '@/lib/orders/catalog-sizes';
 import type { CatalogSubTabId } from '@/lib/orders/tabs';
 import type { OrderCatalogCategory, OrderCatalogCategorySizeKind, OrderCatalogItem, OrderCatalogSizeOption } from '@/lib/types/database';
 import { OrderCatalogItemDialog } from '@/components/orders/order-catalog-item-dialog';
@@ -36,11 +42,6 @@ type Props = {
   sizePresets: SizePresetsMap;
   sizeOptionRows: OrderCatalogSizeOption[];
 };
-
-function formatEuro(price: number | null): string {
-  if (price == null) return '—';
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(price);
-}
 
 export function OrderCatalogManager({ categories, items, activeSubTab, sizePresets, sizeOptionRows }: Props) {
   const router = useRouter();
@@ -264,7 +265,19 @@ export function OrderCatalogManager({ categories, items, activeSubTab, sizePrese
                       <td>{item.article_number ?? '—'}</td>
                       <td>{item.clothing_style}</td>
                       <td className="data-table-col--optional">{item.series ?? '—'}</td>
-                      <td>{formatEuro(item.price)}</td>
+                      <td>
+                        {formatCatalogItemPriceLabel(
+                          {
+                            price: item.price != null ? Number(item.price) : null,
+                            size_prices: item.size_prices ?? {},
+                          },
+                          resolveItemSizeOptions(
+                            item,
+                            item.order_catalog_categories?.size_kind ?? 'clothing',
+                            sizePresets,
+                          ),
+                        )}
+                      </td>
                       <td className="data-table-col--optional">
                         {formatItemSizesDisplay(
                           item,

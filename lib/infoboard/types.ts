@@ -119,6 +119,8 @@ export type InfoboardPostRow = {
   publishedAt: string | null;
   createdAt: string;
   isUnread: boolean;
+  isImportant: boolean;
+  importantUntil: string | null;
 };
 
 export type InfoboardWidgetData = {

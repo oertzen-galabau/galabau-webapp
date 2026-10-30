@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/components/ui/app-dialogs';
 import { AppSidePanel } from '@/components/ui/app-side-panel';
 import { deleteInfoboardPost } from '@/lib/actions/infoboard-posts';
 import { markInfoboardPostsRead } from '@/lib/actions/infoboard-post-reads';
+import { isInfoboardPostImportantActive } from '@/lib/infoboard/post-types';
 import type { InfoboardPostRow } from '@/lib/infoboard/types';
 
 type Props = {
@@ -37,11 +38,38 @@ export function InfoboardPostsSurfaces({ posts, canManagePosts }: Props) {
     [posts],
   );
 
+  const activeImportantPosts = useMemo(
+    () =>
+      posts.filter((post) =>
+        isInfoboardPostImportantActive(post.isImportant, post.importantUntil),
+      ),
+    [posts],
+  );
+
+  const bannerPosts = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: InfoboardPostRow[] = [];
+    for (const post of activeImportantPosts) {
+      if (seen.has(post.id)) continue;
+      seen.add(post.id);
+      merged.push(post);
+    }
+    for (const post of unreadPosts) {
+      if (seen.has(post.id)) continue;
+      seen.add(post.id);
+      merged.push(post);
+    }
+    return merged;
+  }, [activeImportantPosts, unreadPosts]);
+
   const unreadIds = useMemo(() => unreadPosts.map((post) => post.id), [unreadPosts]);
 
   const unreadKey = unreadIds.join('|');
 
-  const showBanner = unreadPosts.length > 0 && dismissedUnreadKey !== unreadKey;
+  const hasActiveImportant = activeImportantPosts.length > 0;
+
+  const showBanner =
+    bannerPosts.length > 0 && (hasActiveImportant || dismissedUnreadKey !== unreadKey);
 
   const markUnreadAndOpen = useCallback(
     (highlightIds: string[]) => {
@@ -61,10 +89,11 @@ export function InfoboardPostsSurfaces({ posts, canManagePosts }: Props) {
   );
 
   const openPanelFromBanner = useCallback(() => {
-    if (!unreadPosts.length) return;
-    setDismissedUnreadKey(unreadKey);
+    if (!bannerPosts.length) return;
+    if (unreadPosts.length) setDismissedUnreadKey(unreadKey);
+    setPanelOpen(true);
     markUnreadAndOpen(unreadIds);
-  }, [unreadPosts.length, unreadKey, unreadIds, markUnreadAndOpen]);
+  }, [bannerPosts.length, unreadPosts.length, unreadKey, unreadIds, markUnreadAndOpen]);
 
   const openPanelQuiet = useCallback(() => {
     setPanelOpen(true);
@@ -116,7 +145,7 @@ export function InfoboardPostsSurfaces({ posts, canManagePosts }: Props) {
   return (
     <>
       {showBanner && (
-        <InfoboardPostBanner unreadPosts={unreadPosts} onOpen={openPanelFromBanner} />
+        <InfoboardPostBanner posts={bannerPosts} onOpen={openPanelFromBanner} />
       )}
       {showQuietLink && (
         <div className="infoboard-posts-quiet-wrap">

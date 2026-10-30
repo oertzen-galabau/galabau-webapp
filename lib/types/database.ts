@@ -342,6 +342,43 @@ export type TenantBusinessPartner = {
   updated_at: string;
 };
 
+export type TenantBusinessPartnerLocation = {
+  id: string;
+  tenant_id: string;
+  partner_id: string;
+  label: string;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+  phone: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantBusinessPartnerContact = {
+  id: string;
+  tenant_id: string;
+  partner_id: string;
+  location_id: string | null;
+  name: string;
+  role_title: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SiteSupplierContactLink = {
+  id: string;
+  tenant_id: string;
+  site_supplier_id: string;
+  partner_contact_id: string;
+  created_at: string;
+};
+
 export type DeliveryNote = {
   id: string;
   tenant_id: string;
@@ -465,6 +502,8 @@ export type OrderCatalogItem = {
   clothing_style: string;
   series: string | null;
   price: number | null;
+  /** Größe → Einzelpreis EUR; fehlende Keys nutzen `price` als Fallback */
+  size_prices: Record<string, number>;
   shop_url: string | null;
   sizes: string[];
   is_active: boolean;

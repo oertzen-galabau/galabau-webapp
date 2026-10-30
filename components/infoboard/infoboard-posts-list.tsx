@@ -5,6 +5,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   infoboardPostTypeBadgeClass,
   infoboardPostTypeLabel,
+  isInfoboardPostImportantActive,
 } from '@/lib/infoboard/post-types';
 import type { InfoboardPostRow } from '@/lib/infoboard/types';
 
@@ -35,9 +36,14 @@ export function InfoboardPostListItem({
   onEdit,
   onDelete,
 }: PostItemProps) {
+  const highlightImportant = isInfoboardPostImportantActive(
+    post.isImportant,
+    post.importantUntil,
+  );
+
   return (
     <article
-      className={`infoboard-post-item${highlightUnread ? ' infoboard-post-item--unread' : ''}`}
+      className={`infoboard-post-item${highlightUnread ? ' infoboard-post-item--unread' : ''}${highlightImportant ? ' infoboard-post-item--important' : ''}`}
     >
       <header>
         <div className="infoboard-post-item-title">
@@ -46,6 +52,9 @@ export function InfoboardPostListItem({
           )}
           <strong>{post.title}</strong>
           {highlightUnread && <span className="infoboard-post-unread-label">Neu</span>}
+          {highlightImportant && (
+            <span className="infoboard-post-important-label">Wichtig</span>
+          )}
           {post.postType && (
             <span className={`status-badge ${infoboardPostTypeBadgeClass(post.postType)}`}>
               {infoboardPostTypeLabel(post.postType)}

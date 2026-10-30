@@ -13,6 +13,8 @@ type ParsedPostInput = {
   content: string;
   postType: string;
   publishedAt: string;
+  isImportant: boolean;
+  importantUntil: string | null;
 };
 
 function requirePostsPermission(ctx: Awaited<ReturnType<typeof getActionContext>>) {
@@ -44,7 +46,21 @@ function parsePostFormData(formData: FormData): ParsedPostInput {
     publishedAt = new Date().toISOString();
   }
 
-  return { title, content, postType, publishedAt };
+  const isImportant = formData.get('is_important') === 'on';
+  const importantUntilDate = String(formData.get('important_until_date') ?? '').trim();
+
+  let importantUntil: string | null = null;
+  if (isImportant && importantUntilDate) {
+    importantUntil = new Date(`${importantUntilDate}T23:59:59`).toISOString();
+    if (Number.isNaN(new Date(importantUntil).getTime())) {
+      throw new Error('Ungültiges Ablaufdatum für „Wichtig“');
+    }
+    if (new Date(importantUntil).getTime() <= Date.now()) {
+      throw new Error('„Wichtig bis“ muss in der Zukunft liegen');
+    }
+  }
+
+  return { title, content, postType, publishedAt, isImportant, importantUntil };
 }
 
 export async function saveInfoboardPost(formData: FormData) {
@@ -63,6 +79,8 @@ export async function saveInfoboardPost(formData: FormData) {
       content: input.content,
       post_type: input.postType,
       published_at: input.publishedAt,
+      is_important: input.isImportant,
+      important_until: input.importantUntil,
       created_by: userId,
     })
     .select('id')
@@ -101,6 +119,8 @@ export async function updateInfoboardPost(formData: FormData) {
       content: input.content,
       post_type: input.postType,
       published_at: input.publishedAt,
+      is_important: input.isImportant,
+      important_until: input.importantUntil,
     })
     .eq('id', id)
     .eq('tenant_id', tenantId);

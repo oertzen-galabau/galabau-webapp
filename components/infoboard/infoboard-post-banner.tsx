@@ -4,25 +4,26 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronRight, Megaphone } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatInfoboardPostDate } from '@/components/infoboard/infoboard-posts-list';
+import { isInfoboardPostImportantActive } from '@/lib/infoboard/post-types';
 import type { InfoboardPostRow } from '@/lib/infoboard/types';
 
 const ROTATE_MS = 4500;
 
 type Props = {
-  unreadPosts: InfoboardPostRow[];
+  posts: InfoboardPostRow[];
   onOpen: () => void;
 };
 
-export function InfoboardPostBanner({ unreadPosts, onOpen }: Props) {
+export function InfoboardPostBanner({ posts, onOpen }: Props) {
   const reduceMotion = useReducedMotion();
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
-  const count = unreadPosts.length;
-  const activePost = unreadPosts[activeIndex] ?? unreadPosts[0];
+  const count = posts.length;
+  const activePost = posts[activeIndex] ?? posts[0];
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [unreadPosts]);
+  }, [posts]);
 
   useEffect(() => {
     if (reduceMotion || count <= 1 || paused) return;
@@ -30,12 +31,22 @@ export function InfoboardPostBanner({ unreadPosts, onOpen }: Props) {
       setActiveIndex((prev) => (prev + 1) % count);
     }, ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [count, paused, reduceMotion, unreadPosts]);
+  }, [count, paused, reduceMotion, posts]);
 
   if (!activePost) return null;
 
+  const activeImportant = isInfoboardPostImportantActive(
+    activePost.isImportant,
+    activePost.importantUntil,
+  );
+  const showUnreadOnActive = activePost.isUnread;
+
   const countLabel =
-    count === 1 ? 'Neuer Beitrag' : `${count} neue Beiträge`;
+    count === 1
+      ? activeImportant && !showUnreadOnActive
+        ? 'Wichtiger Beitrag'
+        : 'Beitrag im Infoboard'
+      : `${count} Beiträge im Infoboard`;
 
   return (
     <button
@@ -53,7 +64,12 @@ export function InfoboardPostBanner({ unreadPosts, onOpen }: Props) {
       </span>
       <span className="infoboard-post-banner-body">
         <span className="infoboard-post-banner-meta">
-          <span className="infoboard-post-unread-label">Neu</span>
+          {activeImportant && (
+            <span className="infoboard-post-important-label">Wichtig</span>
+          )}
+          {showUnreadOnActive && (
+            <span className="infoboard-post-unread-label">Neu</span>
+          )}
           <span className="infoboard-post-banner-eyebrow">{countLabel}</span>
           {count > 1 && (
             <span className="infoboard-post-banner-rotate-index" aria-hidden="true">
@@ -80,7 +96,7 @@ export function InfoboardPostBanner({ unreadPosts, onOpen }: Props) {
         </span>
         {count > 1 && (
           <span className="infoboard-post-banner-dots" aria-hidden="true">
-            {unreadPosts.map((post, index) => (
+            {posts.map((post, index) => (
               <span
                 key={post.id}
                 className={`infoboard-post-banner-dot${index === activeIndex ? ' infoboard-post-banner-dot--active' : ''}`}

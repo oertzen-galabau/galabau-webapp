@@ -5,7 +5,14 @@ import { z } from 'zod';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { normalizePriceString } from '@/lib/catalog/normalize-price';
+import {
+  normalizeSizePricesMap,
+  parseSizePricesFromFormToNumbers,
+} from '@/lib/orders/catalog-item-price';
+import { resolveItemSizeOptions } from '@/lib/orders/catalog-sizes';
+import { loadOrderCatalogSizePresets } from '@/lib/orders/load-size-presets';
 import { createClient } from '@/lib/supabase/server';
+import type { OrderCatalogCategorySizeKind } from '@/lib/types/database';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -126,6 +133,30 @@ export async function saveOrderCatalogItem(formData: FormData) {
   const { tenantId } = ctx;
 
   const shopUrlRaw = (formData.get('shop_url') as string | null)?.trim() ?? '';
+  const supabase = await createClient();
+  const categoryIdRaw = formData.get('category_id');
+  const categoryId = z.string().uuid().parse(categoryIdRaw);
+  const { data: categoryRow, error: categoryError } = await supabase
+    .from('order_catalog_categories')
+    .select('size_kind')
+    .eq('id', categoryId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (categoryError) throw new Error(categoryError.message);
+  if (!categoryRow) throw new Error('Kategorie nicht gefunden.');
+
+  const sizeKind = categoryRow.size_kind as OrderCatalogCategorySizeKind;
+  const sizePresets = await loadOrderCatalogSizePresets(supabase, tenantId);
+  const sizesFromForm = parseSizesFromForm(formData);
+  const offeredSizes = resolveItemSizeOptions({ sizes: sizesFromForm }, sizeKind, sizePresets);
+  const rawSizePrices = parseSizePricesFromFormToNumbers(formData);
+  const sizePrices = normalizeSizePricesMap(
+    Object.fromEntries(
+      Object.entries(rawSizePrices).filter(([, v]) => v != null) as [string, number][],
+    ),
+    offeredSizes,
+  );
+
   const parsed = itemSchema.parse({
     id: (formData.get('id') as string | null)?.trim() || undefined,
     category_id: formData.get('category_id'),
@@ -134,7 +165,7 @@ export async function saveOrderCatalogItem(formData: FormData) {
     series: (formData.get('series') as string | null)?.trim() || undefined,
     price: parsePriceFromForm(formData),
     shop_url: shopUrlRaw || undefined,
-    sizes: parseSizesFromForm(formData),
+    sizes: sizesFromForm,
     is_active: formData.get('is_active') === 'true' || formData.get('is_active') === 'on',
   });
 
@@ -145,13 +176,12 @@ export async function saveOrderCatalogItem(formData: FormData) {
     clothing_style: parsed.clothing_style,
     series: parsed.series || null,
     price: parsed.price ?? null,
+    size_prices: sizePrices,
     shop_url: parsed.shop_url || null,
     sizes: parsed.sizes,
     is_active: parsed.is_active,
     updated_at: new Date().toISOString(),
   };
-
-  const supabase = await createClient();
   if (parsed.id) {
     const { error } = await supabase
       .from('order_catalog_items')

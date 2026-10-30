@@ -49,6 +49,7 @@ function InfoboardPostFormBody({ post, onClose }: FormBodyProps) {
   const router = useRouter();
   const isEdit = Boolean(post);
   const [postType, setPostType] = useState<InfoboardPostType>(() => initialPostType(post));
+  const [isImportant, setIsImportant] = useState(() => Boolean(post?.isImportant));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -145,6 +146,30 @@ function InfoboardPostFormBody({ post, onClose }: FormBodyProps) {
           <input type="hidden" name="published_date" value="" />
           <input type="hidden" name="published_time" value="" />
         </>
+      )}
+
+      <label className="dialog-field infoboard-post-form-important-check">
+        <span className="infoboard-post-form-checkbox-row">
+          <input
+            type="checkbox"
+            name="is_important"
+            checked={isImportant}
+            onChange={(e) => setIsImportant(e.target.checked)}
+          />
+          Wichtig (oben im Infodashboard anpinnen)
+        </span>
+      </label>
+
+      {isImportant && (
+        <label className="dialog-field">
+          Wichtig bis (optional)
+          <input
+            name="important_until_date"
+            type="date"
+            defaultValue={toDateInput(post?.importantUntil ?? null)}
+          />
+          <small className="muted">Leer lassen = bis zur manuellen Entfernung des Hakens</small>
+        </label>
       )}
 
       {error && <p className="dialog-error">{error}</p>}

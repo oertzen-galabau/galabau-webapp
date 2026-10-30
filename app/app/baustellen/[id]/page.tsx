@@ -17,6 +17,8 @@ import {
   SiteTimeEntriesSection,
   type SiteApprovedTimeEntry,
 } from '@/components/sites/site-time-entries-section';
+import { loadPartnerCatalog } from '@/lib/partners/load-catalog';
+import { mapSiteSuppliers } from '@/lib/sites/map-site-suppliers';
 import { userCanAccessSite } from '@/lib/sites/access';
 import { formatSiteAddress } from '@/lib/sites/format-address';
 import {
@@ -96,11 +98,24 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
     foremanOptions,
     siteManagerOptions,
     { data: teamRows },
-    { data: masterSuppliers },
+    partnerCatalog,
   ] = await Promise.all([
     supabase.from('sites').select('*').eq('id', id).eq('tenant_id', tenantId).single(),
     supabase.from('site_contacts').select('*').eq('site_id', id).order('name'),
-    supabase.from('site_suppliers').select('*').eq('site_id', id).order('name'),
+    supabase
+      .from('site_suppliers')
+      .select(
+        `
+        *,
+        location:tenant_business_partner_locations(id, label, street, postal_code, city, phone),
+        contact_links:site_supplier_contacts(
+          partner_contact_id,
+          contact:tenant_business_partner_contacts(id, name, role_title, phone, email, location_id)
+        )
+      `,
+      )
+      .eq('site_id', id)
+      .order('name'),
     supabase.from('site_documents').select('*').eq('site_id', id).order('created_at', { ascending: false }),
     supabase.from('site_appointments').select('*').eq('site_id', id).order('appointment_at'),
     dailyLogsQuery,
@@ -117,14 +132,10 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
       .select('id, user_id, profiles(first_name, last_name, tenant_roles(name, slug))')
       .eq('site_id', id)
       .order('created_at'),
-    supabase
-      .from('tenant_business_partners')
-      .select('id, name, contact_person')
-      .eq('tenant_id', ctx.tenant!.id)
-      .eq('kind', 'supplier')
-      .eq('is_active', true)
-      .order('name'),
+    loadPartnerCatalog(supabase, ctx.tenant!.id, 'supplier', { activeOnly: true }),
   ]);
+
+  const siteSuppliers = mapSiteSuppliers(suppliers as Parameters<typeof mapSiteSuppliers>[0]);
 
   const { data: siteReports } = await siteReportsPromise;
 
@@ -211,7 +222,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
         id,
         work_date,
         approval_status,
-        profiles(first_name, last_name)
+        profiles!time_entries_user_id_fkey(first_name, last_name)
       )
     `)
           .eq('site_id', id)
@@ -317,8 +328,8 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
           <SiteContactsSection siteId={id} contacts={contacts ?? []} canEdit={canEdit} />
           <SiteSuppliersSection
             siteId={id}
-            suppliers={suppliers ?? []}
-            masterSuppliers={masterSuppliers ?? []}
+            suppliers={siteSuppliers}
+            partnerCatalog={partnerCatalog}
             canEdit={canEdit}
             canManagePartners={canAccess(ctx, 'partners.manage')}
           />
