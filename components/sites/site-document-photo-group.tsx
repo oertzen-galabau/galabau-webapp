@@ -10,7 +10,7 @@ export type SiteDocumentPhoto = {
   id: string;
   title: string;
   file_url: string | null;
-  file_type: string | null;
+  file_type?: string | null;
 };
 
 type Props = {

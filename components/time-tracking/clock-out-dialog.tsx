@@ -104,7 +104,7 @@ function ClockOutDialogSession({
   onClose,
   todayEntry,
   context,
-}: Props) {
+}: Omit<Props, 'context' | 'loading'> & { context: ClockOutContext }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

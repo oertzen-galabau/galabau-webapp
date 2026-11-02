@@ -10,7 +10,7 @@ import {
   type LeaveFormState,
 } from '@/lib/actions/employee';
 import { AppSelect } from '@/components/ui/app-select';
-import type { LeaveRequest } from '@/lib/types/database';
+import type { LeaveRequest, LeaveType } from '@/lib/types/database';
 
 const initialState: LeaveFormState = { error: null };
 
@@ -36,7 +36,7 @@ export function LeaveRequestForm({ request, onSuccess, successMessage }: Props) 
     isEdit ? updateLeaveRequestAction : saveLeaveRequestAction,
     initialState,
   );
-  const [leaveType, setLeaveType] = useState(request?.leave_type ?? 'urlaub');
+  const [leaveType, setLeaveType] = useState<LeaveType>(request?.leave_type ?? 'urlaub');
   const isSonstige = leaveType === 'sonstige';
   const sonstigeReason =
     request?.leave_type === 'sonstige' ? (request.notes ?? '') : '';
@@ -63,7 +63,7 @@ export function LeaveRequestForm({ request, onSuccess, successMessage }: Props) 
           <AppSelect
             name="leave_type"
             value={leaveType}
-            onValueChange={setLeaveType}
+            onValueChange={(value) => setLeaveType(value as LeaveType)}
             options={LEAVE_TYPE_OPTIONS}
             allowEmpty={false}
             required

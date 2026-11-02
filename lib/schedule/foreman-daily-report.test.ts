@@ -16,6 +16,8 @@ const entry = (
     site_id: string;
     start_date: string;
     foreman_user_id: string | null;
+    siteResponsibleUserId: string | null;
+    siteManagerUserId: string | null;
     siteName: string;
     foremanName: string;
   }> = {},
