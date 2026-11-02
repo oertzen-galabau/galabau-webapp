@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigationPending } from '@/components/app-shell/navigation-pending-context';
 import { TimeEntryFormFields } from '@/components/time-tracking/time-entry-form-fields';
 import type { TimeEntryFormState } from '@/lib/actions/employee';
 
@@ -16,21 +16,21 @@ type Props = FieldsProps & {
 const initialState: TimeEntryFormState = { error: null };
 
 export function TimeEntrySaveForm({ action, hiddenFields, onSuccess, ...fields }: Props) {
-  const router = useRouter();
-  const [state, formAction] = useActionState(action, initialState);
+  const { refresh } = useNavigationPending();
+  const [state, formAction, pending] = useActionState(action, initialState);
 
   useEffect(() => {
     if (state.ok) {
-      router.refresh();
+      refresh();
       onSuccess?.();
     }
-  }, [state.ok, router, onSuccess]);
+  }, [state.ok, refresh, onSuccess]);
 
   return (
     <form action={formAction} className="input-form">
       {state.error ? <p className="form-error">{state.error}</p> : null}
       {hiddenFields}
-      <TimeEntryFormFields {...fields} />
+      <TimeEntryFormFields {...fields} pending={pending} />
     </form>
   );
 }

@@ -3,10 +3,9 @@ import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/aut
 import { LeaveRequestForm } from '@/components/leave/leave-request-form';
 import { LeaveBalanceMetrics } from '@/components/leave/leave-balance-metrics';
 import { LeaveTabs } from '@/components/leave/leave-tabs';
-import { formatLeaveType } from '@/lib/leave/labels';
+import { LeaveRequestsTable } from '@/components/leave/leave-requests-table';
 import { loadLeaveBalanceContext } from '@/lib/leave/balance';
 import { listMyLeaveRequests } from '@/lib/leave/queries';
-import { businessDaysBetween } from '@/lib/utils/time';
 
 export default async function UrlaubKontoPage() {
   const ctx = await requireTenantMember();
@@ -54,40 +53,11 @@ export default async function UrlaubKontoPage() {
         {loadError && <p className="form-error">Anträge konnten nicht geladen werden.</p>}
         {!loadError && requests.length === 0 && <p className="muted">Keine Anträge vorhanden.</p>}
         {requests.length > 0 && (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="data-table-col--optional">Art</th>
-                  <th>Zeitraum</th>
-                  <th className="data-table-col--optional">Tage</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((req) => (
-                  <tr key={req.id}>
-                    <td className="data-table-col--optional">
-                      {formatLeaveType(req.leave_type, req.notes)}
-                    </td>
-                    <td>
-                      {req.start_date} – {req.end_date}
-                    </td>
-                    <td className="data-table-col--optional">
-                      {businessDaysBetween(req.start_date, req.end_date)}
-                    </td>
-                    <td>
-                      <span
-                        className={`status-badge ${req.status === 'approved' ? 'active' : req.status === 'rejected' ? 'travel' : ''}`}
-                      >
-                        {req.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <LeaveRequestsTable
+            requests={requests}
+            currentUserId={ctx.userId}
+            canApprove={canReview}
+          />
         )}
       </section>
 

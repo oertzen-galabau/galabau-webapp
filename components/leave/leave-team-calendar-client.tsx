@@ -271,40 +271,18 @@ export function LeaveTeamCalendarClient({ data, canRequest, viewer }: Props) {
       <div className="leave-calendar-wrap panel">
         <div className="leave-calendar-scroll" ref={scrollRef}>
           <div className="leave-calendar-inner" style={{ minWidth: sidebarWidthPx + gridMinWidth }}>
-            <div className="leave-calendar-sidebar" style={{ flexBasis: sidebarWidthPx }}>
-              <div
-                className="leave-calendar-sidebar-head leave-calendar-sidebar-head--year"
-                style={{ minHeight: sidebarHeadHeight }}
-              >
+            <div className="leave-calendar-header">
+              <div className="leave-calendar-sidebar-head leave-calendar-sidebar-head--year">
                 <span>Mitarbeiter</span>
               </div>
-              {employeeRows.map(({ emp, height }) => (
-                <div className="leave-calendar-person-row" key={emp.id} style={{ minHeight: height }}>
-                  <span className="person-avatar">
-                    {emp.first_name[0]}
-                    {emp.last_name[0]}
-                  </span>
-                  <span className="team-row-person">
-                    <strong>
-                      {emp.first_name} {emp.last_name}
-                    </strong>
-                    <small>{emp.job_title?.trim() || '—'}</small>
-                  </span>
-                </div>
-              ))}
-              {employeeRows.length === 0 && (
-                <p className="muted leave-calendar-empty">Keine passenden Mitarbeiter.</p>
-              )}
-            </div>
-
-            <div
-              className="leave-calendar-timeline"
-              style={{ width: gridMinWidth, minWidth: gridMinWidth }}
-            >
               <div
-                className="leave-calendar-month-head-row"
-                style={{ gridTemplateColumns: gridColumns }}
+                className="leave-calendar-head-track"
+                style={{ width: gridMinWidth, minWidth: gridMinWidth }}
               >
+                <div
+                  className="leave-calendar-month-head-row"
+                  style={{ gridTemplateColumns: gridColumns }}
+                >
                 {monthSpans.map((span) => (
                   <div
                     key={span.monthKey}
@@ -364,15 +342,29 @@ export function LeaveTeamCalendarClient({ data, canRequest, viewer }: Props) {
                   );
                 })}
               </div>
+              </div>
+            </div>
 
-              {employeeRows.map(({ emp, layout, height }) => (
+            {employeeRows.map(({ emp, layout, height }) => (
+              <div key={emp.id} className="leave-calendar-entry" style={{ minHeight: height }}>
+                <div className="leave-calendar-person-row">
+                  <span className="person-avatar">
+                    {emp.first_name[0]}
+                    {emp.last_name[0]}
+                  </span>
+                  <span className="team-row-person">
+                    <strong>
+                      {emp.first_name} {emp.last_name}
+                    </strong>
+                    <small>{emp.job_title?.trim() || '—'}</small>
+                  </span>
+                </div>
                 <div
-                  key={emp.id}
                   className="leave-calendar-body-row"
                   style={{
                     gridTemplateColumns: gridColumns,
                     width: gridMinWidth,
-                    minHeight: height,
+                    minWidth: gridMinWidth,
                   }}
                 >
                   {data.days.map((day) => {
@@ -439,8 +431,11 @@ export function LeaveTeamCalendarClient({ data, canRequest, viewer }: Props) {
                     );
                   })}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+            {employeeRows.length === 0 && (
+              <p className="muted leave-calendar-empty">Keine passenden Mitarbeiter.</p>
+            )}
           </div>
         </div>
         {closureHintTouch && closurePin && (

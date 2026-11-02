@@ -21,7 +21,7 @@ export const DOCUMENTS_TAB_KINDS: Record<
 > = {
   dokumente: ['site_plan', 'site_lv', 'site_other'],
   rapporte: ['pdf_report'],
-  fotos: ['report_photo'],
+  fotos: ['report_photo', 'site_photo'],
   lieferscheine: ['delivery_note'],
 };
 
@@ -100,11 +100,23 @@ export function kindsForTabWithArt(
 
 export function siteDocumentCategoryForArt(
   art: DocumentsArtFilterId | null,
-): 'plan' | 'leistungsverzeichnis' | 'other' | null {
+): 'plan' | 'leistungsverzeichnis' | 'other' | 'fotos' | null {
   if (!art) return null;
   if (art === 'plan') return 'plan';
   if (art === 'leistungsverzeichnis') return 'leistungsverzeichnis';
   return 'other';
+}
+
+export function siteDocumentCategoryForTab(
+  kinds: readonly DocumentationOverviewKind[],
+  art: DocumentsArtFilterId | null,
+): 'plan' | 'leistungsverzeichnis' | 'other' | 'fotos' | null {
+  const needsDocs =
+    kindSetIncludes(kinds, 'site_plan') ||
+    kindSetIncludes(kinds, 'site_lv') ||
+    kindSetIncludes(kinds, 'site_other');
+  if (kindSetIncludes(kinds, 'site_photo') && !needsDocs) return 'fotos';
+  return siteDocumentCategoryForArt(art);
 }
 
 function kindSetIncludes(
@@ -118,7 +130,8 @@ export function tabNeedsSiteDocuments(kinds: readonly DocumentationOverviewKind[
   return (
     kindSetIncludes(kinds, 'site_plan') ||
     kindSetIncludes(kinds, 'site_lv') ||
-    kindSetIncludes(kinds, 'site_other')
+    kindSetIncludes(kinds, 'site_other') ||
+    kindSetIncludes(kinds, 'site_photo')
   );
 }
 
@@ -145,7 +158,7 @@ export function emptyStateMessage(tabId: DocumentsTabId): string {
     case 'rapporte':
       return 'Keine PDF-Rapporte für die aktuelle Auswahl. Tagesberichte erfassen Sie unter Dokumentation.';
     case 'fotos':
-      return 'Keine Fotos für die aktuelle Auswahl. Fotos werden in Tagesberichten hochgeladen.';
+      return 'Keine Fotos für die aktuelle Auswahl. Fotos kommen aus Tagesberichten oder der Baustellenakte.';
     case 'lieferscheine':
       return 'Keine Lieferscheine für die aktuelle Auswahl.';
     default:

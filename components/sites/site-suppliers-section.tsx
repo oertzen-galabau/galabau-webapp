@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import { SiteSupplierLinkForm } from '@/components/sites/site-supplier-link-form';
+import { SiteSupplierAssignDialog } from '@/components/sites/site-supplier-assign-dialog';
 import { SiteSupplierRow } from '@/components/sites/site-supplier-row';
 import { siteSupplierLinkKey, type MasterPartnerCatalogEntry } from '@/lib/partners/catalog';
 import type { TenantBusinessPartnerContact, TenantBusinessPartnerLocation } from '@/lib/types/database';
@@ -38,7 +37,6 @@ export function SiteSuppliersSection({
   const linkedKeys = suppliers
     .filter((row) => row.partner_id)
     .map((row) => siteSupplierLinkKey(row.partner_id!, row.partner_location_id));
-
   return (
     <section className="site-detail-section">
       <h2>Lieferanten</h2>
@@ -59,22 +57,15 @@ export function SiteSuppliersSection({
         <p className="muted">Noch keine Lieferanten dieser Baustelle zugeordnet.</p>
       )}
 
-      {canEdit && partnerCatalog.length > 0 && (
-        <SiteSupplierLinkForm siteId={siteId} catalog={partnerCatalog} linkedKeys={linkedKeys} />
-      )}
-
-      {canEdit && partnerCatalog.length === 0 && (
-        <p className="muted">
-          {canManagePartners ? (
-            <>
-              Zuerst Lieferanten in der{' '}
-              <Link href="/app/einstellungen?tab=stammdaten&partners=lieferanten">Stammdatenliste</Link> anlegen.
-            </>
-          ) : (
-            'Bitte die Verwaltung, Lieferanten in den Stammdaten anzulegen.'
-          )}
-        </p>
-      )}
+      {canEdit ? (
+        <SiteSupplierAssignDialog
+          siteId={siteId}
+          catalog={partnerCatalog}
+          linkedKeys={linkedKeys}
+          canManagePartners={canManagePartners}
+          resetKey={suppliers.length}
+        />
+      ) : null}
     </section>
   );
 }

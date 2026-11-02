@@ -1,15 +1,14 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { uploadSiteDocumentAction, type SiteFormState } from '@/lib/actions/admin';
 import { FileInputField } from '@/components/ui/file-input-field';
 import { AppSelect } from '@/components/ui/app-select';
-
-const CATEGORY_OPTIONS = [
-  { value: 'plan', label: 'Plan' },
-  { value: 'leistungsverzeichnis', label: 'Leistungsverzeichnis' },
-  { value: 'sonstiges', label: 'Sonstiges' },
-];
+import {
+  DEFAULT_SITE_DOCUMENT_CATEGORY,
+  SITE_DOCUMENT_CATEGORY_OPTIONS,
+  parseSiteDocumentCategory,
+} from '@/lib/sites/document-categories';
 
 const initialState: SiteFormState = { error: null };
 
@@ -19,40 +18,50 @@ type Props = {
 
 export function SiteDocumentUploadForm({ siteId }: Props) {
   const [state, action, pending] = useActionState(uploadSiteDocumentAction, initialState);
+  const [category, setCategory] = useState(DEFAULT_SITE_DOCUMENT_CATEGORY);
+  const isPhoto = category === 'fotos';
 
   return (
     <form action={action} className="input-form" style={{ marginTop: 16 }}>
       <input type="hidden" name="site_id" value={siteId} />
       {state.error && <p className="form-error">{state.error}</p>}
       {state.ok && !state.error && (
-        <p className="form-feedback form-feedback--success">Dokument hochgeladen.</p>
+        <p className="form-feedback form-feedback--success">
+          {isPhoto ? 'Foto hochgeladen.' : 'Dokument hochgeladen.'}
+        </p>
       )}
       <div className="input-form-core">
         <label>
           Titel
-          <input name="title" placeholder="z.B. Lageplan Süd" disabled={pending} />
+          <input
+            name="title"
+            placeholder={isPhoto ? 'z.B. Bestand Nordseite' : 'z.B. Lageplan Süd'}
+            disabled={pending}
+          />
         </label>
         <label>
           Kategorie
           <AppSelect
             name="category"
-            defaultValue="sonstiges"
+            value={category}
+            onValueChange={(value) => setCategory(parseSiteDocumentCategory(value))}
             allowEmpty={false}
-            options={CATEGORY_OPTIONS}
+            options={SITE_DOCUMENT_CATEGORY_OPTIONS}
             disabled={pending}
           />
         </label>
         <FileInputField
-          label="Datei"
+          key={category}
+          label={isPhoto ? 'Foto' : 'Datei'}
           name="file"
-          accept="application/pdf,image/*"
+          accept={isPhoto ? 'image/*' : 'application/pdf,image/*'}
           required
-          hint="PDF oder Bild (max. 10 MB)"
+          hint={isPhoto ? 'Bild (max. 10 MB)' : 'PDF oder Bild (max. 10 MB)'}
         />
       </div>
       <div className="input-form-actions">
         <button type="submit" className="primary-button primary-button--compact" disabled={pending}>
-          {pending ? 'Wird hochgeladen…' : 'Dokument hochladen'}
+          {pending ? 'Wird hochgeladen…' : isPhoto ? 'Foto hochladen' : 'Dokument hochladen'}
         </button>
       </div>
     </form>

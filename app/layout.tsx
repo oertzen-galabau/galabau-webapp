@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Barlow, Inter, Geist } from 'next/font/google';
 import './globals.css';
 import { cn } from "@/lib/utils";
+import { NavigationPendingRoot } from '@/components/app-shell/navigation-pending-root';
 import { getPlatformName } from '@/lib/tenant/config';
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
@@ -25,7 +26,9 @@ export const viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="de" className={cn(inter.variable, barlow.variable, "font-sans", geist.variable)} suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <NavigationPendingRoot>{children}</NavigationPendingRoot>
+      </body>
     </html>
   );
 }

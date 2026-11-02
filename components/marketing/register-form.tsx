@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
+import { PrimaryPendingButton } from '@/components/ui/pending-button';
 import { useSearchParams } from 'next/navigation';
 import { clearSupabaseAuthCookies } from '@/lib/supabase/auth-cookies';
 import { createClient } from '@/lib/supabase/client';
@@ -138,15 +140,15 @@ export function RegisterForm() {
           </fieldset>
           {error && <p className="form-error">{error}</p>}
           <div className="auth-form-actions">
-            <button type="submit" className="primary-button" disabled={loading}>
-              {loading ? 'Wird eingerichtet…' : 'Kostenlos testen'}
-            </button>
+            <PrimaryPendingButton type="submit" pending={loading} pendingLabel="Wird eingerichtet …">
+              Kostenlos testen
+            </PrimaryPendingButton>
           </div>
         </form>
         <p className="auth-footer">
-          Bereits registriert? <Link href="/login">Anmelden</Link>
+          Bereits registriert? <AppNavLink href="/login">Anmelden</AppNavLink>
           {' · '}
-          <Link href="/">Zur Startseite</Link>
+          <AppNavLink href="/">Zur Startseite</AppNavLink>
         </p>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { BadWeatherClaimField } from '@/components/time-tracking/bad-weather-cla
 import type { TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { DriverTripSelect } from '@/components/time-tracking/driver-trip-select';
+import { PrimaryPendingButtonCompact } from '@/components/ui/pending-button';
 
 type Site = SiteOption;
 
@@ -20,6 +21,7 @@ type Props = {
   compact?: boolean;
   badWeatherSeasonStart?: string;
   badWeatherSeasonEnd?: string;
+  pending?: boolean;
 };
 
 export function TimeEntryFormFields({
@@ -32,6 +34,7 @@ export function TimeEntryFormFields({
   compact = false,
   badWeatherSeasonStart,
   badWeatherSeasonEnd,
+  pending = false,
 }: Props) {
   const today = todayWorkDate();
   const [startTime, setStartTime] = useState(entry?.start_time?.slice(0, 5) ?? '07:00');
@@ -47,6 +50,7 @@ export function TimeEntryFormFields({
           min={minDate}
           max={maxDate}
           required
+          disabled={pending}
         />
       </label>
       <label>Start
@@ -56,6 +60,7 @@ export function TimeEntryFormFields({
           value={startTime}
           onChange={(event) => setStartTime(event.target.value)}
           required
+          disabled={pending}
         />
       </label>
       <label>Ende
@@ -65,6 +70,7 @@ export function TimeEntryFormFields({
           value={endTime}
           onChange={(event) => setEndTime(event.target.value)}
           required
+          disabled={pending}
         />
       </label>
     </>
@@ -136,7 +142,9 @@ export function TimeEntryFormFields({
           <div className="input-form-extra-grid">{extraFields}</div>
         </details>
         <div className="input-form-actions">
-          <button type="submit" className="primary-button primary-button--compact">{submitLabel}</button>
+          <PrimaryPendingButtonCompact type="submit" pending={pending} pendingLabel="Wird gespeichert …">
+            {submitLabel}
+          </PrimaryPendingButtonCompact>
         </div>
       </>
     );
@@ -151,7 +159,9 @@ export function TimeEntryFormFields({
         <div className="input-form-extra-grid">{extraFields}</div>
       </details>
       <div className="input-form-actions">
-        <button type="submit" className="primary-button primary-button--compact">{submitLabel}</button>
+        <PrimaryPendingButtonCompact type="submit" pending={pending} pendingLabel="Wird gespeichert …">
+          {submitLabel}
+        </PrimaryPendingButtonCompact>
       </div>
     </>
   );

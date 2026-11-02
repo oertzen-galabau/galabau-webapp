@@ -53,6 +53,7 @@ export type Profile = {
   job_title: string | null;
   work_area_id: string | null;
   leader_code: string | null;
+  is_site_manager: boolean;
   is_active: boolean;
   must_change_password: boolean;
   dashboard_layout: Record<string, unknown> | null;
@@ -153,9 +154,27 @@ export type TimeEntry = {
   submitted_at: string | null;
   missing_breakfast_reason: string | null;
   missing_lunch_reason: string | null;
+  early_start_reason: string | null;
+  planned_start_time: string | null;
+  schedule_entry_id: string | null;
 };
 
 export type TimeBlockType = 'site_work' | 'travel' | 'breakfast' | 'lunch' | 'other_work';
+
+export type TimeEntryIntervalPhase = 'work' | 'pause';
+
+export type TimeEntryInterval = {
+  id: string;
+  tenant_id: string;
+  time_entry_id: string;
+  sort_order: number;
+  phase: TimeEntryIntervalPhase;
+  started_at: string;
+  ended_at: string | null;
+  suggested_block_type: TimeBlockType | null;
+  confirmed_block_type: TimeBlockType | null;
+  created_at: string;
+};
 
 export type TenantTimeTrackingRules = {
   tenant_id: string;
@@ -169,6 +188,8 @@ export type TenantTimeTrackingRules = {
   lunch_expected_minutes: number;
   lunch_window_start: string;
   lunch_window_end: string;
+  compare_schedule_on_clock_in: boolean;
+  early_start_tolerance_minutes: number;
   updated_at: string;
 };
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { updateSiteSupplierAssignment } from '@/lib/actions/partners';
+import { AppSelect } from '@/components/ui/app-select';
 import { contactsForPartnerSelection, type MasterPartnerCatalogEntry } from '@/lib/partners/catalog';
 import { partnerContactLabel, partnerLocationLabel } from '@/lib/partners/labels';
 
@@ -33,30 +34,31 @@ export function SiteSupplierAssignmentForm({
     [catalogEntry.contacts, locationId],
   );
 
+  const locationOptions = locations.map((location) => ({
+    value: location.id,
+    label: partnerLocationLabel(location),
+  }));
+
   return (
-    <form action={updateSiteSupplierAssignment} className="input-form site-entity-edit-form">
+    <form action={updateSiteSupplierAssignment} className="input-form site-entity-edit-form site-detail-assign-form">
       <input type="hidden" name="id" value={siteSupplierId} />
       <input type="hidden" name="site_id" value={siteId} />
       <input type="hidden" name="partner_id" value={partnerId} />
 
       <label>
         Standort (optional)
-        <select
+        <AppSelect
           name="partner_location_id"
           value={locationId}
-          onChange={(e) => setLocationId(e.target.value)}
-        >
-          <option value="">— kein Standort —</option>
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {partnerLocationLabel(location)}
-            </option>
-          ))}
-        </select>
+          onValueChange={setLocationId}
+          allowEmpty
+          placeholder="— kein Standort —"
+          options={locationOptions}
+        />
       </label>
 
       {contacts.length > 0 && (
-        <fieldset className="site-supplier-contact-picker">
+        <fieldset className="site-detail-contact-picker">
           <legend>Ansprechpartner</legend>
           <ul className="site-supplier-contact-options">
             {contacts.map((contact) => (
@@ -76,7 +78,9 @@ export function SiteSupplierAssignmentForm({
         </fieldset>
       )}
 
-      <button type="submit" className="primary-button primary-button--compact">Zuordnung speichern</button>
+      <button type="submit" className="primary-button primary-button--compact">
+        Zuordnung speichern
+      </button>
     </form>
   );
 }

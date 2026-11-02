@@ -59,7 +59,21 @@ export function TimeApprovalRow({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const profile = asProfile(entry.profiles);
+
+  function runFormAction(action: (formData: FormData) => Promise<void>, form: HTMLFormElement) {
+    setActionError(null);
+    const formData = new FormData(form);
+    startTransition(async () => {
+      try {
+        await action(formData);
+        router.refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : 'Aktion fehlgeschlagen.');
+      }
+    });
+  }
 
   const preview = computeBookingPreview({
     entry,
@@ -80,7 +94,15 @@ export function TimeApprovalRow({
       <tr>
         <td>{profile ? `${profile.first_name} ${profile.last_name}` : '—'}</td>
         <td>{entry.work_date}</td>
-        <td className="data-table-col--optional">{entry.start_time?.slice(0, 5)}</td>
+        <td className="data-table-col--optional">
+          {entry.start_time?.slice(0, 5)}
+          {entry.planned_start_time ? (
+            <span className="muted" title={entry.early_start_reason ?? undefined}>
+              {' '}
+              (Plan {entry.planned_start_time.slice(0, 5)})
+            </span>
+          ) : null}
+        </td>
         <td className="data-table-col--optional">{entry.end_time?.slice(0, 5)}</td>
         <td>{formatMinutes(entry.work_minutes)}</td>
         <td>{driverTripLabel(entry)}</td>
@@ -94,7 +116,13 @@ export function TimeApprovalRow({
         </td>
         <td className="data-table-actions">
           <TableIconActions>
-            <form action={approveTimeEntry} className="time-approve-form">
+            <form
+              className="time-approve-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                runFormAction(approveTimeEntry, event.currentTarget);
+              }}
+            >
               <input type="hidden" name="id" value={entry.id} />
               {entry.bad_weather_claimed ? (
                 <label className="time-approve-kug input-form-checkbox">
@@ -102,12 +130,18 @@ export function TimeApprovalRow({
                   KUG bestätigen
                 </label>
               ) : null}
-              <ApproveIconAction type="submit" disabled={pending} />
+              <ApproveIconAction type="submit" disabled={pending} busy={pending} />
             </form>
-            <form action={rejectTimeEntry} className="time-reject-form">
+            <form
+              className="time-reject-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                runFormAction(rejectTimeEntry, event.currentTarget);
+              }}
+            >
               <input type="hidden" name="id" value={entry.id} />
               <textarea name="reason" rows={2} placeholder="Ablehnungsgrund (Pflicht)" required />
-              <RejectIconAction type="submit" disabled={pending} />
+              <RejectIconAction type="submit" disabled={pending} busy={pending} />
             </form>
           </TableIconActions>
         </td>
@@ -115,6 +149,11 @@ export function TimeApprovalRow({
       {expanded && (
         <tr>
           <td colSpan={9}>
+            {actionError ? (
+              <p className="form-error" role="alert" style={{ marginBottom: 12 }}>
+                {actionError}
+              </p>
+            ) : null}
             {entry.bad_weather_claimed ? (
               <p className="muted" style={{ marginBottom: 8 }}>
                 Mitarbeiter meldet Schlechtwetter (KUG). Bitte bei Freigabe bestätigen oder abwählen.
@@ -162,8 +201,11 @@ export function TimeApprovalRow({
             {canEditBookings && (
               <div style={{ marginTop: 12 }}>
                 <form
-                  action={regenerateBookingsForEntry}
                   style={{ display: 'inline', marginRight: 8 }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    runFormAction(regenerateBookingsForEntry, event.currentTarget);
+                  }}
                 >
                   <input type="hidden" name="time_entry_id" value={entry.id} />
                   <button type="submit" className="text-button" disabled={pending}>
@@ -172,7 +214,14 @@ export function TimeApprovalRow({
                 </form>
                 <details>
                   <summary>Manuelle Buchung</summary>
-                  <form action={saveManualBooking} className="input-form" style={{ marginTop: 8 }}>
+                  <form
+                    className="input-form"
+                    style={{ marginTop: 8 }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      runFormAction(saveManualBooking, event.currentTarget);
+                    }}
+                  >
                     <input type="hidden" name="time_entry_id" value={entry.id} />
                     <input type="hidden" name="user_id" value={entry.user_id} />
                     <input type="hidden" name="work_date" value={entry.work_date} />
@@ -212,10 +261,17 @@ export function TimeApprovalRow({
                   </form>
                 </details>
                 {bookings.filter((b) => b.source === 'manual').map((b) => (
-                  <form key={b.id} action={deleteManualBooking} style={{ marginTop: 4 }}>
+                  <form
+                    key={b.id}
+                    style={{ marginTop: 4 }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      runFormAction(deleteManualBooking, event.currentTarget);
+                    }}
+                  >
                     <input type="hidden" name="id" value={b.id} />
                     <span className="muted">
-                      Manuell: {b.booking_code} ({b.quantity} {b.unit})
+                      Manuell: {b.booking_code} ({b.quantity} {b.unit === 'hours' ? 'Std.' : '€'})
                     </span>
                     <button type="submit" className="text-button" disabled={pending}>Löschen</button>
                   </form>

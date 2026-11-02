@@ -7,13 +7,23 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import { parseSegmentsFromForm } from '@/lib/time-tracking/form-parsing';
 import { processTimeEntrySubmission } from '@/lib/time-tracking/submission';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
+import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 import {
-  deriveWorkDayState,
-  resolveNextPauseSlot,
-  todayWorkDate,
-  toTimeString,
-  type TimeEntryLike,
-} from '@/lib/time-tracking/work-day';
+  closeOpenInterval,
+  loadEntryIntervals,
+  pauseIntervalsNeedConfirmation,
+} from '@/lib/time-tracking/intervals';
+import { confirmPauseIntervalsForUser } from '@/lib/time-tracking/confirm-pause-intervals';
+import type { PauseIntervalConfirmation } from '@/lib/time-tracking/confirm-pause-intervals';
+import {
+  buildTimelineFromIntervals,
+  legacyBreakFieldsFromIntervals,
+} from '@/lib/time-tracking/interval-timeline';
+import {
+  assertLiveState,
+  getOpenEntryWithIntervals,
+} from '@/lib/time-tracking/clock-entry-session';
+import { clockPauseEnd, clockPauseStart } from '@/lib/actions/time-clock';
 import { countLeaveDays } from '@/lib/utils/time';
 import {
   loadEntrySegments,
@@ -51,207 +61,35 @@ function revalidateTimePaths() {
   revalidatePath('/app/baustellen', 'layout');
 }
 
-async function getTodayEntry(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  tenantId: string,
-  userId: string,
-  workDate: string,
-) {
-  const { data, error } = await supabase
-    .from('time_entries')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('user_id', userId)
-    .eq('work_date', workDate)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-async function getOpenEntry(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  tenantId: string,
-  userId: string,
-  workDate: string,
-) {
-  const { data, error } = await supabase
-    .from('time_entries')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('user_id', userId)
-    .eq('work_date', workDate)
-    .is('end_time', null)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-function assertState(entry: TimeEntryLike | null, expected: ReturnType<typeof deriveWorkDayState>[]) {
-  const state = deriveWorkDayState(entry);
-  if (!expected.includes(state)) {
-    throw new Error('Ungültiger Zeiterfassungsstatus für diese Aktion.');
-  }
-}
-
-export async function clockInWork() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-
-  const existing = await getTodayEntry(supabase, tenantId, userId, workDate);
-  if (existing?.start_time) {
-    throw new Error('Für heute existiert bereits ein Zeiteintrag.');
-  }
-
-  const { data: assignment } = await supabase
-    .from('daily_assignments')
-    .select('site_id')
-    .eq('user_id', userId)
-    .eq('assignment_date', workDate)
-    .maybeSingle();
-
-  const now = toTimeString(new Date());
-  const { error } = await supabase.from('time_entries').insert({
-    tenant_id: tenantId,
-    user_id: userId,
-    site_id: assignment?.site_id ?? null,
-    work_date: workDate,
-    start_time: now,
-    end_time: null,
-    travel_minutes: 0,
-    work_minutes: 0,
-  });
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
-}
-
+/** @deprecated Nutze clockPauseStart — mappt auf Intervall-Pause. */
 export async function clockBreakfastStart() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['working']);
-  if (entry!.breakfast_start) throw new Error('Frühstückspause wurde bereits gestartet.');
-
-  const { error } = await supabase
-    .from('time_entries')
-    .update({ breakfast_start: toTimeString(new Date()) })
-    .eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
+  return clockPauseStart();
 }
 
+/** @deprecated Nutze clockPauseEnd */
 export async function clockBreakfastEnd() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['breakfast']);
-
-  const { error } = await supabase
-    .from('time_entries')
-    .update({ breakfast_end: toTimeString(new Date()) })
-    .eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
+  return clockPauseEnd();
 }
 
+/** @deprecated Nutze clockPauseStart */
 export async function clockLunchStart() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['working']);
-  if (entry!.lunch_start) throw new Error('Mittagspause wurde bereits gestartet.');
-
-  const { error } = await supabase
-    .from('time_entries')
-    .update({ lunch_start: toTimeString(new Date()) })
-    .eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
+  return clockPauseStart();
 }
 
+/** @deprecated Nutze clockPauseEnd */
 export async function clockLunchEnd() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['lunch']);
-
-  const { error } = await supabase
-    .from('time_entries')
-    .update({ lunch_end: toTimeString(new Date()) })
-    .eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
-}
-
-export async function clockPauseStart() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['working']);
-
-  const rules = await loadTenantTimeTrackingRules(supabase, tenantId);
-  const slot = resolveNextPauseSlot(entry, new Date(), rules);
-  if (!slot) throw new Error('Keine Pause mehr verfügbar.');
-
-  const now = toTimeString(new Date());
-  const patch =
-    slot === 'breakfast' ? { breakfast_start: now } : { lunch_start: now };
-  const { error } = await supabase.from('time_entries').update(patch).eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
-}
-
-export async function clockPauseEnd() {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'zeiten.record');
-  const { tenantId, userId } = ctx;
-
-  const supabase = await createClient();
-  const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  const state = deriveWorkDayState(entry);
-  if (state !== 'breakfast' && state !== 'lunch') {
-    throw new Error('Keine laufende Pause.');
-  }
-
-  const now = toTimeString(new Date());
-  const patch = state === 'breakfast' ? { breakfast_end: now } : { lunch_end: now };
-  const { error } = await supabase.from('time_entries').update(patch).eq('id', entry!.id);
-  if (error) throw new Error(error.message);
-  revalidateTimePaths();
+  return clockPauseEnd();
 }
 
 export type ClockOutPayload = {
   driverTrip: DriverTrip;
+  /** Leer = Timeline aus bestätigten Intervallen erzeugen. */
   segments: SegmentInput[];
+  primarySiteId?: string | null;
   badWeatherClaimed?: boolean;
   missingBreakfastReason?: string | null;
   missingLunchReason?: string | null;
+  pauseConfirmations?: PauseIntervalConfirmation[];
 };
 
 export async function clockOutWork(_legacyNoBreakReason?: string | null, payload?: ClockOutPayload) {
@@ -261,21 +99,51 @@ export async function clockOutWork(_legacyNoBreakReason?: string | null, payload
 
   const supabase = await createClient();
   const workDate = todayWorkDate();
-  const entry = await getOpenEntry(supabase, tenantId, userId, workDate);
-  assertState(entry, ['working']);
+  const { entry, intervals } = await getOpenEntryWithIntervals(supabase, tenantId, userId, workDate);
+  assertLiveState(entry, intervals, ['working']);
+
+  await closeOpenInterval(supabase, entry!.id);
+
+  if (payload?.pauseConfirmations?.length) {
+    await confirmPauseIntervalsForUser(
+      supabase,
+      tenantId,
+      userId,
+      payload.pauseConfirmations,
+    );
+  }
+
+  let allIntervals = await loadEntryIntervals(supabase, entry!.id);
+
+  const unconfirmed = pauseIntervalsNeedConfirmation(allIntervals);
+  if (unconfirmed.length > 0) {
+    throw new Error('Bitte alle Pausen am Feierabend bestätigen.');
+  }
 
   const endTime = toTimeString(new Date());
+  const legacyBreaks = legacyBreakFieldsFromIntervals(allIntervals);
+
+  const segmentsFromPayload = payload?.segments ?? [];
+  const segments =
+    segmentsFromPayload.length > 0
+      ? segmentsFromPayload
+      : buildTimelineFromIntervals({
+          intervals: allIntervals,
+          dayEndTime: endTime,
+          defaultSiteId: payload?.primarySiteId ?? entry!.site_id,
+        });
+
   const processed = await processTimeEntrySubmission(supabase, tenantId, {
     start_time: entry!.start_time!,
     end_time: endTime,
-    breakfast_start: entry!.breakfast_start,
-    breakfast_end: entry!.breakfast_end,
-    lunch_start: entry!.lunch_start,
-    lunch_end: entry!.lunch_end,
+    breakfast_start: legacyBreaks.breakfast_start ?? entry!.breakfast_start,
+    breakfast_end: legacyBreaks.breakfast_end ?? entry!.breakfast_end,
+    lunch_start: legacyBreaks.lunch_start ?? entry!.lunch_start,
+    lunch_end: legacyBreaks.lunch_end ?? entry!.lunch_end,
     missing_breakfast_reason: payload?.missingBreakfastReason,
     missing_lunch_reason: payload?.missingLunchReason,
     notes: entry!.notes,
-    segments: payload?.segments ?? [],
+    segments,
   });
 
   const now = new Date().toISOString();
@@ -697,33 +565,30 @@ export async function deleteTimeEntry(formData: FormData) {
   revalidateTimePaths();
 }
 
+export async function deleteTimeEntryAction(
+  _prev: TimeEntryFormState | null,
+  formData: FormData,
+): Promise<TimeEntryFormState> {
+  return wrapTimeEntryFormAction(deleteTimeEntry, formData);
+}
+
 export async function saveLeaveRequest(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'urlaub.request');
   const { tenantId, userId } = ctx;
 
-  const leaveType = formData.get('leave_type') as string;
-  let notes: string | null = (formData.get('notes') as string)?.trim() || null;
-
-  if (leaveType === 'sonstige') {
-    const reason = (formData.get('reason') as string)?.trim();
-    if (!reason) throw new Error('Grund ist erforderlich.');
-    notes = reason;
-  }
+  const { leaveType, notes, startDate, endDate } = parseLeaveRequestFields(formData);
 
   const supabase = await createClient();
   const { error } = await supabase.from('leave_requests').insert({
     tenant_id: tenantId,
     user_id: userId,
     leave_type: leaveType,
-    start_date: formData.get('start_date') as string,
-    end_date: formData.get('end_date') as string,
+    start_date: startDate,
+    end_date: endDate,
     notes,
   });
   if (error) throw new Error(error.message);
-
-  const startDate = formData.get('start_date') as string;
-  const endDate = formData.get('end_date') as string;
   const { formatLeaveType } = await import('@/lib/leave/labels');
   const { listLeaveApproverUserIds } = await import('@/lib/messages/leave-approver-recipients');
   const { insertDirectMessageTrusted } = await import('@/lib/messages/status-notify');
@@ -762,12 +627,132 @@ export async function saveLeaveRequest(formData: FormData) {
 
 export type LeaveFormState = { ok?: boolean; error?: string | null };
 
+function parseLeaveRequestFields(formData: FormData) {
+  const leaveType = formData.get('leave_type') as string;
+  let notes: string | null = (formData.get('notes') as string)?.trim() || null;
+
+  if (leaveType === 'sonstige') {
+    const reason = (formData.get('reason') as string)?.trim();
+    if (!reason) throw new Error('Grund ist erforderlich.');
+    notes = reason;
+  }
+
+  const startDate = (formData.get('start_date') as string)?.trim();
+  const endDate = (formData.get('end_date') as string)?.trim();
+  if (!startDate || !endDate) throw new Error('Start- und Enddatum sind erforderlich.');
+  if (endDate < startDate) {
+    throw new Error('Das Enddatum muss am oder nach dem Startdatum liegen.');
+  }
+
+  return { leaveType, notes, startDate, endDate };
+}
+
 export async function saveLeaveRequestAction(
   _prev: LeaveFormState | null,
   formData: FormData,
 ): Promise<LeaveFormState> {
   try {
     await saveLeaveRequest(formData);
+    return { ok: true, error: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Speichern fehlgeschlagen';
+    return { error: message };
+  }
+}
+
+export async function updateLeaveRequest(formData: FormData) {
+  const ctx = await getActionContext();
+  const { tenantId, userId } = ctx;
+
+  const requestId = (formData.get('id') as string)?.trim();
+  if (!requestId) throw new Error('Antrag nicht gefunden.');
+
+  const { leaveType, notes, startDate, endDate } = parseLeaveRequestFields(formData);
+
+  const supabase = await createClient();
+  const { data: existing, error: fetchError } = await supabase
+    .from('leave_requests')
+    .select('*')
+    .eq('id', requestId)
+    .eq('tenant_id', tenantId)
+    .single();
+  if (fetchError || !existing) {
+    throw new Error(fetchError?.message ?? 'Antrag nicht gefunden.');
+  }
+
+  const isOwner = existing.user_id === userId;
+  const canApprove = canAccess(ctx, 'urlaub.approve');
+
+  if (isOwner) {
+    requirePerm(ctx, 'urlaub.request');
+    if (!canApprove && existing.status === 'approved') {
+      throw new Error('Genehmigte Anträge können nur von der Verwaltung geändert werden.');
+    }
+    if (!canApprove && existing.status !== 'pending' && existing.status !== 'rejected') {
+      throw new Error('Dieser Antrag kann nicht mehr bearbeitet werden.');
+    }
+  } else if (!canApprove) {
+    throw new Error('Keine Berechtigung, diesen Antrag zu bearbeiten.');
+  }
+
+  const patch: Record<string, unknown> = {
+    leave_type: leaveType,
+    start_date: startDate,
+    end_date: endDate,
+    notes,
+  };
+
+  if (isOwner && !canApprove && existing.status === 'rejected') {
+    patch.status = 'pending';
+    patch.reviewed_by = null;
+    patch.reviewed_at = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from('leave_requests')
+    .update(patch)
+    .eq('id', requestId)
+    .eq('tenant_id', tenantId);
+  if (updateError) throw new Error(updateError.message);
+
+  if (existing.status === 'approved') {
+    const { recalculateUsedDaysFromApprovedUrlaub, yearsOverlappingLeaveRange } = await import(
+      '@/lib/leave/balance'
+    );
+    const years = new Set([
+      ...yearsOverlappingLeaveRange(existing.start_date, existing.end_date),
+      ...yearsOverlappingLeaveRange(startDate, endDate),
+    ]);
+    if (existing.leave_type === 'urlaub' || leaveType === 'urlaub') {
+      await recalculateUsedDaysFromApprovedUrlaub(supabase, tenantId, existing.user_id, [...years]);
+    }
+    if (leaveRuleKeyForType(existing.leave_type) || leaveRuleKeyForType(leaveType)) {
+      await syncAutoBookingsForLeave(
+        supabase,
+        tenantId,
+        existing.user_id,
+        requestId,
+        leaveType,
+        startDate,
+        endDate,
+      );
+    }
+  }
+
+  revalidatePath('/app');
+  revalidatePath('/app/urlaub');
+  revalidatePath('/app/urlaub/konto');
+  revalidatePath('/app/urlaub/freigabe');
+  revalidatePath(`/app/team/${existing.user_id}`);
+  revalidatePath('/app/profil');
+}
+
+export async function updateLeaveRequestAction(
+  _prev: LeaveFormState | null,
+  formData: FormData,
+): Promise<LeaveFormState> {
+  try {
+    await updateLeaveRequest(formData);
     return { ok: true, error: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Speichern fehlgeschlagen';
@@ -934,6 +919,26 @@ export async function markInboxDelivered() {
   const { markInboxDeliveredForUser } = await import('@/lib/messages/read-state');
   const errorMessage = await markInboxDeliveredForUser(supabase, userId);
   if (errorMessage) throw new Error(errorMessage);
+}
+
+/** Offene Zeiteinträge zur Freigabe – nur für Nutzer mit `zeiten.approve`. */
+export async function getPendingTimeApprovalCount(): Promise<number> {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'nav.zeiten') || !canAccess(ctx, 'zeiten.approve')) return 0;
+  const tenantId = ctx.tenantId;
+  if (!tenantId) return 0;
+
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('time_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('approval_status', 'pending');
+  if (error) {
+    console.error('[getPendingTimeApprovalCount]', error.message);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 export async function getUnreadMessageCount(): Promise<number> {

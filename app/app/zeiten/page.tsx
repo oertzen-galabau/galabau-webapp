@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, requireTenantMember } from '@/lib/auth/session';
+import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
 import { saveTimeEntryAction, resubmitTimeEntryAction } from '@/lib/actions/employee';
 import { TimeEntrySaveForm } from '@/components/time-tracking/time-entry-save-form';
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
@@ -23,11 +23,16 @@ export default async function ZeitenPage() {
   const ctx = await requireTenantMember();
   if (!canAccess(ctx, 'nav.zeiten')) return <p className="muted">Keine Berechtigung.</p>;
 
+  const tenantId = await getTenantIdForSession(ctx);
+  if (!tenantId) {
+    return <p className="muted">Kein Mandant — Zeiten können nicht geladen werden.</p>;
+  }
+
   const supabase = await createClient();
   const month = todayWorkDate().slice(0, 7);
   const canApprove = canAccess(ctx, 'zeiten.approve');
 
-  const tenantPayrollConfig = await loadTenantPayrollConfig(supabase, ctx.tenant!.id);
+  const tenantPayrollConfig = await loadTenantPayrollConfig(supabase, tenantId);
   const tenantConfigSerialized = serializeTenantConfig(tenantPayrollConfig);
   const badWeatherCfg = tenantPayrollConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
   const { season_start: badWeatherSeasonStart, season_end: badWeatherSeasonEnd } =
@@ -64,7 +69,7 @@ export default async function ZeitenPage() {
     supabase
       .from('payroll_booking_codes')
       .select('*')
-      .eq('tenant_id', ctx.tenant!.id)
+      .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .order('sort_order'),
   ]);
@@ -258,8 +263,8 @@ export default async function ZeitenPage() {
         <p className="muted">
           Eigene Einträge bearbeiten: bis zur Freigabe. Löschen weiterhin nur innerhalb der letzten drei Tage.
         </p>
-        <div className="data-table-wrap">
-          <table className="data-table">
+        <div className="data-table-wrap time-overview-table-wrap">
+          <table className="data-table time-overview-table">
             <thead>
               <tr>
                 <th>Datum</th>

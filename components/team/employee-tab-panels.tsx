@@ -40,7 +40,9 @@ import {
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
 import { EmployeeStammdatenForm } from '@/components/team/employee-stammdaten-form';
-import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
+import { LeaveRequestsTable } from '@/components/leave/leave-requests-table';
+import { LEAVE_STATUS_LABELS } from '@/lib/leave/request-editable';
+import { ApproveIconAction, RejectIconAction } from '@/components/ui/icon-action-button';
 
 type PermCtx = {
   permissions: Set<PermissionKey>;
@@ -84,12 +86,6 @@ type Props = {
 function can(ctx: PermCtx, key: PermissionKey) {
   return canAccess(ctx, key);
 }
-
-const LEAVE_STATUS_LABELS: Record<string, string> = {
-  pending: 'Offen',
-  approved: 'Genehmigt',
-  rejected: 'Abgelehnt',
-};
 
 export function EmployeeTabPanel(props: Props) {
   switch (props.tab) {
@@ -412,25 +408,18 @@ function UrlaubTab({
 
       <section className="panel employee-section">
         <h2>Anträge</h2>
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr><th>Art</th><th>Zeitraum</th><th>Tage</th><th>Status</th><th /></tr>
-            </thead>
-            <tbody>
-              {leaveRequests.map((req) => (
-                <tr key={req.id}>
-                  <td>{formatLeaveType(req.leave_type, req.notes)}</td>
-                  <td>{req.start_date} – {req.end_date}</td>
-                  <td>{businessDaysBetween(req.start_date, req.end_date)}</td>
-                  <td>
-                    <span className={`status-badge ${req.status === 'approved' ? 'active' : req.status === 'rejected' ? 'travel' : ''}`}>
-                      {LEAVE_STATUS_LABELS[req.status]}
-                    </span>
-                  </td>
-                  <td className="data-table-actions">
-                    {canApprove && req.status === 'pending' && (
-                      <TableIconActions>
+        {leaveRequests.length === 0 ? (
+          <p className="muted">Keine Anträge vorhanden.</p>
+        ) : (
+          <LeaveRequestsTable
+            requests={leaveRequests}
+            currentUserId={ctx.userId}
+            canApprove={canApprove}
+            extraActions={
+              canApprove
+                ? (req) =>
+                    req.status === 'pending' ? (
+                      <>
                         <form action={updateLeaveStatus}>
                           <input type="hidden" name="id" value={req.id} />
                           <input type="hidden" name="status" value="approved" />
@@ -441,15 +430,12 @@ function UrlaubTab({
                           <input type="hidden" name="status" value="rejected" />
                           <RejectIconAction type="submit" />
                         </form>
-                      </TableIconActions>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {leaveRequests.length === 0 && <p className="muted">Keine Anträge vorhanden.</p>}
+                      </>
+                    ) : null
+                : undefined
+            }
+          />
+        )}
       </section>
     </>
   );

@@ -315,7 +315,10 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
 
   const plans = (documents ?? []).filter((d) => d.category === 'plan');
   const lv = (documents ?? []).filter((d) => d.category === 'leistungsverzeichnis');
-  const sonstige = (documents ?? []).filter((d) => !d.category || d.category === 'sonstiges');
+  const photos = (documents ?? []).filter((d) => d.category === 'fotos');
+  const sonstige = (documents ?? []).filter(
+    (d) => !d.category || d.category === 'sonstiges',
+  );
 
   return (
     <>
@@ -386,6 +389,7 @@ export default async function BaustelleDetailPage({ params }: { params: Promise<
               siteId={id}
               plans={plans}
               lv={lv}
+              photos={photos}
               other={sonstige}
               signedUrls={signedUrls}
               canEdit={canEdit}

@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { TenantShell } from '@/components/app-shell/tenant-shell';
 import { GpsProvider } from '@/components/gps/gps-provider';
-import { getUnreadMessageCount } from '@/lib/actions/employee';
+import { getPendingTimeApprovalCount, getUnreadMessageCount } from '@/lib/actions/employee';
 import { getPendingOrderCount } from '@/lib/actions/orders';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { getTenantBySlug, tenantThemeStyle } from '@/lib/tenant/resolve';
@@ -10,6 +10,10 @@ import { getTenantRoles } from '@/lib/tenant/roles';
 import { createClient } from '@/lib/supabase/server';
 import { userHasForemanDutyOnDate } from '@/lib/schedule/foreman-daily-report';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
+import { loadTodayWorkSession } from '@/lib/time-tracking/today-work-session';
+import { buildTodayScheduleContext } from '@/lib/time-tracking/today-schedule-context';
+import type { TimeEntryInterval } from '@/lib/types/database';
+import type { TodayScheduleContext } from '@/lib/time-tracking/today-schedule-context';
 export default async function TenantAppLayout({ children }: { children: React.ReactNode }) {
   const headerList = await headers();
   const tenantSlug = headerList.get('x-tenant-slug');
@@ -34,32 +38,48 @@ export default async function TenantAppLayout({ children }: { children: React.Re
   const supabase = await createClient();
 
   let todayEntry = null;
-  if (canRecordTime) {
-    const { data } = await supabase
-      .from('time_entries')
-      .select('*')
-      .eq('user_id', ctx.userId)
-      .eq('work_date', todayWorkDate())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    todayEntry = data;
-  }
-
-  let tenantRoles: Awaited<ReturnType<typeof getTenantRoles>> = [];
-  if (process.env.NODE_ENV === 'development') {
-    tenantRoles = await getTenantRoles(supabase, tenant.id);
-  }
-
+  let todayIntervals: TimeEntryInterval[] = [];
+  let todayScheduleContext: TodayScheduleContext | null = null;
+  const workDate = todayWorkDate();
   const canViewMessages = canAccess(ctx, 'nav.nachrichten');
-  const initialUnreadCount = canViewMessages ? await getUnreadMessageCount() : 0;
-
   const canManageOrders = canAccess(ctx, 'nav.bestellungen') && canAccess(ctx, 'orders.manage');
-  const initialPendingOrderCount = canManageOrders ? await getPendingOrderCount() : 0;
+  const canApproveTimes = canAccess(ctx, 'nav.zeiten') && canAccess(ctx, 'zeiten.approve');
+  const canViewDokumentation = canAccess(ctx, 'nav.dokumentation');
 
-  const showDokumentationAsForeman =
-    !canAccess(ctx, 'nav.dokumentation') &&
-    (await userHasForemanDutyOnDate(supabase, tenant.id, ctx.userId, todayWorkDate()));
+  const [
+    workSessionBundle,
+    tenantRolesResult,
+    initialUnreadCount,
+    initialPendingOrderCount,
+    initialPendingTimeApprovalCount,
+    foremanDutyToday,
+  ] = await Promise.all([
+    canRecordTime
+      ? Promise.all([
+          loadTodayWorkSession(supabase, tenant.id, ctx.userId, workDate),
+          buildTodayScheduleContext(supabase, tenant.id, ctx.userId),
+        ] as const)
+      : Promise.resolve(null),
+    process.env.NODE_ENV === 'development'
+      ? getTenantRoles(supabase, tenant.id)
+      : Promise.resolve([] as Awaited<ReturnType<typeof getTenantRoles>>),
+    canViewMessages ? getUnreadMessageCount() : Promise.resolve(0),
+    canManageOrders ? getPendingOrderCount() : Promise.resolve(0),
+    canApproveTimes ? getPendingTimeApprovalCount() : Promise.resolve(0),
+    !canViewDokumentation
+      ? userHasForemanDutyOnDate(supabase, tenant.id, ctx.userId, workDate)
+      : Promise.resolve(false),
+  ]);
+
+  if (workSessionBundle) {
+    const [session, scheduleContext] = workSessionBundle;
+    todayEntry = session.entry;
+    todayIntervals = session.intervals;
+    todayScheduleContext = scheduleContext;
+  }
+
+  const tenantRoles = tenantRolesResult;
+  const showDokumentationAsForeman = !canViewDokumentation && foremanDutyToday;
 
   return (
     <div style={tenantThemeStyle(tenant)}>
@@ -75,9 +95,13 @@ export default async function TenantAppLayout({ children }: { children: React.Re
         devRoleOverrideId={ctx.devRoleOverrideId}
         showDevSwitcher={process.env.NODE_ENV === 'development'}
         todayEntry={todayEntry}
+        todayIntervals={todayIntervals}
+        todayScheduleContext={todayScheduleContext}
         canRecordTime={canRecordTime}
         initialUnreadCount={initialUnreadCount}
         initialPendingOrderCount={initialPendingOrderCount}
+        initialPendingTimeApprovalCount={initialPendingTimeApprovalCount}
+        tenantId={tenant.id}
         showDokumentationAsForeman={showDokumentationAsForeman}
       >
         {children}

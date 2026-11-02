@@ -5,7 +5,12 @@ import { canAccessOrderFormPdf } from '@/lib/orders/access-order-pdf';
 import { formatOrderFormDate } from '@/lib/orders/form-rows';
 import { loadOrderFormData } from '@/lib/orders/load-order-form-data';
 import { buildOrderFormPdf, orderFormPdfFilename } from '@/lib/orders/pdf';
-import { sendMail, getDefaultMailRecipient, sendMailFailureText } from '@/lib/email/smtp';
+import {
+  getTenantDefaultMailRecipient,
+  loadTenantSmtpPublicSettings,
+  sendTenantMail,
+  sendTenantMailFailureText,
+} from '@/lib/email/tenant-smtp';
 import { createClient } from '@/lib/supabase/server';
 
 const bodySchema = z.object({
@@ -83,20 +88,17 @@ export async function POST(request: Request) {
     if (e?.trim()) recipients.add(e.trim());
   }
   if (!recipients.size) {
-    const fallback = getDefaultMailRecipient();
+    const smtpPublic = await loadTenantSmtpPublicSettings(ctx.tenantId);
+    const fallback = getTenantDefaultMailRecipient(smtpPublic);
     if (fallback) recipients.add(fallback);
   }
   if (!recipients.size) {
-    return NextResponse.json({
-      ok: true,
-      simulated: true,
-      message: 'Kein Empfänger angegeben und SMTP nicht konfiguriert.',
-    });
+    return NextResponse.json({ error: 'Bitte mindestens eine Empfänger-Adresse angeben.' }, { status: 400 });
   }
 
   const results = await Promise.all(
     [...recipients].map((recipient) =>
-      sendMail({
+      sendTenantMail(ctx.tenantId, {
         to: recipient,
         subject,
         text: textBody,
@@ -107,7 +109,8 @@ export async function POST(request: Request) {
 
   const failed = results.find((r) => !r.ok);
   if (failed) {
-    return NextResponse.json({ error: sendMailFailureText(failed) }, { status: 500 });
+    const status = failed.reason === 'not_configured' ? 503 : 500;
+    return NextResponse.json({ error: sendTenantMailFailureText(failed) }, { status });
   }
 
   if (markAsOrdered && canAccess(ctx, 'orders.manage')) {

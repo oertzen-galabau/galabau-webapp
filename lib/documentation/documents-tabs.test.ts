@@ -13,6 +13,7 @@ import {
   tabNeedsDeliveryNotes,
   tabNeedsPdfReports,
   tabNeedsReportPhotos,
+  siteDocumentCategoryForTab,
   tabNeedsSiteDocuments,
 } from '@/lib/documentation/documents-tabs';
 import type { DocumentationOverviewItem } from '@/lib/documentation/documentation-overview-types';
@@ -38,7 +39,11 @@ describe('documents tabs', () => {
 
     const photoKinds = kindsForDocumentsTab('fotos');
     assert.equal(tabNeedsReportPhotos(photoKinds), true);
+    assert.equal(tabNeedsSiteDocuments(photoKinds), true);
     assert.equal(tabNeedsDeliveryNotes(photoKinds), false);
+    assert.equal(siteDocumentCategoryForTab(photoKinds, null), 'fotos');
+    assert.equal(siteDocumentCategoryForTab(docKinds, null), null);
+    assert.deepEqual(photoKinds, ['report_photo', 'site_photo']);
   });
 
   it('builds hrefs preserving site filter', () => {

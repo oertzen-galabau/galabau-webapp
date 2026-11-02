@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendMail, getDefaultMailRecipient, sendMailFailureText } from '@/lib/email/smtp';
+import {
+  getTenantDefaultMailRecipient,
+  loadTenantSmtpPublicSettings,
+  sendTenantMail,
+  sendTenantMailFailureText,
+} from '@/lib/email/tenant-smtp';
 import { assertStoragePathBelongsToTenant } from '@/lib/tenant/row-access';
 import {
   displayTitleForLog,
@@ -58,13 +63,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 });
   }
 
-  const recipient = (to as string) || getDefaultMailRecipient();
+  const smtpPublic = await loadTenantSmtpPublicSettings(ctx.tenantId);
+  const recipient = (to as string)?.trim() || getTenantDefaultMailRecipient(smtpPublic);
   if (!recipient) {
-    return NextResponse.json({
-      ok: true,
-      simulated: true,
-      message: 'Kein Empfänger angegeben und SMTP_TO/SMTP_FROM nicht gesetzt.',
-    });
+    return NextResponse.json(
+      { error: 'Bitte eine Empfänger-Adresse angeben.' },
+      { status: 400 },
+    );
   }
 
   assertStoragePathBelongsToTenant(ctx.tenantId, report.pdf_url);
@@ -94,7 +99,7 @@ export async function POST(request: Request) {
   const docTitle = displayTitleForLog(reportType, dailyLog?.custom_title, reportLabels);
   const filename = `${pdfFilenameStem(reportType, dailyLog?.custom_title ?? null, report.report_date, reportLabels)}.pdf`;
 
-  const result = await sendMail({
+  const result = await sendTenantMail(ctx.tenantId, {
     to: recipient,
     subject: `${docTitle} ${report.report_date} · ${siteLabel ?? ''}`,
     text: `Anbei „${docTitle}“ vom ${report.report_date} für ${siteLabel ?? 'die Baustelle'} (${tenantLabel ?? ''}).`,
@@ -103,11 +108,8 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({
-      ok: true,
-      simulated: result.simulated,
-      message: sendMailFailureText(result),
-    });
+    const status = result.reason === 'not_configured' ? 503 : 500;
+    return NextResponse.json({ error: sendTenantMailFailureText(result) }, { status });
   }
 
   await supabase.from('reports').update({
@@ -116,5 +118,5 @@ export async function POST(request: Request) {
     sent_at: new Date().toISOString(),
   }).eq('id', reportId).eq('tenant_id', ctx.tenantId);
 
-  return NextResponse.json({ ok: true, simulated: false });
+  return NextResponse.json({ ok: true });
 }

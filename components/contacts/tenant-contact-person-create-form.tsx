@@ -1,8 +1,15 @@
 import { createTenantContactPerson } from '@/lib/actions/partners';
 
-export function TenantContactPersonCreateForm() {
+type Props = {
+  formId?: string;
+  revalidateSiteId?: string;
+  hideActions?: boolean;
+};
+
+export function TenantContactPersonCreateForm({ formId, revalidateSiteId, hideActions = false }: Props) {
   return (
-    <form action={createTenantContactPerson} className="input-form">
+    <form id={formId} action={createTenantContactPerson} className="input-form">
+      {revalidateSiteId ? <input type="hidden" name="revalidate_site_id" value={revalidateSiteId} /> : null}
       <div className="input-form-core input-form-core--grid">
         <label>
           Name
@@ -21,11 +28,13 @@ export function TenantContactPersonCreateForm() {
           <input name="email" type="email" />
         </label>
       </div>
-      <div className="input-form-actions">
-        <button type="submit" className="primary-button primary-button--compact">
-          Ansprechpartner anlegen
-        </button>
-      </div>
+      {!hideActions ? (
+        <div className="input-form-actions">
+          <button type="submit" className="primary-button primary-button--compact">
+            Ansprechpartner anlegen
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

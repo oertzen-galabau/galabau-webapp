@@ -1,11 +1,13 @@
 import { deleteSiteDocument } from '@/lib/actions/admin';
 import { SiteEntityDeleteButton } from '@/components/sites/site-entity-delete-button';
 import { SiteDocumentUploadForm } from '@/components/sites/site-document-upload-form';
+import { SiteDocumentPhotoGroup } from '@/components/sites/site-document-photo-group';
 
 type Document = {
   id: string;
   title: string;
   file_url: string | null;
+  file_type?: string | null;
   category: string | null;
 };
 
@@ -13,6 +15,7 @@ type Props = {
   siteId: string;
   plans: Document[];
   lv: Document[];
+  photos: Document[];
   other: Document[];
   signedUrls: Map<string, string>;
   canEdit: boolean;
@@ -73,6 +76,7 @@ export function SiteDocumentsSection({
   siteId,
   plans,
   lv,
+  photos,
   other,
   signedUrls,
   canEdit,
@@ -82,6 +86,7 @@ export function SiteDocumentsSection({
       <h2>Dokumente</h2>
       <DocumentGroup title="Leistungsverzeichnis" documents={lv} signedUrls={signedUrls} canEdit={canEdit} />
       <DocumentGroup title="Pläne" documents={plans} signedUrls={signedUrls} canEdit={canEdit} />
+      <SiteDocumentPhotoGroup photos={photos} signedUrls={signedUrls} canEdit={canEdit} />
       <DocumentGroup title="Weitere Dokumente" documents={other} signedUrls={signedUrls} canEdit={canEdit} />
 
       {canEdit && <SiteDocumentUploadForm siteId={siteId} />}

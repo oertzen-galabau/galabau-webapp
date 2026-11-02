@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
+import { PrimaryPendingButton } from '@/components/ui/pending-button';
+import { useNavigationPending } from '@/components/app-shell/navigation-pending-context';
 import { useRouter } from 'next/navigation';
 import { requestPasswordResetCode } from '@/lib/actions/password-reset';
 import { RESET_EMAIL_SESSION_KEY } from '@/lib/auth/password-reset';
@@ -9,6 +11,7 @@ import { AuthBrandHeader } from '@/components/auth/auth-brand-header';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { navigate } = useNavigationPending();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export default function ForgotPasswordPage() {
     setLoading(false);
 
     setTimeout(() => {
-      router.push('/reset-password');
+      navigate('/reset-password');
     }, 1500);
   }
 
@@ -62,13 +65,13 @@ export default function ForgotPasswordPage() {
           {error && <p className="form-error">{error}</p>}
           {info && <p className="form-success">{info}</p>}
           <div className="auth-form-actions">
-            <button type="submit" className="primary-button" disabled={loading}>
-              {loading ? 'Code wird gesendet…' : 'Code senden'}
-            </button>
+            <PrimaryPendingButton type="submit" pending={loading} pendingLabel="Code wird gesendet …">
+              Code senden
+            </PrimaryPendingButton>
           </div>
         </form>
         <p className="auth-footer">
-          <Link href="/login">Zurück zur Anmeldung</Link>
+          <AppNavLink href="/login">Zurück zur Anmeldung</AppNavLink>
         </p>
       </div>
     </div>

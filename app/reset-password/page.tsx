@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import Link from 'next/link';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
+import { PrimaryPendingButton } from '@/components/ui/pending-button';
+import { useNavigationPending } from '@/components/app-shell/navigation-pending-context';
 import { useRouter } from 'next/navigation';
 import { resetPasswordWithCode } from '@/lib/actions/password-reset';
 import { RESET_EMAIL_SESSION_KEY } from '@/lib/auth/password-reset';
@@ -21,6 +23,7 @@ function getResetEmailServerSnapshot() {
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const { navigate } = useNavigationPending();
   const email = useSyncExternalStore(
     subscribeToResetEmail,
     getResetEmailSnapshot,
@@ -58,7 +61,7 @@ export default function ResetPasswordPage() {
     }
 
     sessionStorage.removeItem(RESET_EMAIL_SESSION_KEY);
-    router.push('/login?reset=1');
+    navigate('/login?reset=1');
   }
 
   if (!email) {
@@ -110,15 +113,15 @@ export default function ResetPasswordPage() {
           </label>
           {error && <p className="form-error">{error}</p>}
           <div className="auth-form-actions">
-            <button type="submit" className="primary-button" disabled={loading}>
-              {loading ? 'Passwort wird gespeichert…' : 'Passwort speichern'}
-            </button>
+            <PrimaryPendingButton type="submit" pending={loading} pendingLabel="Passwort wird gespeichert …">
+              Passwort speichern
+            </PrimaryPendingButton>
           </div>
         </form>
         <p className="auth-footer">
-          <Link href="/forgot-password">Neuen Code anfordern</Link>
+          <AppNavLink href="/forgot-password">Neuen Code anfordern</AppNavLink>
           {' · '}
-          <Link href="/login">Zur Anmeldung</Link>
+          <AppNavLink href="/login">Zur Anmeldung</AppNavLink>
         </p>
       </div>
     </div>

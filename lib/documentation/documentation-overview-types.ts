@@ -1,6 +1,7 @@
 export type DocumentationOverviewKind =
   | 'site_plan'
   | 'site_lv'
+  | 'site_photo'
   | 'site_other'
   | 'pdf_report'
   | 'report_photo'
@@ -41,6 +42,8 @@ export function kindLabel(kind: DocumentationOverviewKind): string {
       return 'Plan';
     case 'site_lv':
       return 'Leistungsverzeichnis';
+    case 'site_photo':
+      return 'Foto';
     case 'site_other':
       return 'Dokument';
     case 'pdf_report':
@@ -57,6 +60,7 @@ export function kindLabel(kind: DocumentationOverviewKind): string {
 export function siteDocumentKind(category: string | null): DocumentationOverviewKind {
   if (category === 'plan') return 'site_plan';
   if (category === 'leistungsverzeichnis') return 'site_lv';
+  if (category === 'fotos') return 'site_photo';
   return 'site_other';
 }
 

@@ -20,8 +20,11 @@ import {
 import { formatBadWeatherSeasonLabel, isBadWeatherSeason } from '@/lib/payroll/constants';
 import { buildDefaultTimeline, type TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
-import { fetchAccessibleSites } from '@/lib/sites/access';
+import { getPlannedDaySitesForUser } from '@/lib/schedule/planned-day-sites';
 import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
+import { loadTodayWorkSession } from '@/lib/time-tracking/today-work-session';
+import { buildTimelineFromIntervals } from '@/lib/time-tracking/interval-timeline';
+import type { TimeEntryInterval } from '@/lib/types/database';
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -40,26 +43,39 @@ export async function getClockOutContext() {
   const supabase = await createClient();
   const workDate = todayWorkDate();
 
-  const [sites, { data: assignment }, { data: todayEntry }, tenantConfig, timeRules] =
-    await Promise.all([
-    fetchAccessibleSites(supabase, ctx, 'id, name, default_travel_minutes'),
+  let plannedSites: Awaited<ReturnType<typeof getPlannedDaySitesForUser>> = [];
+  try {
+    plannedSites = await getPlannedDaySitesForUser(
+      supabase,
+      ctx.tenantId,
+      ctx.userId,
+      workDate,
+    );
+  } catch (err) {
+    console.error('[getClockOutContext] planned sites', err);
+  }
+
+  const sites = plannedSites.map((site) => ({
+    id: site.siteId,
+    name: site.siteName,
+    default_travel_minutes: site.defaultTravelMinutes,
+  }));
+
+  const [{ data: assignment }, session, tenantConfig, timeRules] = await Promise.all([
     supabase
       .from('daily_assignments')
       .select('site_id, sites(id, name, default_travel_minutes)')
       .eq('user_id', ctx.userId)
       .eq('assignment_date', workDate)
       .maybeSingle(),
-    supabase
-      .from('time_entries')
-      .select('start_time, breakfast_start, breakfast_end, lunch_start, lunch_end')
-      .eq('tenant_id', ctx.tenantId)
-      .eq('user_id', ctx.userId)
-      .eq('work_date', workDate)
-      .is('end_time', null)
-      .maybeSingle(),
+    loadTodayWorkSession(supabase, ctx.tenantId, ctx.userId, workDate, { migrateLegacy: true }),
     loadTenantPayrollConfig(supabase, ctx.tenantId),
     loadTenantTimeTrackingRules(supabase, ctx.tenantId),
   ]);
+
+  const todayEntry = session.entry?.end_time ? null : session.entry;
+  const todayIntervals: TimeEntryInterval[] =
+    todayEntry && !todayEntry.end_time ? session.intervals : [];
 
   const badWeatherCfg = tenantConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
   const { season_start, season_end } = getBadWeatherSeasonFromConfig(badWeatherCfg);
@@ -70,26 +86,48 @@ export async function getClockOutContext() {
     | null
     | undefined;
 
+  const siteIds = new Set(sites.map((s) => s.id));
+  let assignedSiteId: string | null = null;
+  if (sites.length === 1) {
+    assignedSiteId = sites[0]!.id;
+  } else if (assignedSite?.id && siteIds.has(assignedSite.id)) {
+    assignedSiteId = assignedSite.id;
+  } else if (todayEntry?.site_id && siteIds.has(todayEntry.site_id)) {
+    assignedSiteId = todayEntry.site_id;
+  }
+
+  const defaultSiteForTimeline =
+    assignedSiteId ?? todayEntry?.site_id ?? sites[0]?.id ?? null;
+
   const endTime = toTimeString(new Date());
   const defaultTimeline: TimelineBlockInput[] = todayEntry?.start_time
-    ? buildDefaultTimeline({
-        startTime: todayEntry.start_time.slice(0, 5),
-        endTime,
-        breakfastStart: todayEntry.breakfast_start,
-        breakfastEnd: todayEntry.breakfast_end,
-        lunchStart: todayEntry.lunch_start,
-        lunchEnd: todayEntry.lunch_end,
-        defaultSiteId: assignedSite?.id ?? null,
-      })
+    ? todayIntervals.length > 0
+      ? buildTimelineFromIntervals({
+          intervals: todayIntervals,
+          dayEndTime: endTime,
+          defaultSiteId: defaultSiteForTimeline,
+        })
+      : buildDefaultTimeline({
+          startTime: todayEntry.start_time.slice(0, 5),
+          endTime,
+          breakfastStart: todayEntry.breakfast_start,
+          breakfastEnd: todayEntry.breakfast_end,
+          lunchStart: todayEntry.lunch_start,
+          lunchEnd: todayEntry.lunch_end,
+          defaultSiteId: defaultSiteForTimeline,
+        })
     : [];
 
   return {
     sites,
     defaultTimeline,
-    assignedSiteId: assignedSite?.id ?? null,
+    intervals: todayIntervals,
+    assignedSiteId,
     startTime: todayEntry?.start_time?.slice(0, 5) ?? null,
     endTime,
     timeRules,
+    plannedStartTime: todayEntry?.planned_start_time?.slice(0, 5) ?? null,
+    earlyStartReason: todayEntry?.early_start_reason ?? null,
     isBadWeatherSeason: isBadWeatherSeason(workDate, season_start, season_end),
     badWeatherSeasonLabel: formatBadWeatherSeasonLabel(season_start, season_end),
   };

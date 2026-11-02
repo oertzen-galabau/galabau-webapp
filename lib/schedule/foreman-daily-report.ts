@@ -6,9 +6,20 @@ export type ScheduleEntryForemanRow = {
   site_id: string;
   start_date: string;
   foreman_user_id: string | null;
+  siteResponsibleUserId?: string | null;
+  siteManagerUserId?: string | null;
   siteName?: string;
   foremanName?: string;
 };
+
+/** Expliziter VA, sonst Baustellen-Verantwortlicher, sonst Bauleiter. */
+export function effectiveForemanUserId(entry: {
+  foreman_user_id: string | null;
+  siteResponsibleUserId?: string | null;
+  siteManagerUserId?: string | null;
+}): string | null {
+  return entry.foreman_user_id ?? entry.siteResponsibleUserId ?? entry.siteManagerUserId ?? null;
+}
 
 export type DailyLogForemanMatch = {
   site_id: string;
@@ -16,9 +27,9 @@ export type DailyLogForemanMatch = {
   created_by: string | null;
 };
 
-/** Einsätze ohne gesetzten Vorarbeiter (Publish-Pflicht). */
+/** Einsätze ohne Vorarbeiter (weder gesetzt noch aus Baustelle ableitbar). */
 export function entriesMissingForeman(entries: ScheduleEntryForemanRow[]): ScheduleEntryForemanRow[] {
-  return entries.filter((e) => !e.foreman_user_id);
+  return entries.filter((e) => !effectiveForemanUserId(e));
 }
 
 /** Einsätze mit VA, für die kein passender Tageseintrag vom VA existiert. */
@@ -32,8 +43,9 @@ export function entriesMissingForemanDailyLog(
       .map((l) => `${l.site_id}:${l.log_date}:${l.created_by}`),
   );
   return entries.filter((e) => {
-    if (!e.foreman_user_id) return false;
-    const key = `${e.site_id}:${e.start_date}:${e.foreman_user_id}`;
+    const foremanId = effectiveForemanUserId(e);
+    if (!foremanId) return false;
+    const key = `${e.site_id}:${e.start_date}:${foremanId}`;
     return !logKeys.has(key);
   });
 }
@@ -122,16 +134,26 @@ export async function loadScheduleEntriesForPlanDate(
 ): Promise<ScheduleEntryForemanRow[]> {
   const { data, error } = await supabase
     .from('schedule_entries')
-    .select('id, site_id, start_date, foreman_user_id, sites(name)')
+    .select('id, site_id, start_date, foreman_user_id, sites(name, responsible_user_id, site_manager_user_id)')
     .eq('tenant_id', tenantId)
     .eq('start_date', planDate);
   if (error) throw new Error(error.message);
 
   const foremanIds = [
     ...new Set(
-      (data ?? [])
-        .map((row) => row.foreman_user_id as string | null)
-        .filter((id): id is string => Boolean(id)),
+      (data ?? []).flatMap((row) => {
+        const site = row.sites as
+          | { responsible_user_id: string | null; site_manager_user_id: string | null }
+          | { responsible_user_id: string | null; site_manager_user_id: string | null }[]
+          | null;
+        const siteRow = Array.isArray(site) ? site[0] : site;
+        const id = effectiveForemanUserId({
+          foreman_user_id: row.foreman_user_id as string | null,
+          siteResponsibleUserId: siteRow?.responsible_user_id ?? null,
+          siteManagerUserId: siteRow?.site_manager_user_id ?? null,
+        });
+        return id ? [id] : [];
+      }),
     ),
   ];
   const foremanNames = new Map<string, string>();
@@ -147,16 +169,29 @@ export async function loadScheduleEntriesForPlanDate(
   }
 
   return (data ?? []).map((row) => {
-    const site = row.sites as { name: string } | { name: string }[] | null;
-    const siteName = Array.isArray(site) ? site[0]?.name : site?.name;
+    const site = row.sites as
+      | { name: string; responsible_user_id: string | null; site_manager_user_id: string | null }
+      | { name: string; responsible_user_id: string | null; site_manager_user_id: string | null }[]
+      | null;
+    const siteRow = Array.isArray(site) ? site[0] : site;
+    const siteName = siteRow?.name;
     const foremanId = row.foreman_user_id as string | null;
+    const siteResponsibleUserId = siteRow?.responsible_user_id ?? null;
+    const siteManagerUserId = siteRow?.site_manager_user_id ?? null;
+    const effectiveId = effectiveForemanUserId({
+      foreman_user_id: foremanId,
+      siteResponsibleUserId,
+      siteManagerUserId,
+    });
     return {
       id: row.id as string,
       site_id: row.site_id as string,
       start_date: row.start_date as string,
       foreman_user_id: foremanId,
+      siteResponsibleUserId,
+      siteManagerUserId,
       siteName,
-      foremanName: foremanId ? foremanNames.get(foremanId) : undefined,
+      foremanName: effectiveId ? foremanNames.get(effectiveId) : undefined,
     };
   });
 }

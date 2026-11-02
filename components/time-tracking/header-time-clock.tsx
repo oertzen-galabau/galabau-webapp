@@ -1,15 +1,30 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  optimisticPauseEndIntervals,
+  optimisticPauseStartIntervals,
+} from '@/lib/time-tracking/optimistic-clock';
+import { InlineSpinner } from '@/components/ui/inline-spinner';
+import { useAppNavigation } from '@/components/app-shell/navigation-pending-context';
 import { Clock3, Pause, Play, Square } from 'lucide-react';
-import { clockInWork, clockPauseEnd, clockPauseStart } from '@/lib/actions/employee';
-import type { TimeEntry } from '@/lib/types/database';
+import {
+  clockInWork,
+  clockPauseEnd,
+  clockPauseStart,
+  type LiveClockSnapshot,
+} from '@/lib/actions/time-clock';
+import {
+  needsEarlyStartReasonNow,
+  type TodayScheduleContext,
+} from '@/lib/time-tracking/today-schedule-context';
+import type { PauseEndConfirmPrompt } from '@/lib/time-tracking/pause-confirm-prompt';
+import type { TimeEntry, TimeEntryInterval } from '@/lib/types/database';
 import {
   adjustLiveDisplaySeconds,
   computeLiveWorkSeconds,
   deriveWorkDayState,
-  headerClockStateLabel,
+  headerClockCompactStatusLabel,
   pauseAvailable,
 } from '@/lib/time-tracking/work-day';
 import {
@@ -17,32 +32,65 @@ import {
   type ClockOutContext,
 } from '@/components/time-tracking/clock-out-dialog';
 import { getClockOutContext } from '@/lib/actions/payroll';
-import { formatDurationHMS } from '@/lib/utils/time';
+import { formatDurationHM } from '@/lib/utils/time';
+import { EarlyStartClockInDialog } from '@/components/time-tracking/early-start-clock-in-dialog';
 
 type Props = {
   todayEntry: TimeEntry | null;
+  todayIntervals?: TimeEntryInterval[];
+  todayScheduleContext?: TodayScheduleContext | null;
   canRecord: boolean;
+  onPauseConfirm?: (prompt: PauseEndConfirmPrompt) => void;
+  onPauseConfirmLoading?: () => void;
+  onPauseConfirmDismiss?: () => void;
+  onAfterPauseEnd?: () => void;
 };
 
-export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
-  const router = useRouter();
+export function HeaderTimeClock({
+  todayEntry,
+  todayIntervals = [],
+  todayScheduleContext = null,
+  canRecord,
+  onPauseConfirm,
+  onPauseConfirmLoading,
+  onPauseConfirmDismiss,
+  onAfterPauseEnd,
+}: Props) {
+  const { refresh, navigate } = useAppNavigation();
   const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState<string | null>(null);
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [clockOutContext, setClockOutContext] = useState<ClockOutContext | null>(null);
   const [loadingClockOut, setLoadingClockOut] = useState(false);
+  const [earlyStartOpen, setEarlyStartOpen] = useState(false);
+  const [scheduleContext, setScheduleContext] = useState<TodayScheduleContext | null>(null);
   const freshClockInRef = useRef(false);
   const [displayBaselineSeconds, setDisplayBaselineSeconds] = useState<number | null>(null);
+  const [liveEntry, setLiveEntry] = useState(todayEntry);
+  const [liveIntervals, setLiveIntervals] = useState(todayIntervals);
+  /** Verhindert, dass ein langsamer Layout-Refresh optimistische UI zurücksetzt. */
+  const propSyncLockRef = useRef(0);
 
-  const state = deriveWorkDayState(todayEntry);
-  const statusLabel = headerClockStateLabel(state);
+  useEffect(() => {
+    if (propSyncLockRef.current > 0) return;
+    setLiveEntry(todayEntry);
+    setLiveIntervals(todayIntervals);
+  }, [todayEntry, todayIntervals]);
+
+  function applyLiveSnapshot(snapshot: LiveClockSnapshot) {
+    setLiveEntry(snapshot.entry);
+    setLiveIntervals(snapshot.intervals);
+  }
+
+  const state = deriveWorkDayState(liveEntry, liveIntervals);
+  const statusLabel = headerClockCompactStatusLabel(state);
 
   useEffect(() => {
     if (state === 'working') {
       setNow(new Date());
-      if (freshClockInRef.current && todayEntry) {
-        const baseline = computeLiveWorkSeconds(todayEntry, new Date());
+      if (freshClockInRef.current && liveEntry) {
+        const baseline = computeLiveWorkSeconds(liveEntry, new Date(), 'Europe/Berlin', liveIntervals);
         setDisplayBaselineSeconds(baseline);
         freshClockInRef.current = false;
       }
@@ -52,9 +100,9 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     if (state === 'idle') {
       setDisplayBaselineSeconds(null);
     }
-  }, [state, todayEntry]);
+  }, [state, liveEntry, liveIntervals]);
 
-  const serverSeconds = computeLiveWorkSeconds(todayEntry, now);
+  const serverSeconds = computeLiveWorkSeconds(liveEntry, now, 'Europe/Berlin', liveIntervals);
   const displaySeconds = adjustLiveDisplaySeconds(serverSeconds, displayBaselineSeconds);
 
   if (!canRecord) return null;
@@ -67,7 +115,7 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     startTransition(async () => {
       try {
         await action();
-        router.refresh();
+        queueMicrotask(() => refresh());
       } catch (err) {
         freshClockInRef.current = false;
         setError(err instanceof Error ? err.message : 'Fehler');
@@ -75,57 +123,155 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
     });
   }
 
-  async function openClockOutDialog() {
-    if (!todayEntry) return;
-    setLoadingClockOut(true);
+  function syncPauseWithServer(
+    applyOptimistic: () => TimeEntryInterval[],
+    serverCall: () => Promise<LiveClockSnapshot | { snapshot: LiveClockSnapshot; confirmPrompt: PauseEndConfirmPrompt | null }>,
+    onSuccess?: (result: { snapshot: LiveClockSnapshot; confirmPrompt: PauseEndConfirmPrompt | null }) => void,
+    onError?: () => void,
+  ) {
+    if (!liveEntry) return;
     setError(null);
+
+    const rollback = { entry: liveEntry, intervals: liveIntervals };
     try {
-      const ctx = await getClockOutContext();
-      setClockOutContext(ctx);
-      setClockOutOpen(true);
+      setLiveIntervals(applyOptimistic());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler');
-    } finally {
-      setLoadingClockOut(false);
+      return;
     }
+
+    propSyncLockRef.current += 1;
+    void (async () => {
+      try {
+        const raw = await serverCall();
+        const snapshot = 'snapshot' in raw ? raw.snapshot : raw;
+        const confirmPrompt = 'confirmPrompt' in raw ? raw.confirmPrompt : null;
+        setLiveEntry(snapshot.entry);
+        setLiveIntervals(snapshot.intervals);
+        onSuccess?.({ snapshot, confirmPrompt });
+      } catch (err) {
+        setLiveEntry(rollback.entry);
+        setLiveIntervals(rollback.intervals);
+        setError(err instanceof Error ? err.message : 'Fehler');
+        onError?.();
+      } finally {
+        propSyncLockRef.current -= 1;
+      }
+    })();
+  }
+
+  function handleClockInClick() {
+    setError(null);
+    if (
+      todayScheduleContext &&
+      needsEarlyStartReasonNow(todayScheduleContext) &&
+      todayScheduleContext.plannedStartTime
+    ) {
+      setScheduleContext(todayScheduleContext);
+      setEarlyStartOpen(true);
+      return;
+    }
+    run(async () => {
+      const snapshot = await clockInWork();
+      applyLiveSnapshot(snapshot);
+    }, { markFreshClockIn: true });
+  }
+
+  function openClockOutDialog() {
+    if (!liveEntry) return;
+    setError(null);
+    setClockOutOpen(true);
+    setClockOutContext(null);
+    setLoadingClockOut(true);
+    void (async () => {
+      try {
+        const ctx = await getClockOutContext();
+        setClockOutContext(ctx);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Fehler');
+        setClockOutOpen(false);
+        setClockOutContext(null);
+      } finally {
+        setLoadingClockOut(false);
+      }
+    })();
   }
 
   function closeClockOutDialog() {
     setClockOutOpen(false);
     setClockOutContext(null);
+    setLoadingClockOut(false);
   }
 
-  const canBreak = pauseAvailable(todayEntry);
-  const timeLabel = formatDurationHMS(displaySeconds);
-  const pauseActive = state === 'breakfast' || state === 'lunch';
+  function handlePauseEnd() {
+    onPauseConfirmLoading?.();
+    syncPauseWithServer(
+      () => optimisticPauseEndIntervals(liveEntry!, liveIntervals),
+      () => clockPauseEnd(),
+      ({ confirmPrompt }) => {
+        if (confirmPrompt) {
+          onPauseConfirm?.(confirmPrompt);
+        } else {
+          onPauseConfirmDismiss?.();
+          onAfterPauseEnd?.();
+        }
+      },
+      () => onPauseConfirmDismiss?.(),
+    );
+  }
+
+  function handlePauseStart() {
+    syncPauseWithServer(
+      () => optimisticPauseStartIntervals(liveEntry!, liveIntervals),
+      () => clockPauseStart(),
+    );
+  }
+
+  const canBreak = pauseAvailable(liveEntry, liveIntervals);
+  const timeLabel = formatDurationHM(displaySeconds);
+  const pauseActive =
+    state === 'paused' || state === 'breakfast' || state === 'lunch';
   const clockStateClass = pauseActive ? 'paused' : state;
 
   if (state === 'idle') {
     return (
-      <button
-        type="button"
-        className="header-clock header-clock--idle header-clock-cta"
-        disabled={pending}
-        onClick={() => run(clockInWork, { markFreshClockIn: true })}
-        title={error ?? undefined}
-      >
-        <Play size={18} fill="currentColor" />
-        <span>Zeit erfassen</span>
-      </button>
+      <>
+        <button
+          type="button"
+          className="header-clock header-clock--idle header-clock-cta"
+          disabled={pending}
+          onClick={handleClockInClick}
+          title={error ?? undefined}
+        >
+          {pending ? <InlineSpinner size={18} /> : <Play size={18} fill="currentColor" />}
+          <span>{pending ? 'Wird gestartet …' : 'Zeit erfassen'}</span>
+        </button>
+        {scheduleContext ? (
+          <EarlyStartClockInDialog
+            open={earlyStartOpen}
+            onClose={() => setEarlyStartOpen(false)}
+            schedule={scheduleContext}
+            onSuccess={(snapshot) => {
+              applyLiveSnapshot(snapshot);
+              freshClockInRef.current = true;
+            }}
+          />
+        ) : null}
+      </>
     );
   }
 
   return (
     <>
       <div
-        className={`header-clock header-clock--${clockStateClass}`}
+        className="header-clock-track"
         title={error ?? undefined}
         role="group"
         aria-label="Zeiterfassung"
       >
-        <div className="header-clock-display">
+        <div className={`header-clock-main header-clock-main--${clockStateClass}`}>
           <span className="header-clock-status">
-            <i className="header-clock-dot" />
+            <i className="header-clock-dot" aria-hidden />
             {statusLabel}
           </span>
           <strong className="header-clock-time" aria-live="polite">
@@ -136,64 +282,68 @@ export function HeaderTimeClock({ todayEntry, canRecord }: Props) {
         <div className="header-clock-actions">
           {state === 'working' && (
             <>
-              {canBreak && (
+              {canBreak ? (
                 <button
                   type="button"
                   className="header-clock-action header-clock-action--secondary"
-                  disabled={pending}
-                  onClick={() => run(clockPauseStart)}
+                  onClick={handlePauseStart}
                   aria-label="Pause starten"
                 >
                   <Pause size={16} fill="currentColor" />
                   <span>Pause</span>
                 </button>
+              ) : (
+                <span className="header-clock-action-spacer" aria-hidden />
               )}
               <button
                 type="button"
                 className="header-clock-action header-clock-action--stop"
-                disabled={pending || loadingClockOut || !todayEntry}
-                onClick={() => void openClockOutDialog()}
+                disabled={!liveEntry}
+                onClick={openClockOutDialog}
                 aria-label="Feierabend"
               >
-                <Square size={15} fill="currentColor" />
-                <span>Feierabend</span>
+                <Square size={16} fill="currentColor" />
+                <span>Ende</span>
               </button>
             </>
           )}
 
           {pauseActive && (
-            <button
-              type="button"
-              className="header-clock-action header-clock-action--primary"
-              disabled={pending}
-              onClick={() => run(clockPauseEnd)}
-              aria-label="Pause beenden"
-            >
-              <Play size={16} fill="currentColor" />
-              <span>Weiter</span>
-            </button>
+              <button
+                type="button"
+                className="header-clock-action header-clock-action--primary header-clock-action--span"
+                onClick={handlePauseEnd}
+                aria-label="Pause beenden, weiter arbeiten"
+              >
+                <Play size={16} fill="currentColor" />
+                <span>Weiter</span>
+              </button>
           )}
 
           {state === 'finished' && (
-            <button
-              type="button"
-              className="header-clock-action header-clock-action--primary"
-              onClick={() => router.push('/app/zeiten')}
-              aria-label="Zeiten ansehen"
-            >
-              <Clock3 size={16} />
-              <span>Zeiten</span>
-            </button>
+            <>
+              <span className="header-clock-action-spacer" aria-hidden />
+              <button
+                type="button"
+                className="header-clock-action header-clock-action--primary"
+                onClick={() => navigate('/app/zeiten')}
+                aria-label="Zeiten ansehen"
+              >
+                <Clock3 size={16} />
+                <span>Zeiten</span>
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {todayEntry && clockOutContext ? (
+      {liveEntry && clockOutOpen ? (
         <ClockOutDialog
           open={clockOutOpen}
           onClose={closeClockOutDialog}
-          todayEntry={todayEntry}
+          todayEntry={liveEntry}
           context={clockOutContext}
+          loading={loadingClockOut || clockOutContext == null}
         />
       ) : null}
     </>

@@ -43,7 +43,7 @@ if (platformName && platformName !== 'BauDiggie') {
 const smtpReady = Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_FROM);
 if (!smtpReady) {
   console.warn(
-    '[build] WARNUNG: SMTP_HOST/SMTP_PORT/SMTP_FROM fehlen — Passwort-Reset, Einladungen und Rapport-Versand senden keine E-Mails. Auf Hostinger setzen (smtp.hostinger.com, Postfach @baudiggi.de).',
+    '[build] WARNUNG: SMTP_HOST/SMTP_PORT/SMTP_FROM fehlen — Passwort-Reset und Einladungen senden keine E-Mails. Auf Hostinger setzen (smtp.hostinger.com, Postfach @baudiggi.de). Fachliche Mails pro Mandant unter Einstellungen.',
   );
 }
 

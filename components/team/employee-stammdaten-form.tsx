@@ -122,6 +122,18 @@ export function EmployeeStammdatenForm({ member, editable, workAreas }: Props) {
               <WorkAreaSelect areas={workAreas} defaultValue={member.work_area_id} disabled={!editable} />
             </label>
           </div>
+          <label className="input-form-checkbox employee-stammdaten-checkbox">
+            <input
+              type="checkbox"
+              name="is_site_manager"
+              defaultChecked={member.is_site_manager === true}
+              disabled={!editable}
+            />
+            Bauleiter
+          </label>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 'var(--text-caption)' }}>
+            Kann auf Baustellen als Bauleiter gewählt werden.
+          </p>
         </section>
 
         <section className="input-form-section">

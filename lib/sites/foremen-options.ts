@@ -55,26 +55,17 @@ export async function loadForemanOptions(
 
 export type EmployeeTeamOption = { value: string; label: string; roleLabel: string };
 
-/** Bauleiter-Kandidaten (Verwaltung / Administrator). */
+/** Bauleiter-Kandidaten (Profil-Flag is_site_manager). */
 export async function loadSiteManagerOptions(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<ForemanOption[]> {
-  const { data: roles } = await supabase
-    .from('tenant_roles')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .in('slug', ['verwaltung', 'administrator']);
-
-  const roleIds = (roles ?? []).map((r) => r.id);
-  if (!roleIds.length) return [];
-
   const { data: profiles } = await supabase
     .from('profiles')
     .select('id, first_name, last_name')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
-    .in('tenant_role_id', roleIds)
+    .eq('is_site_manager', true)
     .order('last_name');
 
   return (profiles ?? []).map((p) => ({
@@ -98,13 +89,18 @@ export async function loadTenantEmployeeTeamOptions(
     .eq('is_active', true)
     .order('last_name');
 
-  return (profiles ?? [])
-    .filter((p) => !exclude.has(p.id))
-    .map((p) => {
-      const roleRaw = p.tenant_roles;
-      const role = Array.isArray(roleRaw) ? roleRaw[0] : roleRaw;
-      const roleLabel = (role as { name?: string } | null)?.name ?? 'Mitarbeiter';
-      const label = `${p.first_name} ${p.last_name}`.trim();
-      return { value: p.id, label, roleLabel };
-    });
+  const filtered = (profiles ?? []).filter((p) => !exclude.has(p.id));
+  filtered.sort((a, b) => {
+    const byLast = (a.last_name ?? '').localeCompare(b.last_name ?? '', 'de', { sensitivity: 'base' });
+    if (byLast !== 0) return byLast;
+    return (a.first_name ?? '').localeCompare(b.first_name ?? '', 'de', { sensitivity: 'base' });
+  });
+
+  return filtered.map((p) => {
+    const roleRaw = p.tenant_roles;
+    const role = Array.isArray(roleRaw) ? roleRaw[0] : roleRaw;
+    const roleLabel = (role as { name?: string } | null)?.name ?? 'Mitarbeiter';
+    const label = `${p.first_name} ${p.last_name}`.trim();
+    return { value: p.id, label, roleLabel };
+  });
 }

@@ -1,9 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import type { BusinessPartnerKind } from '@/lib/types/database';
+import { decodeSiteSupplierLinkValue } from '@/lib/partners/catalog';
 import { partnerKindFromTab, type PartnerTabId } from '@/lib/partners/kind';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
 
@@ -198,6 +200,14 @@ export async function createPartner(formData: FormData) {
   }
 
   revalidatePartnerTab(kindRaw);
+
+  const revalidateSiteId = String(formData.get('revalidate_site_id') ?? '').trim();
+  if (revalidateSiteId) {
+    const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
+    await assertSiteInTenant(supabase, tenantId, revalidateSiteId);
+    revalidatePath(`/app/baustellen/${revalidateSiteId}`);
+    redirect(`/app/baustellen/${revalidateSiteId}`);
+  }
 }
 
 export async function updatePartner(formData: FormData) {
@@ -399,16 +409,14 @@ export async function setPartnerActive(formData: FormData) {
   revalidatePartnerTab(kindRaw);
 }
 
-export async function linkSiteSupplier(formData: FormData) {
-  const ctx = await getActionContext();
-  if (!canAccess(ctx, 'sites.manage')) throw new Error('Keine Berechtigung');
-  const { tenantId } = ctx;
-
-  const siteId = formData.get('site_id') as string;
-  const partnerId = formData.get('partner_id') as string;
-  if (!siteId || !partnerId) throw new Error('Baustelle und Lieferant sind erforderlich');
-
-  const supabase = await createClient();
+async function insertSiteSupplierLink(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  siteId: string,
+  partnerId: string,
+  partnerLocationId: string | null,
+  contactIds: string[],
+) {
   const { data: partner, error: partnerError } = await supabase
     .from('tenant_business_partners')
     .select('*')
@@ -419,13 +427,6 @@ export async function linkSiteSupplier(formData: FormData) {
     .maybeSingle();
   if (partnerError) throw new Error(partnerError.message);
   if (!partner) throw new Error('Lieferant nicht gefunden');
-
-  const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
-  await assertSiteInTenant(supabase, tenantId, siteId);
-
-  const locationIdRaw = String(formData.get('partner_location_id') ?? '').trim();
-  const partnerLocationId = locationIdRaw || null;
-  const contactIds = formData.getAll('partner_contact_id[]').map(String).filter(Boolean);
 
   const contacts = await validatePartnerLocationAndContacts(
     supabase,
@@ -469,6 +470,49 @@ export async function linkSiteSupplier(formData: FormData) {
   if (error) throw new Error(error.message);
 
   await syncSiteSupplierContactLinks(supabase, tenantId, inserted.id, contactIds);
+}
+
+export async function linkSiteSupplier(formData: FormData) {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'sites.manage')) throw new Error('Keine Berechtigung');
+  const { tenantId } = ctx;
+
+  const siteId = formData.get('site_id') as string;
+  const partnerId = formData.get('partner_id') as string;
+  if (!siteId || !partnerId) throw new Error('Baustelle und Lieferant sind erforderlich');
+
+  const supabase = await createClient();
+  const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
+  await assertSiteInTenant(supabase, tenantId, siteId);
+
+  const locationIdRaw = String(formData.get('partner_location_id') ?? '').trim();
+  const partnerLocationId = locationIdRaw || null;
+  const contactIds = formData.getAll('partner_contact_id[]').map(String).filter(Boolean);
+
+  await insertSiteSupplierLink(supabase, tenantId, siteId, partnerId, partnerLocationId, contactIds);
+
+  revalidatePath(`/app/baustellen/${siteId}`);
+}
+
+export async function linkSiteSuppliers(formData: FormData) {
+  const ctx = await getActionContext();
+  if (!canAccess(ctx, 'sites.manage')) throw new Error('Keine Berechtigung');
+  const { tenantId } = ctx;
+
+  const siteId = formData.get('site_id') as string;
+  if (!siteId) throw new Error('Baustelle fehlt');
+
+  const linkValues = [...new Set(formData.getAll('supplier_link[]').map(String).filter(Boolean))];
+  if (linkValues.length === 0) throw new Error('Bitte mindestens einen Lieferanten wählen');
+
+  const supabase = await createClient();
+  const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
+  await assertSiteInTenant(supabase, tenantId, siteId);
+
+  for (const raw of linkValues) {
+    const { partnerId, locationId } = decodeSiteSupplierLinkValue(raw);
+    await insertSiteSupplierLink(supabase, tenantId, siteId, partnerId, locationId, []);
+  }
 
   revalidatePath(`/app/baustellen/${siteId}`);
 }
@@ -622,6 +666,14 @@ export async function createTenantContactPerson(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidateTenantContactPersonsPath();
+
+  const revalidateSiteId = String(formData.get('revalidate_site_id') ?? '').trim();
+  if (revalidateSiteId) {
+    const { assertSiteInTenant } = await import('@/lib/tenant/row-access');
+    await assertSiteInTenant(supabase, tenantId, revalidateSiteId);
+    revalidatePath(`/app/baustellen/${revalidateSiteId}`);
+    redirect(`/app/baustellen/${revalidateSiteId}`);
+  }
 }
 
 export async function updateTenantContactPerson(formData: FormData) {

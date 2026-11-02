@@ -42,6 +42,11 @@ export const SETTINGS_TABS = [
     label: 'GPS & Standort',
     permission: 'settings.gps' as PermissionKey,
   },
+  {
+    id: 'email',
+    label: 'E-Mail-Versand',
+    permission: 'settings.smtp' as PermissionKey,
+  },
 ] as const;
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];

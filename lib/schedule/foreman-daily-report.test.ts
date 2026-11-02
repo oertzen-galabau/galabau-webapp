@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  effectiveForemanUserId,
   entriesMissingForeman,
   entriesMissingForemanDailyLog,
   formatMissingDailyReportError,
@@ -28,6 +29,23 @@ const entry = (
   ...overrides,
 });
 
+describe('effectiveForemanUserId', () => {
+  it('nutzt Baustellen-Verantwortlichen und Bauleiter als Fallback', () => {
+    assert.equal(
+      effectiveForemanUserId({ foreman_user_id: 'va', siteResponsibleUserId: 'resp' }),
+      'va',
+    );
+    assert.equal(
+      effectiveForemanUserId({ foreman_user_id: null, siteResponsibleUserId: 'resp', siteManagerUserId: 'bl' }),
+      'resp',
+    );
+    assert.equal(
+      effectiveForemanUserId({ foreman_user_id: null, siteResponsibleUserId: null, siteManagerUserId: 'bl' }),
+      'bl',
+    );
+  });
+});
+
 describe('entriesMissingForeman', () => {
   it('findet Einsätze ohne Vorarbeiter', () => {
     const missing = entriesMissingForeman([
@@ -36,6 +54,13 @@ describe('entriesMissingForeman', () => {
     ]);
     assert.equal(missing.length, 1);
     assert.equal(missing[0].siteName, 'B');
+  });
+
+  it('akzeptiert abgeleiteten Vorarbeiter von der Baustelle', () => {
+    const missing = entriesMissingForeman([
+      entry({ foreman_user_id: null, siteResponsibleUserId: 'u-resp' }),
+    ]);
+    assert.equal(missing.length, 0);
   });
 });
 

@@ -37,6 +37,7 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
   const [sendOpen, setSendOpen] = useState(false);
   const [sendOrderIds, setSendOrderIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const userOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -98,8 +99,13 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
 
   async function downloadPdf(orderIds: string[]) {
     setActionError(null);
-    const err = await downloadOrderPdf(orderIds);
-    if (err) setActionError(err);
+    setPdfLoading(true);
+    try {
+      const err = await downloadOrderPdf(orderIds);
+      if (err) setActionError(err);
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   function openSend(orderIds: string[]) {
@@ -148,10 +154,10 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
           <button
             type="button"
             className="secondary-button secondary-button--compact"
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || pdfLoading}
             onClick={() => downloadPdf([...selected])}
           >
-            Sammelformular PDF
+            {pdfLoading ? 'Wird erstellt …' : 'Sammelformular PDF'}
           </button>
           <button
             type="button"
@@ -229,9 +235,10 @@ export function OrderAdminPanel({ orders, canShare, canManage }: Props) {
                               <button
                                 type="button"
                                 className="secondary-button secondary-button--compact"
+                                disabled={pdfLoading}
                                 onClick={() => downloadPdf([order.id])}
                               >
-                                PDF
+                                {pdfLoading ? '…' : 'PDF'}
                               </button>
                               <button
                                 type="button"

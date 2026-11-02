@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Check, Pencil, Trash2, X, XCircle } from 'lucide-react';
+import { InlineSpinner } from '@/components/ui/inline-spinner';
 
 type IconActionVariant = 'default' | 'brand' | 'danger';
 
@@ -7,6 +8,7 @@ type IconActionButtonProps = {
   label: string;
   variant?: IconActionVariant;
   children: ReactNode;
+  busy?: boolean;
 } & Pick<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'disabled' | 'onClick'>;
 
 export function IconActionButton({
@@ -15,6 +17,7 @@ export function IconActionButton({
   children,
   type = 'button',
   disabled,
+  busy = false,
   onClick,
 }: IconActionButtonProps) {
   return (
@@ -23,10 +26,11 @@ export function IconActionButton({
       className={`table-icon-action table-icon-action--${variant}`}
       aria-label={label}
       title={label}
-      disabled={disabled}
+      disabled={disabled || busy}
+      aria-busy={busy}
       onClick={onClick}
     >
-      {children}
+      {busy ? <InlineSpinner size={18} /> : children}
     </button>
   );
 }
@@ -35,7 +39,7 @@ export function TableIconActions({ children }: { children: ReactNode }) {
   return <div className="inline-actions table-icon-actions">{children}</div>;
 }
 
-type PresetProps = Pick<IconActionButtonProps, 'type' | 'disabled' | 'onClick'>;
+type PresetProps = Pick<IconActionButtonProps, 'type' | 'disabled' | 'busy' | 'onClick'>;
 
 export function EditIconAction(props: PresetProps) {
   return (

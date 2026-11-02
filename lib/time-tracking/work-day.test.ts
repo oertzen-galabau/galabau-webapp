@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DEFAULT_TIME_TRACKING_RULES } from './break-rules';
 import {
   adjustLiveDisplaySeconds,
   computeLiveWorkSeconds,
+  deriveWorkDayState,
   parseTimeToSeconds,
-  resolveNextPauseSlot,
 } from './work-day';
-
-const rules = {
-  tenant_id: 't',
-  ...DEFAULT_TIME_TRACKING_RULES,
-  updated_at: '2026-01-01T00:00:00.000Z',
-};
+import type { TimeEntryInterval } from '@/lib/types/database';
 
 describe('parseTimeToSeconds', () => {
   it('parses HH:MM:SS and HH:MM', () => {
@@ -51,18 +45,50 @@ describe('computeLiveWorkSeconds', () => {
     const now = new Date('2026-06-15T08:00:03+02:00');
     assert.equal(computeLiveWorkSeconds(entry, now), 3);
   });
-});
 
-describe('adjustLiveDisplaySeconds', () => {
-  it('subtracts baseline for fresh clock-in display', () => {
-    assert.equal(adjustLiveDisplaySeconds(3, 3), 0);
-    assert.equal(adjustLiveDisplaySeconds(4, 3), 1);
+  it('uses intervals when provided', () => {
+    const entry = {
+      start_time: '08:00:00',
+      end_time: null,
+      breakfast_start: null,
+      breakfast_end: null,
+      lunch_start: null,
+      lunch_end: null,
+    };
+    const intervals: TimeEntryInterval[] = [
+      {
+        id: '1',
+        tenant_id: 't',
+        time_entry_id: 'e',
+        sort_order: 0,
+        phase: 'work',
+        started_at: '2026-06-15T08:00:00+02:00',
+        ended_at: '2026-06-15T08:10:00+02:00',
+        suggested_block_type: null,
+        confirmed_block_type: null,
+        created_at: '',
+      },
+      {
+        id: '2',
+        tenant_id: 't',
+        time_entry_id: 'e',
+        sort_order: 1,
+        phase: 'work',
+        started_at: '2026-06-15T08:20:00+02:00',
+        ended_at: null,
+        suggested_block_type: null,
+        confirmed_block_type: null,
+        created_at: '',
+      },
+    ];
+    const now = new Date('2026-06-15T08:25:00+02:00');
+    assert.equal(computeLiveWorkSeconds(entry, now, 'Europe/Berlin', intervals), 10 * 60 + 5 * 60);
   });
 });
 
-describe('resolveNextPauseSlot', () => {
-  const openEntry = {
-    start_time: '07:00:00',
+describe('deriveWorkDayState with intervals', () => {
+  const entry = {
+    start_time: '08:00:00',
     end_time: null,
     breakfast_start: null,
     breakfast_end: null,
@@ -70,25 +96,28 @@ describe('resolveNextPauseSlot', () => {
     lunch_end: null,
   };
 
-  it('prefers lunch outside breakfast window (afternoon generic pause)', () => {
-    const now = new Date('2026-06-15T14:30:00+02:00');
-    assert.equal(resolveNextPauseSlot(openEntry, now, rules), 'lunch');
+  it('returns paused when open pause interval exists', () => {
+    const intervals: TimeEntryInterval[] = [
+      {
+        id: '1',
+        tenant_id: 't',
+        time_entry_id: 'e',
+        sort_order: 0,
+        phase: 'pause',
+        started_at: '2026-06-15T09:00:00+02:00',
+        ended_at: null,
+        suggested_block_type: null,
+        confirmed_block_type: null,
+        created_at: '',
+      },
+    ];
+    assert.equal(deriveWorkDayState(entry, intervals), 'paused');
   });
+});
 
-  it('uses breakfast inside breakfast window', () => {
-    const now = new Date('2026-06-15T09:00:00+02:00');
-    assert.equal(resolveNextPauseSlot(openEntry, now, rules), 'breakfast');
-  });
-
-  it('returns null when both slots are used', () => {
-    const now = new Date('2026-06-15T14:30:00+02:00');
-    const entry = {
-      ...openEntry,
-      breakfast_start: '08:00:00',
-      breakfast_end: '08:15:00',
-      lunch_start: '12:00:00',
-      lunch_end: null,
-    };
-    assert.equal(resolveNextPauseSlot(entry, now, rules), null);
+describe('adjustLiveDisplaySeconds', () => {
+  it('subtracts baseline for fresh clock-in display', () => {
+    assert.equal(adjustLiveDisplaySeconds(3, 3), 0);
+    assert.equal(adjustLiveDisplaySeconds(4, 3), 1);
   });
 });

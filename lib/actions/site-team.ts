@@ -50,12 +50,25 @@ export async function updateSiteLeads(formData: FormData) {
     .maybeSingle();
   if (!site) throw new Error('Baustelle nicht gefunden.');
 
-  for (const userId of [site_manager_user_id, responsible_user_id]) {
-    if (!userId) continue;
+  if (site_manager_user_id) {
+    const { data: manager } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', site_manager_user_id)
+      .eq('tenant_id', ctx.tenantId)
+      .eq('is_active', true)
+      .eq('is_site_manager', true)
+      .maybeSingle();
+    if (!manager) {
+      throw new Error('Gewählte Person ist kein Bauleiter oder nicht aktiv. Bitte in den Mitarbeiter-Stammdaten „Bauleiter“ aktivieren.');
+    }
+  }
+
+  if (responsible_user_id) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('id')
-      .eq('id', userId)
+      .eq('id', responsible_user_id)
       .eq('tenant_id', ctx.tenantId)
       .eq('is_active', true)
       .maybeSingle();
@@ -94,8 +107,10 @@ export async function addSiteTeamMember(formData: FormData) {
   if (!canAccess(ctx, 'sites.assign_team')) throw new Error('Keine Berechtigung');
 
   const siteId = (formData.get('site_id') as string)?.trim();
-  const userId = (formData.get('user_id') as string)?.trim();
-  if (!siteId || !userId) throw new Error('Baustelle und Mitarbeiter sind erforderlich.');
+  const fromArray = formData.getAll('user_id[]').map(String).filter(Boolean);
+  const single = (formData.get('user_id') as string)?.trim();
+  const userIds = [...new Set(single ? [...fromArray, single] : fromArray)];
+  if (!siteId || userIds.length === 0) throw new Error('Baustelle und mindestens ein Mitarbeiter sind erforderlich.');
 
   const supabase = await createClient();
 
@@ -107,16 +122,20 @@ export async function addSiteTeamMember(formData: FormData) {
     .maybeSingle();
   if (!site) throw new Error('Baustelle nicht gefunden.');
 
-  const { data: profile } = await supabase
+  const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
     .select('id')
-    .eq('id', userId)
     .eq('tenant_id', ctx.tenantId)
     .eq('is_active', true)
-    .maybeSingle();
-  if (!profile) throw new Error('Mitarbeiter nicht gefunden oder inaktiv.');
+    .in('id', userIds);
+  if (profilesError) throw new Error(profilesError.message);
+  if ((profiles ?? []).length !== userIds.length) {
+    throw new Error('Mindestens ein Mitarbeiter ist ungültig oder inaktiv.');
+  }
 
-  await ensureSiteTeamMember(supabase, ctx.tenantId, siteId, userId);
+  for (const userId of userIds) {
+    await ensureSiteTeamMember(supabase, ctx.tenantId, siteId, userId);
+  }
 
   revalidatePath(`/app/baustellen/${siteId}`);
   revalidatePath('/app/baustellen');

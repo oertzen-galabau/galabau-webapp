@@ -28,8 +28,6 @@ export function SendReportButton({
     const data = await res.json();
     if (!res.ok) {
       setMessage(data.error ?? 'Fehler beim Versand');
-    } else if (data.simulated) {
-      setMessage(data.message ?? 'Versand simuliert (SMTP nicht konfiguriert)');
     } else {
       setMessage('Rapport gesendet');
       window.location.reload();

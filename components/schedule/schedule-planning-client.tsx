@@ -15,9 +15,10 @@ import {
   type CollisionDetection,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
+import { useNavigationPending } from '@/components/app-shell/navigation-pending-context';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { ScheduleDayTimeline } from '@/components/schedule/schedule-day-timeline';
 import { ScheduleEntryDropWrap } from '@/components/schedule/schedule-entry-dnd-wrap';
@@ -287,7 +288,9 @@ export function SchedulePlanningClient({
   view,
 }: Props) {
   const router = useRouter();
+  const { navigate, isBusy: navigationBusy } = useNavigationPending();
   const [pending, startTransition] = useTransition();
+  const [pdfSharePending, setPdfSharePending] = useState(false);
   const [dialogEntry, setDialogEntry] = useState<SchedulePlanData['entries'][number] | null>(null);
   const [dialogDefaults, setDialogDefaults] = useState<{ siteId?: string; day?: string }>({});
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -424,13 +427,13 @@ export function SchedulePlanningClient({
     d.setUTCDate(d.getUTCDate() + offset * 7);
     const iso = d.toISOString().slice(0, 10);
     const dayParam = view === 'day' ? `&day=${addDays(selectedDay, offset * 7)}` : '';
-    router.push(`/app/einsatzplanung?week=${iso}&view=${view}${dayParam}`);
+    navigate(`/app/einsatzplanung?week=${iso}&view=${view}${dayParam}`);
   }
 
   function navigateDay(offset: number) {
     const nextDay = addDays(selectedDay, offset);
     const week = mondayOfWeek(nextDay);
-    router.push(`/app/einsatzplanung?week=${week}&view=day&day=${nextDay}`);
+    navigate(`/app/einsatzplanung?week=${week}&view=day&day=${nextDay}`);
   }
 
   function resolveOverEntryId(event: DragEndEvent): string | null {
@@ -578,13 +581,18 @@ export function SchedulePlanningClient({
 
   async function downloadSchedulePdf(mode: 'day' | 'week', dayDate?: string) {
     setActionError(null);
-    const blob = await fetchSchedulePdf(mode, 'attachment', dayDate);
-    if (!blob) return;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = pdfFileName(mode, dayDate);
-    a.click();
-    URL.revokeObjectURL(a.href);
+    setPdfSharePending(true);
+    try {
+      const blob = await fetchSchedulePdf(mode, 'attachment', dayDate);
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = pdfFileName(mode, dayDate);
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setPdfSharePending(false);
+    }
   }
 
   function openPrintDayDialog() {
@@ -594,26 +602,42 @@ export function SchedulePlanningClient({
 
   async function shareScheduleWhatsApp() {
     const mode = view === 'week' ? 'week' : 'day';
-    const blob = await fetchSchedulePdf(mode);
-    if (!blob) return;
-    const file = new File([blob], pdfFileName(mode), { type: 'application/pdf' });
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: mode === 'week' ? 'Wochenplan' : 'Einsatztafel',
-      });
-      return;
+    setPdfSharePending(true);
+    try {
+      const blob = await fetchSchedulePdf(mode);
+      if (!blob) return;
+      const file = new File([blob], pdfFileName(mode), { type: 'application/pdf' });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: mode === 'week' ? 'Wochenplan' : 'Einsatztafel',
+        });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = pdfFileName(mode);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      const text =
+        mode === 'week'
+          ? encodeURIComponent(`Wochenplan ab ${plan.weekStart}`)
+          : encodeURIComponent(`Einsatztafel ${selectedDay}`);
+      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
+    } finally {
+      setPdfSharePending(false);
     }
-    await downloadSchedulePdf(mode);
-    const text =
-      mode === 'week'
-        ? encodeURIComponent(`Wochenplan ab ${plan.weekStart}`)
-        : encodeURIComponent(`Einsatztafel ${selectedDay}`);
-    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
+  const schedulePageClass = [
+    'schedule-page',
+    navigationBusy || pdfSharePending ? 'schedule-page--pending' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div className="schedule-page">
+    <div className={schedulePageClass}>
       <header className="page-heading schedule-header">
         <div>
           <h1>Einsatzplanung</h1>
@@ -630,19 +654,19 @@ export function SchedulePlanningClient({
         <div className="schedule-toolbar">
           <div className="schedule-toolbar-row schedule-toolbar-row--nav">
             <div className="schedule-toolbar-view" role="group" aria-label="Ansicht">
-              <Link
+              <AppNavLink
                 href={`/app/einsatzplanung?week=${plan.weekStart}&view=week`}
                 className={view === 'week' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
               >
                 Woche
-              </Link>
-              <Link
+              </AppNavLink>
+              <AppNavLink
                 href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${selectedDay}`}
                 className={view === 'day' ? 'primary-button primary-button--compact' : 'secondary-button secondary-button--compact'}
               >
                 Tag
-              </Link>
-              <Link
+              </AppNavLink>
+              <AppNavLink
                 href={heuteHref}
                 className={
                   heuteIsCurrent
@@ -652,8 +676,8 @@ export function SchedulePlanningClient({
                 aria-current={heuteIsCurrent ? 'true' : undefined}
               >
                 Heute
-              </Link>
-              <Link
+              </AppNavLink>
+              <AppNavLink
                 href={morgenHref}
                 className={
                   morgenIsCurrent
@@ -663,13 +687,14 @@ export function SchedulePlanningClient({
                 aria-current={morgenIsCurrent ? 'true' : undefined}
               >
                 Morgen
-              </Link>
+              </AppNavLink>
             </div>
             {view === 'day' ? (
               <div className="schedule-toolbar-nav" role="group" aria-label="Tag wechseln">
                 <button
                   type="button"
                   className="secondary-button secondary-button--compact schedule-toolbar-icon"
+                  disabled={navigationBusy}
                   onClick={() => navigateDay(-1)}
                   aria-label="Vorheriger Tag"
                 >
@@ -678,6 +703,7 @@ export function SchedulePlanningClient({
                 <button
                   type="button"
                   className="secondary-button secondary-button--compact schedule-toolbar-icon"
+                  disabled={navigationBusy}
                   onClick={() => navigateDay(1)}
                   aria-label="Nächster Tag"
                 >
@@ -687,10 +713,10 @@ export function SchedulePlanningClient({
             ) : null}
             {view === 'week' ? (
               <div className="schedule-toolbar-nav" role="group" aria-label="Woche wechseln">
-                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(-1)} aria-label="Vorherige Woche">
+                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" disabled={navigationBusy} onClick={() => navigateWeek(-1)} aria-label="Vorherige Woche">
                   ←
                 </button>
-                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" onClick={() => navigateWeek(1)} aria-label="Nächste Woche">
+                <button type="button" className="secondary-button secondary-button--compact schedule-toolbar-icon" disabled={navigationBusy} onClick={() => navigateWeek(1)} aria-label="Nächste Woche">
                   →
                 </button>
               </div>
@@ -770,30 +796,39 @@ export function SchedulePlanningClient({
                     Woche veröffentlichen
                   </button>
                 )}
+                {actionError ? <p className="form-error schedule-toolbar-error">{actionError}</p> : null}
               </div>
             ) : null}
             {canShare ? (
               <div className="schedule-toolbar-group">
                 <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger">
-                    PDF erstellen
+                  <DropdownMenuTrigger
+                    className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger"
+                    disabled={pdfSharePending}
+                  >
+                    {pdfSharePending ? 'Wird erstellt …' : 'PDF erstellen'}
                     <ChevronDown size={16} aria-hidden />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => void downloadSchedulePdf('week')}>
-                      Wochenplan
+                    <DropdownMenuItem disabled={pdfSharePending} onClick={() => void downloadSchedulePdf('week')}>
+                      {pdfSharePending ? 'Wird erstellt …' : 'Wochenplan'}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openPrintDayDialog}>Tagesplan…</DropdownMenuItem>
+                    <DropdownMenuItem disabled={pdfSharePending} onClick={openPrintDayDialog}>
+                      Tagesplan…
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger">
+                  <DropdownMenuTrigger
+                    className="secondary-button secondary-button--compact schedule-toolbar-menu-trigger"
+                    disabled={pdfSharePending}
+                  >
                     Teilen
                     <ChevronDown size={16} aria-hidden />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => void shareScheduleWhatsApp()}>
-                      WhatsApp
+                    <DropdownMenuItem disabled={pdfSharePending} onClick={() => void shareScheduleWhatsApp()}>
+                      {pdfSharePending ? 'Wird erstellt …' : 'WhatsApp'}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setEmailDialogOpen(true)}>E-Mail</DropdownMenuItem>
                   </DropdownMenuContent>
@@ -849,8 +884,6 @@ export function SchedulePlanningClient({
           </div>
         ) : null}
 
-        {actionError ? <p className="form-error">{actionError}</p> : null}
-
         {!canManage && view === 'day' && !selectedDayPublished ? (
           <p className="muted">Dieser Tag wurde noch nicht veröffentlicht.</p>
         ) : null}
@@ -867,7 +900,7 @@ export function SchedulePlanningClient({
                 const colEntries = entriesByDay.get(day) ?? [];
                 return (
                   <div key={day} className="schedule-week-day-col">
-                    <Link
+                    <AppNavLink
                       href={`/app/einsatzplanung?week=${plan.weekStart}&view=day&day=${day}`}
                       className={`schedule-week-col-head schedule-week-col-head-link${isToday ? ' schedule-week-col-head-today' : ''}`}
                     >
@@ -876,7 +909,7 @@ export function SchedulePlanningClient({
                       <small className={dayPublished ? 'schedule-day-pub schedule-day-pub--ok' : 'schedule-day-pub'}>
                         {dayPublished ? 'Veröffentlicht' : 'Entwurf'}
                       </small>
-                    </Link>
+                    </AppNavLink>
                     <DroppableDay
                       id={`day-${day}`}
                       data={{ scheduleDay: day }}
@@ -972,12 +1005,13 @@ export function SchedulePlanningClient({
               <button
                 type="button"
                 className="primary-button primary-button--compact"
+                disabled={pdfSharePending}
                 onClick={() => {
                   void downloadSchedulePdf('day', printDayDate);
                   setPrintDayDialogOpen(false);
                 }}
               >
-                PDF erstellen
+                {pdfSharePending ? 'Wird erstellt …' : 'PDF erstellen'}
               </button>
             </div>
           }

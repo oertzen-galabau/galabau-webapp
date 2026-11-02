@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
+import { PrimaryPendingButton } from '@/components/ui/pending-button';
 import { useSearchParams } from 'next/navigation';
 import { clearSupabaseAuthCookies } from '@/lib/supabase/auth-cookies';
 import { createClient } from '@/lib/supabase/client';
@@ -100,20 +102,20 @@ export function LoginForm() {
             />
           </label>
           <p className="auth-inline-link">
-            <Link href="/forgot-password">Passwort vergessen?</Link>
+            <AppNavLink href="/forgot-password">Passwort vergessen?</AppNavLink>
           </p>
           {resetSuccess && <p className="form-success">Passwort wurde geändert. Bitte anmelden.</p>}
           {error && <p className="form-error">{error}</p>}
           <div className="auth-form-actions">
-            <button type="submit" className="primary-button" disabled={loading}>
-              {loading ? 'Wird angemeldet…' : 'Anmelden'}
-            </button>
+            <PrimaryPendingButton type="submit" pending={loading} pendingLabel="Wird angemeldet …">
+              Anmelden
+            </PrimaryPendingButton>
           </div>
         </form>
         <p className="auth-footer">
-          Noch kein Konto? <Link href="/register">Kostenlos testen</Link>
+          Noch kein Konto? <AppNavLink href="/register">Kostenlos testen</AppNavLink>
           {' · '}
-          <Link href="/">Zur Startseite</Link>
+          <AppNavLink href="/">Zur Startseite</AppNavLink>
         </p>
       </div>
     </div>

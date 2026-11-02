@@ -3,12 +3,16 @@ import type { BusinessPartnerKind } from '@/lib/types/database';
 
 type Props = {
   kind: BusinessPartnerKind;
+  formId?: string;
+  revalidateSiteId?: string;
+  hideActions?: boolean;
 };
 
-export function PartnerCreateForm({ kind }: Props) {
+export function PartnerCreateForm({ kind, formId, revalidateSiteId, hideActions = false }: Props) {
   return (
-    <form action={createPartner} className="input-form">
+    <form id={formId} action={createPartner} className="input-form">
       <input type="hidden" name="kind" value={kind} />
+      {revalidateSiteId ? <input type="hidden" name="revalidate_site_id" value={revalidateSiteId} /> : null}
       <div className="input-form-core input-form-core--grid">
         <label>Firma<input name="name" required placeholder="Firmenname" /></label>
         <label>Ansprechpartner<input name="contact_person" placeholder="Optional" /></label>
@@ -19,9 +23,13 @@ export function PartnerCreateForm({ kind }: Props) {
           <textarea name="notes" rows={2} placeholder="Optional" />
         </label>
       </div>
-      <div className="input-form-actions">
-        <button type="submit" className="primary-button primary-button--compact">Eintrag anlegen</button>
-      </div>
+      {!hideActions ? (
+        <div className="input-form-actions">
+          <button type="submit" className="primary-button primary-button--compact">
+            Eintrag anlegen
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

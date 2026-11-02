@@ -22,6 +22,8 @@ import { TenantBadWeatherAllowanceForm } from '@/components/settings/tenant-bad-
 import { TenantLeaveCarryExpiryForm } from '@/components/settings/tenant-leave-carry-expiry-form';
 import { TenantWorkAreasPanel } from '@/components/settings/tenant-work-areas-panel';
 import { TenantGpsForm } from '@/components/settings/tenant-gps-form';
+import { TenantSmtpForm } from '@/components/settings/tenant-smtp-form';
+import { loadTenantSmtpPublicSettings } from '@/lib/email/tenant-smtp';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import { formatGermanDate } from '@/lib/schedule/week';
 import type { PayrollBookingCode, TenantTimeTrackingRules } from '@/lib/types/database';
@@ -83,6 +85,11 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
   let tenantConfig = null;
   let defaultStartPassword: string | null = null;
   let timeTrackingRules: TenantTimeTrackingRules | null = null;
+  let smtpSettings = null;
+
+  if (activeTab === 'email' && canAccess(ctx, 'settings.smtp')) {
+    smtpSettings = await loadTenantSmtpPublicSettings(tenantId);
+  }
 
   if (activeTab === 'startpasswort' && canAccess(ctx, 'settings.start_password')) {
     const admin = createAdminClient();
@@ -131,6 +138,8 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
                       ? 'Bereiche für Mitarbeiter (Baustelle, Verwaltung …) und Filter in der Einsatzplanung.'
                     : activeTab === 'gps'
                       ? 'Standortfunktionen (GPS) für alle Mitarbeiter ein- oder ausschalten.'
+                      : activeTab === 'email'
+                        ? 'SMTP für Rapporte, Bestellungen und Einsatzpläne — Systemmails laufen über die App.'
                     : activeTab === 'berichte'
                       ? 'Anzeigenamen für Tagesbericht und Std.-Lohn-Rapport in der App und in PDFs.'
                 : 'Logo, Firmenname, Markenfarben und Betriebskalender anpassen.'}
@@ -174,6 +183,10 @@ export default async function EinstellungenPage({ searchParams }: PageProps) {
 
       {activeTab === 'gps' && canAccess(ctx, 'settings.gps') && tenant ? (
         <TenantGpsForm gpsEnabled={tenant.gps_enabled !== false} />
+      ) : null}
+
+      {activeTab === 'email' && canAccess(ctx, 'settings.smtp') ? (
+        <TenantSmtpForm settings={smtpSettings} />
       ) : null}
 
       {activeTab === 'berichte' && canAccess(ctx, 'settings.branding') && tenant ? (

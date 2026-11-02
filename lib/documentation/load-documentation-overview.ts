@@ -20,7 +20,7 @@ import {
   parseDocumentsArtFilter,
   parseDocumentsTab,
   parseReportArtFilter,
-  siteDocumentCategoryForArt,
+  siteDocumentCategoryForTab,
   tabNeedsDeliveryNotes,
   tabNeedsPdfReports,
   tabNeedsReportPhotos,
@@ -109,7 +109,7 @@ export async function loadDocumentationOverview(
   const artFilter = parseDocumentsArtFilter(options.art, tab);
   const reportArtFilter = parseReportArtFilter(options.art, tab);
   const kinds = options.kinds ?? kindsForTabWithArt(tab, artFilter);
-  const siteDocCategory = siteDocumentCategoryForArt(artFilter);
+  const siteDocCategory = siteDocumentCategoryForTab(kinds, artFilter);
   const reportLabels = tenantReportLabelsFromTenant(ctx.tenant);
   const needsOwnedLogs =
     tabNeedsPdfReports(kinds) || tabNeedsReportPhotos(kinds) || tabNeedsDeliveryNotes(kinds);
@@ -203,7 +203,7 @@ async function loadSiteDocuments(
   tenantId: string,
   accessibleSiteIds: string[] | null,
   filterSiteId: string | undefined,
-  categoryFilter: 'plan' | 'leistungsverzeichnis' | 'other' | null = null,
+  categoryFilter: 'plan' | 'leistungsverzeichnis' | 'other' | 'fotos' | null = null,
 ): Promise<DocumentationOverviewItem[]> {
   let query = supabase
     .from('site_documents')
@@ -217,26 +217,32 @@ async function loadSiteDocuments(
     query = query.eq('category', 'plan');
   } else if (categoryFilter === 'leistungsverzeichnis') {
     query = query.eq('category', 'leistungsverzeichnis');
+  } else if (categoryFilter === 'fotos') {
+    query = query.eq('category', 'fotos');
   }
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []).filter((row) => {
-    if (categoryFilter !== 'other') return true;
-    return siteDocumentKind(row.category as string | null) === 'site_other';
+    const kind = siteDocumentKind(row.category as string | null);
+    if (categoryFilter === 'other') return kind === 'site_other';
+    if (categoryFilter === 'fotos') return kind === 'site_photo';
+    if (!categoryFilter) return kind !== 'site_photo';
+    return true;
   });
 
   return rows.map((row) => {
     const siteRaw = row.sites as { name: string } | { name: string }[] | null;
     const siteName = Array.isArray(siteRaw) ? siteRaw[0]?.name ?? '' : siteRaw?.name ?? '';
     const sortDate = (row.created_at as string)?.slice(0, 10) ?? '';
+    const kind = siteDocumentKind(row.category as string | null);
     return {
       id: `doc-${row.id}`,
-      kind: siteDocumentKind(row.category as string | null),
+      kind,
       sortDate,
       siteId: row.site_id as string,
       siteName,
-      title: (row.title as string) || 'Dokument',
+      title: (row.title as string) || (kind === 'site_photo' ? 'Foto' : 'Dokument'),
       fileUrl: (row.file_url as string | null) ?? undefined,
     };
   });

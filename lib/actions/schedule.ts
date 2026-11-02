@@ -5,7 +5,11 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { canAccess, getActionContext } from '@/lib/auth/session';
 import { upsertScheduleEntryCopy } from '@/lib/schedule/copy-entry';
 import { loadSchedulePlanData } from '@/lib/schedule/load-plan-data';
-import { validatePublishPlanDate } from '@/lib/schedule/foreman-daily-report';
+import {
+  effectiveForemanUserId,
+  loadScheduleEntriesForPlanDate,
+  validatePublishPlanDate,
+} from '@/lib/schedule/foreman-daily-report';
 import { syncDailyAssignmentsFromSchedule } from '@/lib/schedule/sync-assignments';
 import { assertEquipmentAvailableOnDays } from '@/lib/schedule/equipment-day-exclusive';
 import {
@@ -412,6 +416,25 @@ export async function addMemberToScheduleEntry(formData: FormData) {
   revalidatePath(SCHEDULE_PATH);
 }
 
+async function backfillMissingForemenForPlanDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  planDate: string,
+) {
+  const entries = await loadScheduleEntriesForPlanDate(supabase, tenantId, planDate);
+  for (const entry of entries) {
+    if (entry.foreman_user_id) continue;
+    const resolved = effectiveForemanUserId(entry);
+    if (!resolved) continue;
+    const { error } = await supabase
+      .from('schedule_entries')
+      .update({ foreman_user_id: resolved })
+      .eq('tenant_id', tenantId)
+      .eq('id', entry.id);
+    if (error) throw new Error(error.message);
+  }
+}
+
 async function publishDaysAndSync(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ctx: Awaited<ReturnType<typeof getActionContext>>,
@@ -424,8 +447,14 @@ async function publishDaysAndSync(
   const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
 
   for (const planDate of uniqueDays) {
+    await backfillMissingForemenForPlanDate(supabase, ctx.tenantId, planDate);
+  }
+
+  for (const planDate of uniqueDays) {
     await validatePublishPlanDate(supabase, ctx.tenantId, planDate);
   }
+
+  const planAfterBackfill = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
 
   const now = new Date().toISOString();
   for (const planDate of uniqueDays) {
@@ -442,7 +471,7 @@ async function publishDaysAndSync(
   }
 
   for (const planDate of uniqueDays) {
-    const dayEntries = plan.entries.filter((e) => e.start_date === planDate);
+    const dayEntries = planAfterBackfill.entries.filter((e) => e.start_date === planDate);
     await syncDailyAssignmentsFromSchedule(
       supabase,
       ctx.tenantId,

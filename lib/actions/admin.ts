@@ -15,6 +15,7 @@ import { canViewAllSites, requireSiteAccess } from '@/lib/sites/access';
 import { readSiteAddressFromForm } from '@/lib/sites/format-address';
 import { syncSiteGeocoding } from '@/lib/weather/sync-site-geocoding';
 import { resolvePartnerName } from '@/lib/actions/partners';
+import { parseSiteDocumentCategory } from '@/lib/sites/document-categories';
 import {
   deliveryBlockFromStandaloneForm,
   insertDeliveryNote,
@@ -514,8 +515,10 @@ export async function assignSiteContactPersons(formData: FormData) {
   if (!siteId) throw new Error('Baustelle fehlt');
   await assertSiteInTenant(supabase, tenantId, siteId);
 
-  const contactIds = [...new Set(formData.getAll('contact_person_id[]').map(String).filter(Boolean))];
-  if (contactIds.length === 0) throw new Error('Bitte mindestens einen Ansprechpartner wählen');
+  const fromArray = formData.getAll('contact_person_id[]').map(String).filter(Boolean);
+  const single = (formData.get('contact_person_id') as string)?.trim();
+  const contactIds = [...new Set(single ? [...fromArray, single] : fromArray)];
+  if (contactIds.length === 0) throw new Error('Bitte einen Ansprechpartner wählen');
 
   const { data: persons, error: personsError } = await supabase
     .from('tenant_contact_persons')
@@ -685,7 +688,10 @@ export async function uploadSiteDocument(formData: FormData) {
   const file = formData.get('file');
   if (!(file instanceof File) || file.size === 0) throw new Error('Keine Datei ausgewählt');
 
-  const category = (formData.get('category') as string) || 'sonstiges';
+  const category = parseSiteDocumentCategory(formData.get('category') as string | null);
+  if (category === 'fotos' && !file.type.startsWith('image/')) {
+    throw new Error('Für die Kategorie Fotos bitte ein Bild hochladen.');
+  }
   const title = (formData.get('title') as string) || file.name;
 
   const path = buildStoragePath(tenantId, siteId, 'dokumente', `${Date.now()}-${file.name}`);
@@ -1264,6 +1270,7 @@ export async function updateEmployeeProfile(formData: FormData) {
     exit_date: (formData.get('exit_date') as string) || null,
     job_title: (formData.get('job_title') as string) || null,
     work_area_id: ((formData.get('work_area_id') as string) || '').trim() || null,
+    is_site_manager: formData.get('is_site_manager') === 'on',
     leader_code: computeLeaderCode(firstName, lastName),
   };
 

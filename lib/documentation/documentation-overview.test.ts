@@ -12,6 +12,7 @@ describe('documentation overview', () => {
   it('maps site document categories', () => {
     assert.equal(siteDocumentKind('plan'), 'site_plan');
     assert.equal(siteDocumentKind('leistungsverzeichnis'), 'site_lv');
+    assert.equal(siteDocumentKind('fotos'), 'site_photo');
     assert.equal(siteDocumentKind(null), 'site_other');
   });
 
@@ -52,6 +53,7 @@ describe('documentation overview', () => {
   it('labels kinds for display', () => {
     assert.equal(kindLabel('pdf_report'), 'PDF-Rapport');
     assert.equal(kindLabel('delivery_note'), 'Lieferschein');
+    assert.equal(kindLabel('site_photo'), 'Foto');
   });
 
   it('disambiguates site_documents → sites after cover_document_id FK', () => {

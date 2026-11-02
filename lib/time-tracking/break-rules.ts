@@ -14,6 +14,8 @@ export const DEFAULT_TIME_TRACKING_RULES: Omit<TenantTimeTrackingRules, 'tenant_
   lunch_expected_minutes: 30,
   lunch_window_start: '11:00',
   lunch_window_end: '14:30',
+  compare_schedule_on_clock_in: false,
+  early_start_tolerance_minutes: 5,
 };
 
 export type BreakExpectation = {
@@ -49,7 +51,12 @@ export async function loadTenantTimeTrackingRules(
     };
   }
 
-  return data as TenantTimeTrackingRules;
+  return {
+    tenant_id: tenantId,
+    ...DEFAULT_TIME_TRACKING_RULES,
+    ...data,
+    updated_at: data.updated_at,
+  } as TenantTimeTrackingRules;
 }
 
 function minutesToTime(minutes: number): string {

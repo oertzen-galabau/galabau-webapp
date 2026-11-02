@@ -1,6 +1,5 @@
 import { SiteContactRow } from '@/components/sites/site-contact-row';
-import { SiteContactAssignForm } from '@/components/sites/site-contact-assign-form';
-import { partnerSettingsListPath } from '@/lib/partners/paths';
+import { SiteContactAssignDialog } from '@/components/sites/site-contact-assign-dialog';
 import type { TenantContactPerson } from '@/lib/types/database';
 
 export type SiteContactAssignment = {
@@ -24,12 +23,10 @@ export function SiteContactsSection({
   canManagePartners,
 }: Props) {
   const assignedIds = assignments.map((row) => row.contact.id);
-  const stammdatenHref = partnerSettingsListPath('ansprechpartner');
 
   return (
     <section className="site-detail-section">
       <h2>Ansprechpartner</h2>
-      <p className="muted">Kontakte aus den Stammdaten — Pflege unter Einstellungen → Stammdaten → Ansprechpartner.</p>
 
       {assignments.length > 0 ? (
         <ul className="site-entity-list">
@@ -42,12 +39,12 @@ export function SiteContactsSection({
       )}
 
       {canEdit ? (
-        <SiteContactAssignForm
+        <SiteContactAssignDialog
           siteId={siteId}
           catalog={catalog}
           assignedIds={assignedIds}
           canManagePartners={canManagePartners}
-          stammdatenHref={stammdatenHref}
+          resetKey={assignments.length}
         />
       ) : null}
     </section>

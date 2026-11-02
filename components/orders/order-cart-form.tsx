@@ -1,12 +1,18 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { submitCatalogOrder } from '@/lib/actions/orders';
 import {
   cartTotalEur,
   splitOrderTotal,
   type BudgetBreakdown,
 } from '@/lib/orders/budget';
+import {
+  filterCatalogCartGroups,
+  groupCatalogItemsByCategory,
+  groupCatalogItemsBySeries,
+} from '@/lib/orders/cart-catalog';
 import { resolveCatalogUnitPriceEur } from '@/lib/orders/catalog-item-price';
 import { resolveItemSizeOptions, type SizePresetsMap } from '@/lib/orders/catalog-sizes';
 import { formatOrderEuro } from '@/lib/orders/labels';
@@ -47,25 +53,32 @@ function defaultLineState(item: CatalogItemForOrder, sizePresets: SizePresetsMap
   };
 }
 
+function selectedQtyForItems(items: CatalogItemForOrder[], lines: Record<string, LineState>): number {
+  return items.reduce((sum, item) => sum + (lines[item.id]?.quantity ?? 0), 0);
+}
+
 export function OrderCartForm({ categories, items, budget, sizePresets }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
   const [lines, setLines] = useState<Record<string, LineState>>(() =>
     Object.fromEntries(items.map((item) => [item.id, defaultLineState(item, sizePresets)])),
   );
+  const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(() => {
+    const groups = groupCatalogItemsByCategory(categories, items);
+    return groups.length === 1 ? new Set([groups[0].category.id]) : new Set();
+  });
 
-  const itemsByCategory = useMemo(() => {
-    const map = new Map<string, CatalogItemForOrder[]>();
-    for (const cat of categories) map.set(cat.id, []);
-    for (const item of items) {
-      const list = map.get(item.category_id) ?? [];
-      list.push(item);
-      map.set(item.category_id, list);
-    }
-    return categories
-      .map((cat) => ({ category: cat, items: map.get(cat.id) ?? [] }))
-      .filter((g) => g.items.length > 0);
-  }, [categories, items]);
+  const itemsByCategory = useMemo(
+    () => groupCatalogItemsByCategory(categories, items),
+    [categories, items],
+  );
+
+  const visibleGroups = useMemo(
+    () => filterCatalogCartGroups(itemsByCategory, { categoryId: filterCategoryId, query }),
+    [itemsByCategory, filterCategoryId, query],
+  );
 
   const cartPreview = useMemo(() => {
     const cartLines = items
@@ -93,6 +106,37 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
     }));
   }
 
+  function setCategoryOpen(categoryId: string, open: boolean) {
+    setOpenCategoryIds((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(categoryId);
+      else next.delete(categoryId);
+      return next;
+    });
+  }
+
+  function selectCategory(categoryId: string | null) {
+    setFilterCategoryId(categoryId);
+    if (categoryId) {
+      setOpenCategoryIds(new Set([categoryId]));
+      return;
+    }
+    if (query.trim()) {
+      setOpenCategoryIds(new Set(itemsByCategory.map((group) => group.category.id)));
+    }
+  }
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    const nextGroups = filterCatalogCartGroups(itemsByCategory, {
+      categoryId: filterCategoryId,
+      query: value,
+    });
+    if (value.trim()) {
+      setOpenCategoryIds(new Set(nextGroups.map((group) => group.category.id)));
+    }
+  }
+
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
       setError(null);
@@ -110,10 +154,9 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
   }
 
   return (
-    <form action={handleSubmit} className="input-form">
+    <form action={handleSubmit} className="input-form order-cart-form">
       {items.map((item) => {
         const line = lines[item.id] ?? defaultLineState(item, sizePresets);
-        const sizeOptions = itemSizeOptions(item, sizePresets).map((s) => ({ value: s, label: s }));
         return (
           <div key={item.id} className="hidden">
             <input type="hidden" name="catalog_item_id[]" value={item.id} />
@@ -124,81 +167,115 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
         );
       })}
 
-      {itemsByCategory.map(({ category, items: catItems }) => (
-        <section key={category.id} className="panel" style={{ marginBottom: 16 }}>
-          <h2>{category.name}</h2>
-          <div className="data-table-wrap">
-            <table className="data-table order-cart-table">
-              <thead>
-                <tr>
-                  <th>Artikelnr.</th>
-                  <th>Kleidungsstil</th>
-                  <th>Serie</th>
-                  <th>Preis</th>
-                  <th>Größe</th>
-                  <th>Menge</th>
-                  <th>Namensdruck</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catItems.map((item) => {
-                  const line = lines[item.id] ?? defaultLineState(item, sizePresets);
-                  const sizeOptions = itemSizeOptions(item, sizePresets).map((s) => ({ value: s, label: s }));
-                  return (
-                    <tr key={item.id}>
-                      <td className="oc-nr">{item.article_number ?? '—'}</td>
-                      <td className="oc-style">{item.clothing_style}</td>
-                      <td className="oc-series">{item.series ?? '—'}</td>
-                      <td className="oc-price">
-                        {formatOrderEuro(
-                          resolveCatalogUnitPriceEur(
-                            {
-                              price: item.price != null ? Number(item.price) : null,
-                              size_prices: item.size_prices ?? {},
-                            },
-                            line.size,
-                          ),
-                        )}
-                      </td>
-                      <td className="oc-size" data-label="Größe">
-                        {sizeOptions.length > 0 ? (
-                          <AppSelect
-                            value={line.size}
-                            onValueChange={(v) => updateLine(item.id, { size: v })}
-                            options={sizeOptions}
-                            allowEmpty={false}
-                            aria-label={`Größe ${item.clothing_style}`}
-                          />
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td className="oc-qty" data-label="Menge">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={0}
-                          value={line.quantity || ''}
-                          onChange={(e) => updateLine(item.id, { quantity: Number(e.target.value) || 0 })}
-                          aria-label={`Menge ${item.clothing_style}`}
+      <div className="order-cart-toolbar">
+        <label className="order-cart-search">
+          <span className="sr-only">Artikel suchen</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.preventDefault();
+            }}
+            placeholder="Artikel, Serie oder Nr. suchen"
+          />
+        </label>
+        <div className="order-cart-chips" role="group" aria-label="Kategorien">
+          <button
+            type="button"
+            aria-pressed={filterCategoryId === null}
+            className={filterCategoryId === null ? 'order-cart-chip is-active' : 'order-cart-chip'}
+            onClick={() => selectCategory(null)}
+          >
+            Alle
+            <span className="order-cart-chip-count">{items.length}</span>
+          </button>
+          {itemsByCategory.map(({ category, items: catItems }) => {
+            const selectedQty = selectedQtyForItems(catItems, lines);
+            return (
+              <button
+                key={category.id}
+                type="button"
+                aria-pressed={filterCategoryId === category.id}
+                className={filterCategoryId === category.id ? 'order-cart-chip is-active' : 'order-cart-chip'}
+                onClick={() => selectCategory(category.id)}
+              >
+                {category.name}
+                <span className="order-cart-chip-count">{catItems.length}</span>
+                {selectedQty > 0 ? (
+                  <span className="order-cart-chip-picked">{selectedQty}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {visibleGroups.length === 0 ? (
+        <p className="muted">Keine Artikel für diese Suche.</p>
+      ) : (
+        visibleGroups.map(({ category, items: catItems }) => {
+          const selectedQty = selectedQtyForItems(catItems, lines);
+          const seriesGroups = groupCatalogItemsBySeries(catItems);
+          const showSeriesHeaders = seriesGroups.length > 1;
+          const isOpen = openCategoryIds.has(category.id);
+
+          return (
+            <details
+              key={category.id}
+              className="panel order-cart-category"
+              open={isOpen}
+              onToggle={(event) => {
+                const nextOpen = (event.currentTarget as HTMLDetailsElement).open;
+                if (nextOpen !== isOpen) setCategoryOpen(category.id, nextOpen);
+              }}
+            >
+              <summary>
+                <span className="order-cart-category-title">
+                  <h2>{category.name}</h2>
+                  <span className="muted">{catItems.length} Artikel</span>
+                  {selectedQty > 0 ? (
+                    <span className="order-cart-category-picked">
+                      {selectedQty} gewählt
+                    </span>
+                  ) : null}
+                </span>
+                <ChevronDown className="order-cart-category-chevron" size={18} aria-hidden />
+              </summary>
+              <div className="order-cart-category-body">
+                <div className="data-table-wrap">
+                  <table className="data-table order-cart-table">
+                    <thead>
+                      <tr>
+                        <th>Artikelnr.</th>
+                        <th>Kleidungsstil</th>
+                        <th>Serie</th>
+                        <th>Preis</th>
+                        <th>Größe</th>
+                        <th>Menge</th>
+                        <th>Namensdruck</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {seriesGroups.map((seriesGroup) => (
+                        <CatalogSeriesRows
+                          key={`${category.id}-${seriesGroup.series}`}
+                          series={seriesGroup.series}
+                          showHeader={showSeriesHeaders}
+                          items={seriesGroup.items}
+                          lines={lines}
+                          sizePresets={sizePresets}
+                          onUpdateLine={updateLine}
                         />
-                      </td>
-                      <td className="oc-name" data-label="Namensdruck">
-                        <input
-                          value={line.namePrint}
-                          onChange={(e) => updateLine(item.id, { namePrint: e.target.value })}
-                          placeholder="Name (optional)"
-                          aria-label={`Namensdruck ${item.clothing_style}`}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          );
+        })
+      )}
 
       <section className="panel form-panel">
         <h2>Zusammenfassung</h2>
@@ -244,5 +321,84 @@ export function OrderCartForm({ categories, items, budget, sizePresets }: Props)
         </div>
       </section>
     </form>
+  );
+}
+
+function CatalogSeriesRows({
+  series,
+  showHeader,
+  items,
+  lines,
+  sizePresets,
+  onUpdateLine,
+}: {
+  series: string;
+  showHeader: boolean;
+  items: CatalogItemForOrder[];
+  lines: Record<string, LineState>;
+  sizePresets: SizePresetsMap;
+  onUpdateLine: (itemId: string, patch: Partial<LineState>) => void;
+}) {
+  return (
+    <>
+      {showHeader ? (
+        <tr className="order-cart-series-row">
+          <td colSpan={7}>Serie {series}</td>
+        </tr>
+      ) : null}
+      {items.map((item) => {
+        const line = lines[item.id] ?? defaultLineState(item, sizePresets);
+        const sizeOptions = itemSizeOptions(item, sizePresets).map((s) => ({ value: s, label: s }));
+        return (
+          <tr key={item.id}>
+            <td className="oc-nr">{item.article_number ?? '—'}</td>
+            <td className="oc-style">{item.clothing_style}</td>
+            <td className="oc-series">{item.series ?? '—'}</td>
+            <td className="oc-price">
+              {formatOrderEuro(
+                resolveCatalogUnitPriceEur(
+                  {
+                    price: item.price != null ? Number(item.price) : null,
+                    size_prices: item.size_prices ?? {},
+                  },
+                  line.size,
+                ),
+              )}
+            </td>
+            <td className="oc-size" data-label="Größe">
+              {sizeOptions.length > 0 ? (
+                <AppSelect
+                  value={line.size}
+                  onValueChange={(v) => onUpdateLine(item.id, { size: v })}
+                  options={sizeOptions}
+                  allowEmpty={false}
+                  aria-label={`Größe ${item.clothing_style}`}
+                />
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </td>
+            <td className="oc-qty" data-label="Menge">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={line.quantity || ''}
+                onChange={(e) => onUpdateLine(item.id, { quantity: Number(e.target.value) || 0 })}
+                aria-label={`Menge ${item.clothing_style}`}
+              />
+            </td>
+            <td className="oc-name" data-label="Namensdruck">
+              <input
+                value={line.namePrint}
+                onChange={(e) => onUpdateLine(item.id, { namePrint: e.target.value })}
+                placeholder="Name (optional)"
+                aria-label={`Namensdruck ${item.clothing_style}`}
+              />
+            </td>
+          </tr>
+        );
+      })}
+    </>
   );
 }

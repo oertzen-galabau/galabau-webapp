@@ -139,7 +139,7 @@ export function TimeEntryTimelineFields({
           Tagesaufteilung ({dayStart} – {dayEnd})
         </p>
         <p className="muted">
-          Arbeitszeit {formatMinutes(summary.workMinutes)} · Wegezeit{' '}
+          Arbeitszeit {formatMinutes(summary.workMinutes)} · Ladezeit{' '}
           {formatMinutes(summary.travelMinutes)}
         </p>
       </div>

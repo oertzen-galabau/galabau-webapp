@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useNavigationPending } from '@/components/app-shell/navigation-pending-context';
 import { AppSelect } from '@/components/ui/app-select';
 import {
   artParamForTab,
@@ -26,13 +26,13 @@ export function DocumentationSiteFilter({
   siteDocArtFilter = null,
   reportArtFilter = null,
 }: Props) {
-  const router = useRouter();
+  const { navigate, isBusy } = useNavigationPending();
   const value = selectedSiteId ?? '';
 
   const options = sites.map((site) => ({ value: site.id, label: site.name }));
 
   function onValueChange(next: string) {
-    router.push(
+    navigate(
       buildDocumentsPageHref(
         activeTab,
         next || null,
@@ -42,7 +42,7 @@ export function DocumentationSiteFilter({
   }
 
   return (
-    <div className="documentation-site-filter">
+    <div className={`documentation-site-filter${isBusy ? ' documentation-site-filter--pending' : ''}`}>
       <span className="documentation-site-filter-label">Baustelle</span>
       <AppSelect
         aria-label="Baustelle filtern"

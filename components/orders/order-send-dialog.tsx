@@ -45,20 +45,11 @@ export function OrderSendDialog({ open, onClose, orderIds, canMarkOrdered, onSen
           markAsOrdered: canMarkOrdered && markAsOrdered,
         }),
       });
-      const data = (await res.json()) as {
-        error?: string;
-        simulated?: boolean;
-        message?: string;
-        ok?: boolean;
-      };
+      const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Versand fehlgeschlagen');
-      if (data.simulated) {
-        setSuccess(data.message ?? 'Kein SMTP – Versand simuliert.');
-      } else {
-        setSuccess('Bestellformular gesendet.');
-        onSent?.();
-        window.setTimeout(() => onClose(), 800);
-      }
+      setSuccess('Bestellformular gesendet.');
+      onSent?.();
+      window.setTimeout(() => onClose(), 800);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Versand fehlgeschlagen');
     } finally {

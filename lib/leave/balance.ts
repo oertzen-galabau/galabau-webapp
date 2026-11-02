@@ -17,7 +17,7 @@ import {
 import { todayIsoInBerlin } from '@/lib/schedule/week';
 
 export const DEFAULT_BAD_WEATHER_ALLOWANCE_DAYS = 5;
-import { calculateWorkMinutes } from '@/lib/utils/time';
+import { calculateWorkMinutes, countLeaveDays } from '@/lib/utils/time';
 
 export type LeaveBalanceRow = {
   entitlement_days?: number | null;
@@ -429,6 +429,74 @@ export async function syncAutomaticCarriedOverToDb(
     return inputs.balance;
   }
   return updated as LeaveBalanceRow;
+}
+
+export function yearsOverlappingLeaveRange(startDate: string, endDate: string): number[] {
+  const y1 = Number.parseInt(startDate.slice(0, 4), 10);
+  const y2 = Number.parseInt(endDate.slice(0, 4), 10);
+  const years: number[] = [];
+  for (let y = y1; y <= y2; y += 1) years.push(y);
+  return years;
+}
+
+/** Summiert genehmigten Urlaub neu und schreibt used_days (z. B. nach Korrektur eines Antrags). */
+export async function recalculateUsedDaysFromApprovedUrlaub(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+  years: number[],
+): Promise<void> {
+  const uniqueYears = [...new Set(years)].filter((y) => Number.isFinite(y));
+  if (uniqueYears.length === 0) return;
+
+  const minYear = Math.min(...uniqueYears);
+  const maxYear = Math.max(...uniqueYears);
+
+  const [{ data: holidays }, { data: requests }, { data: balances }] = await Promise.all([
+    supabase.from('company_holidays').select('start_date, end_date').eq('tenant_id', tenantId),
+    supabase
+      .from('leave_requests')
+      .select('start_date, end_date')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', userId)
+      .eq('leave_type', 'urlaub')
+      .eq('status', 'approved')
+      .lte('start_date', `${maxYear}-12-31`)
+      .gte('end_date', `${minYear}-01-01`),
+    supabase
+      .from('leave_balances')
+      .select('year, entitlement_days, carried_over_days, carried_over_source')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', userId)
+      .in('year', uniqueYears),
+  ]);
+
+  const holidayRows = holidays ?? [];
+  const approved = requests ?? [];
+  const balanceByYear = new Map((balances ?? []).map((b) => [b.year as number, b]));
+
+  for (const year of uniqueYears) {
+    let usedDays = 0;
+    for (const req of approved) {
+      const clipped = clampDateRangeToYear(req.start_date, req.end_date, year);
+      if (!clipped) continue;
+      usedDays += countLeaveDays(clipped.start, clipped.end, holidayRows);
+    }
+    const existing = balanceByYear.get(year);
+    const { error } = await supabase.from('leave_balances').upsert(
+      {
+        tenant_id: tenantId,
+        user_id: userId,
+        year,
+        entitlement_days: existing?.entitlement_days ?? DEFAULT_ENTITLEMENT,
+        carried_over_days: existing?.carried_over_days ?? 0,
+        used_days: usedDays,
+        carried_over_source: existing?.carried_over_source ?? 'automatic',
+      },
+      { onConflict: 'tenant_id,user_id,year' },
+    );
+    if (error) throw new Error(error.message);
+  }
 }
 
 export async function loadLeaveBalanceContext(

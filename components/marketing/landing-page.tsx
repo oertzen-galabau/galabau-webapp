@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { AppNavLink } from '@/components/app-shell/app-nav-link';
 import {
   HardHat,
   Shield,
@@ -270,8 +271,8 @@ export function MarketingLanding() {
           <Link href="#pricing">Preise</Link>
           <Link href="#einsatz">Einsatz</Link>
           <Link href="#faq">FAQ</Link>
-          <Link href="/register" className="primary-button">Kostenlos testen</Link>
-          <Link href="/login">Anmelden</Link>
+          <AppNavLink href="/register" className="primary-button">Kostenlos testen</AppNavLink>
+          <AppNavLink href="/login">Anmelden</AppNavLink>
         </nav>
       </header>
 
@@ -291,10 +292,10 @@ export function MarketingLanding() {
                 in einer Cloud-Lösung.
               </p>
               <div className="marketing-cta">
-                <Link href="/register" className="primary-button">
+                <AppNavLink href="/register" className="primary-button">
                   7 Tage kostenlos testen <ArrowRight size={16} />
-                </Link>
-                <Link href="/login" className="secondary-button">Anmelden</Link>
+                </AppNavLink>
+                <AppNavLink href="/login" className="secondary-button">Anmelden</AppNavLink>
               </div>
               <div className="marketing-cta-notes">
                 <span>Keine Zahlungsdaten nötig</span>
@@ -433,9 +434,9 @@ export function MarketingLanding() {
                   ))}
                 </ul>
                 <div className="marketing-cta">
-                  <Link href={`/register?plan=${plan.id}`} className="primary-button">
+                  <AppNavLink href={`/register?plan=${plan.id}`} className="primary-button">
                     7 Tage kostenlos testen <ArrowRight size={16} />
-                  </Link>
+                  </AppNavLink>
                 </div>
               </article>
             ))}
@@ -511,10 +512,10 @@ export function MarketingLanding() {
               <span className="status-badge"><Rocket size={12} /> Sofort startklar</span>
             </div>
             <div className="marketing-cta">
-              <Link href="/register" className="primary-button">
+              <AppNavLink href="/register" className="primary-button">
                 Jetzt kostenlos testen <ArrowRight size={16} />
-              </Link>
-              <Link href="/login" className="secondary-button">Anmelden</Link>
+              </AppNavLink>
+              <AppNavLink href="/login" className="secondary-button">Anmelden</AppNavLink>
             </div>
             <div className="marketing-cta-notes">
               <span>7 Tage voller Zugriff</span>
@@ -548,8 +549,8 @@ export function MarketingLanding() {
           <div>
             <strong>Account</strong>
             <nav>
-              <Link href="/register">Kostenlos testen</Link>
-              <Link href="/login">Anmelden</Link>
+              <AppNavLink href="/register">Kostenlos testen</AppNavLink>
+              <AppNavLink href="/login">Anmelden</AppNavLink>
               <Link href="#ablauf">So starten Sie</Link>
               <Link href="#faq">FAQ</Link>
             </nav>
@@ -557,7 +558,7 @@ export function MarketingLanding() {
           <div>
             <strong>Kontakt</strong>
             <nav>
-              <Link href="/register">Registrieren</Link>
+              <AppNavLink href="/register">Registrieren</AppNavLink>
               <a href="mailto:contact@baudiggi.de">contact@baudiggi.de</a>
             </nav>
           </div>

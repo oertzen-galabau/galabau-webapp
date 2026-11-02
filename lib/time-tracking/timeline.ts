@@ -380,7 +380,7 @@ export function segmentsToPayrollTravel(segments: TimelineBlockInput[]): { trave
 
 export const BLOCK_TYPE_LABELS: Record<TimeBlockType, string> = {
   site_work: 'Baustelle',
-  travel: 'Wegezeit',
+  travel: 'Ladezeit',
   breakfast: 'Frühstück',
   lunch: 'Mittag',
   other_work: 'Sonstige Arbeit',

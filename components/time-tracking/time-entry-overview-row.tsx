@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { deleteTimeEntry, updateTimeEntryAction } from '@/lib/actions/employee';
+import { deleteTimeEntryAction, updateTimeEntryAction } from '@/lib/actions/employee';
 import {
   timeEntryStatusBadgeClass,
   timeEntryStatusLabel,
@@ -68,6 +68,7 @@ export function TimeEntryOverviewRow({
   const [showBookings, setShowBookings] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const deserializedConfig = deserializeTenantConfig(tenantConfig);
   const badWeatherCfg = deserializedConfig.rules.get('bad_weather')?.config as BadWeatherConfig | undefined;
@@ -105,10 +106,15 @@ export function TimeEntryOverviewRow({
 
   async function confirmDelete() {
     setDeletePending(true);
+    setDeleteError(null);
     try {
       const formData = new FormData();
       formData.set('id', entry.id);
-      await deleteTimeEntry(formData);
+      const result = await deleteTimeEntryAction(null, formData);
+      if (result.error) {
+        setDeleteError(result.error);
+        return;
+      }
       setDeleteOpen(false);
       router.refresh();
     } finally {
@@ -123,7 +129,7 @@ export function TimeEntryOverviewRow({
         <td>{entry.sites?.name ?? '—'}</td>
         <td className="data-table-col--optional">{entry.start_time?.slice(0, 5)}</td>
         <td className="data-table-col--optional">{entry.end_time?.slice(0, 5) ?? '—'}</td>
-        <td>{entry.end_time ? formatMinutes(entry.work_minutes) : '—'}</td>
+        <td>{entry.end_time ? `${formatMinutes(entry.work_minutes)} Std.` : '—'}</td>
         <td>{driverTripLabel(entry)}</td>
         <td>
           <span className={`status-badge ${badgeClass}`}>
@@ -179,10 +185,13 @@ export function TimeEntryOverviewRow({
 
       <ConfirmDialog
         open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeleteError(null);
+        }}
         onConfirm={() => void confirmDelete()}
         title="Zeiteintrag löschen"
-        message={`Zeiteintrag vom ${entry.work_date} wirklich löschen?`}
+        message={`Zeiteintrag vom ${entry.work_date} wirklich löschen?${deleteError ? `\n\n${deleteError}` : ''}`}
         confirmLabel="Löschen"
         danger
         pending={deletePending}

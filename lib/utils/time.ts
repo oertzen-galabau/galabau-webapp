@@ -4,9 +4,10 @@ export function parseTime(value: string | null): number | null {
   return h * 60 + m;
 }
 
-export function formatMinutes(total: number) {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
+export function formatMinutes(total: number | null | undefined) {
+  const minutes = Math.max(0, Math.floor(Number(total) || 0));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   return `${h}:${m.toString().padStart(2, '0')}`;
 }
 
@@ -15,6 +16,14 @@ export function formatDurationHMS(totalSeconds: number) {
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Stunden:Minuten ohne Sekunden (Header-Stempeluhr). */
+export function formatDurationHM(totalSeconds: number) {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
 export function calculateWorkMinutes(entry: {
