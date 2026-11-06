@@ -4,7 +4,7 @@ import { fetchLatestInvitation } from '@/lib/team/employee-invite-service';
 import { loadLeaveBalanceContext } from '@/lib/leave/balance';
 import { buildBudgetBreakdown } from '@/lib/orders/budget';
 import { loadClothingOrderBudgetBreakdown } from '@/lib/orders/load-budget';
-import { canAccess } from '@/lib/auth/session';
+import { canAccess, getTenantIdForSession } from '@/lib/auth/session';
 import type { SessionContext } from '@/lib/auth/session';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
 import type {
@@ -90,7 +90,7 @@ export async function loadEmployeeDetailData(args: {
   const targetUserId = mode === 'self' ? ctx.userId : (args.memberIdFromRoute ?? '');
   if (!targetUserId) return null;
 
-  const tenantId = ctx.tenant?.id;
+  const tenantId = await getTenantIdForSession(ctx);
   if (!tenantId) return null;
 
   const budgetYear = new Date().getFullYear();
@@ -107,7 +107,15 @@ export async function loadEmployeeDetailData(args: {
     .eq('id', targetUserId)
     .single();
 
-  if (error || !rawMember || rawMember.tenant_id !== tenantId) {
+  if (error || !rawMember) {
+    return null;
+  }
+
+  const memberTenantId = rawMember.tenant_id;
+  if (memberTenantId === null) {
+    /* z. B. Superadmin: Profil ohne Mandanten-Zuordnung — nur eigenes Profil im Self-Modus */
+    if (mode !== 'self' || targetUserId !== ctx.userId) return null;
+  } else if (memberTenantId !== tenantId) {
     return null;
   }
 
@@ -132,7 +140,7 @@ export async function loadEmployeeDetailData(args: {
     workAreasResult,
   ] = await Promise.all([
     mode === 'admin'
-      ? supabase.from('tenant_roles').select('*').order('sort_order')
+      ? supabase.from('tenant_roles').select('*').eq('tenant_id', tenantId).order('sort_order')
       : Promise.resolve({ data: [] as TenantRole[] }),
     loadLeaveBalanceContext(supabase, tenantId, targetUserId, selectedYear),
     supabase
