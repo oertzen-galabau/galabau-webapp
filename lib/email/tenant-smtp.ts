@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decryptSecret, hasEncryptionKeyConfigured } from '@/lib/crypto/secret';
-import type { SendMailInput } from '@/lib/email/smtp';
+import { describeSmtpSendError, type SendMailInput } from '@/lib/email/smtp';
 
 export type TenantSmtpPublicSettings = {
   tenant_id: string;
@@ -155,7 +155,7 @@ export async function sendTenantMail(
     return {
       ok: false,
       reason: 'send_failed',
-      error: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Einstellungen prüfen.',
+      error: describeSmtpSendError(err),
     };
   }
 

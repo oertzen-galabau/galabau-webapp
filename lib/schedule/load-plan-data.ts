@@ -10,6 +10,7 @@ import { equipmentScheduleLabel } from '@/lib/equipment/labels';
 import { leaderCodeForProfile } from '@/lib/schedule/leader-code';
 import { isWeekFullyPublished } from '@/lib/schedule/day-publication';
 import { addDays, mondayOfWeek, weekDaysFromMonday } from '@/lib/schedule/week';
+import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import type { Profile, ScheduleEntry, Site, TenantWorkArea } from '@/lib/types/database';
 
 export type ScheduleMemberRow = {
@@ -322,7 +323,7 @@ export async function loadSchedulePlanData(
   }
 
   const daysWithEntries = [...new Set(entries.map((e) => e.start_date))];
-  const published = isWeekFullyPublished(daysWithEntries, publishedByDay);
+  const published = isWeekFullyPublished(daysWithEntries, publishedByDay, todayWorkDate());
 
   const publishedAt =
     [...daysWithEntries]

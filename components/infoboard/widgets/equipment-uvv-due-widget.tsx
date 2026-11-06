@@ -17,7 +17,7 @@ export function EquipmentUvvDueWidget({ rows, totalCount }: Props) {
       <div className="panel-head">
         <div>
           <span className="eyebrow">Stammdaten</span>
-          <h2>UVV-Fälligkeit</h2>
+          <h2>Fälligkeiten</h2>
         </div>
         <Link href={equipmentListHref} className="text-button">
           Zu Fahrzeuge & Geräte <ArrowRight size={16} />
@@ -25,8 +25,10 @@ export function EquipmentUvvDueWidget({ rows, totalCount }: Props) {
       </div>
       <div className="job-list">
         {rows.map((entry) => (
-          <Link className="job-row" key={entry.id} href={equipmentListHref}>
-            <time>{entry.dueDate}</time>
+          <Link className="job-row" key={entry.rowKey} href={equipmentListHref}>
+            <time>
+              <span className="infoboard-equipment-due-kind">{entry.dueLabel}</span> {entry.dueDate}
+            </time>
             <span className={uvvUrgencyJobMarkerClass(entry.urgency)} />
             <span className="job-copy">
               <strong>{entry.name}</strong>
@@ -38,7 +40,7 @@ export function EquipmentUvvDueWidget({ rows, totalCount }: Props) {
             <ChevronRight size={18} />
           </Link>
         ))}
-        {!totalCount && <p className="muted">Keine UVV-Termine hinterlegt.</p>}
+        {!totalCount && <p className="muted">Keine Termine (HU/TÜV, Inspektion, UVV) hinterlegt.</p>}
       </div>
       {totalCount > rows.length && (
         <p className="approval-preview-count">

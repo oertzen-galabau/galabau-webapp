@@ -6,6 +6,7 @@ import {
   setTenantContactPersonActive,
   updateTenantContactPerson,
 } from '@/lib/actions/partners';
+import { EditToggleLabel } from '@/components/ui/edit-toggle-label';
 import type { TenantContactPerson } from '@/lib/types/database';
 
 type Props = {
@@ -41,11 +42,13 @@ export function TenantContactPersonRow({ person, canManage }: Props) {
             <div className="inline-actions">
               <button
                 type="button"
-                className="table-action-link"
+                className="table-action-link table-action-link--icon-toggle"
                 aria-expanded={editing}
+                aria-label={editing ? 'Schließen' : 'Bearbeiten'}
+                title={editing ? 'Schließen' : 'Bearbeiten'}
                 onClick={() => setEditing((v) => !v)}
               >
-                {editing ? 'Schließen' : 'Bearbeiten'}
+                {editing ? 'Schließen' : <EditToggleLabel announceForScreenReader={false} />}
               </button>
               <form action={setTenantContactPersonActive}>
                 <input type="hidden" name="id" value={person.id} />

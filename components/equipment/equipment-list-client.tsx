@@ -118,6 +118,8 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
 
       <div className="equipment-list">
         {filtered.map((item) => {
+          const huClass = uvvUrgencyCssClass(uvvUrgency(item.inspection_due_date, today));
+          const insClass = uvvUrgencyCssClass(uvvUrgency(item.general_inspection_due_date, today));
           const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
           return (
             <div key={item.id} className={`equipment-list-row${!item.is_active ? ' equipment-list-row-inactive' : ''}`}>
@@ -160,9 +162,11 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
                   {' · '}
                   {item.build_year ?? '—'}
                   {' · '}
-                  <span className={uvvClass}>
-                    UVV {item.uvv_due_date ?? '—'}
-                  </span>
+                  <span className={huClass}>HU/TÜV {item.inspection_due_date ?? '—'}</span>
+                  {' · '}
+                  <span className={insClass}>Inspektion {item.general_inspection_due_date ?? '—'}</span>
+                  {' · '}
+                  <span className={uvvClass}>UVV {item.uvv_due_date ?? '—'}</span>
                   {item.booking_number ? (
                     <>
                       {' · '}
@@ -276,6 +280,8 @@ function EquipmentDetailPanel({
   onDelete: () => void;
 }) {
   const [state, action, pending] = useActionState(updateEquipmentAction, equipmentFormInitialState);
+  const huClass = uvvUrgencyCssClass(uvvUrgency(item.inspection_due_date, today));
+  const genInspClass = uvvUrgencyCssClass(uvvUrgency(item.general_inspection_due_date, today));
   const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
 
   useEffect(() => {
@@ -312,6 +318,14 @@ function EquipmentDetailPanel({
             <dd>{item.inventory_number ?? '—'}</dd>
           </div>
           <div>
+            <dt className={huClass}>HU / TÜV fällig</dt>
+            <dd className={huClass}>{item.inspection_due_date ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className={genInspClass}>Inspektion fällig</dt>
+            <dd className={genInspClass}>{item.general_inspection_due_date ?? '—'}</dd>
+          </div>
+          <div>
             <dt className={uvvClass}>UVV fällig</dt>
             <dd className={uvvClass}>{item.uvv_due_date ?? '—'}</dd>
           </div>
@@ -325,12 +339,6 @@ function EquipmentDetailPanel({
             <div>
               <dt>Hersteller / Modell</dt>
               <dd>{item.manufacturer_model}</dd>
-            </div>
-          ) : null}
-          {item.inspection_due_date ? (
-            <div>
-              <dt>HU / TÜV</dt>
-              <dd>{item.inspection_due_date}</dd>
             </div>
           ) : null}
           {item.operating_hours != null ? (
@@ -368,7 +376,7 @@ function EquipmentDetailPanel({
 
       {canManage ? (
         <>
-          <form action={action} className="input-form equipment-detail-form" encType="multipart/form-data">
+          <form action={action} className="input-form equipment-detail-form">
             <input type="hidden" name="id" value={item.id} />
             <p className="input-form-section-title">Bearbeiten</p>
             <div className="input-form-core">
@@ -409,10 +417,6 @@ function EquipmentDetailPanel({
                 <input name="inventory_number" defaultValue={item.inventory_number ?? ''} disabled={pending} />
               </label>
               <label>
-                UVV fällig
-                <input type="date" name="uvv_due_date" defaultValue={item.uvv_due_date ?? ''} disabled={pending} />
-              </label>
-              <label>
                 Kennzeichen
                 <input name="license_plate" defaultValue={item.license_plate ?? ''} disabled={pending} />
               </label>
@@ -423,6 +427,19 @@ function EquipmentDetailPanel({
               <label>
                 HU / TÜV fällig
                 <input type="date" name="inspection_due_date" defaultValue={item.inspection_due_date ?? ''} disabled={pending} />
+              </label>
+              <label>
+                Inspektion fällig
+                <input
+                  type="date"
+                  name="general_inspection_due_date"
+                  defaultValue={item.general_inspection_due_date ?? ''}
+                  disabled={pending}
+                />
+              </label>
+              <label>
+                UVV fällig
+                <input type="date" name="uvv_due_date" defaultValue={item.uvv_due_date ?? ''} disabled={pending} />
               </label>
               <label>
                 Betriebsstunden

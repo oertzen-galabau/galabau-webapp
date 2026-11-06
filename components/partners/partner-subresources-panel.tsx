@@ -9,6 +9,7 @@ import {
   updatePartnerContact,
   updatePartnerLocation,
 } from '@/lib/actions/partners';
+import { EditToggleLabel } from '@/components/ui/edit-toggle-label';
 import { partnerContactLabel, partnerLocationAddress, partnerLocationLabel } from '@/lib/partners/labels';
 import type {
   BusinessPartnerKind,
@@ -86,8 +87,15 @@ function PartnerLocationItem({
         {location.phone && <a href={`tel:${location.phone}`}>{location.phone}</a>}
       </div>
       <div className="partner-subresource-item-actions inline-actions">
-        <button type="button" className="table-action-link" onClick={() => setEditing((v) => !v)}>
-          {editing ? 'Schließen' : 'Bearbeiten'}
+        <button
+          type="button"
+          className="table-action-link table-action-link--icon-toggle"
+          aria-expanded={editing}
+          aria-label={editing ? 'Schließen' : 'Bearbeiten'}
+          title={editing ? 'Schließen' : 'Bearbeiten'}
+          onClick={() => setEditing((v) => !v)}
+        >
+          {editing ? 'Schließen' : <EditToggleLabel announceForScreenReader={false} />}
         </button>
         <form action={setPartnerLocationActive}>
           <input type="hidden" name="id" value={location.id} />
@@ -186,8 +194,15 @@ function PartnerContactItem({
         </div>
       </div>
       <div className="partner-subresource-item-actions inline-actions">
-        <button type="button" className="table-action-link" onClick={() => setEditing((v) => !v)}>
-          {editing ? 'Schließen' : 'Bearbeiten'}
+        <button
+          type="button"
+          className="table-action-link table-action-link--icon-toggle"
+          aria-expanded={editing}
+          aria-label={editing ? 'Schließen' : 'Bearbeiten'}
+          title={editing ? 'Schließen' : 'Bearbeiten'}
+          onClick={() => setEditing((v) => !v)}
+        >
+          {editing ? 'Schließen' : <EditToggleLabel announceForScreenReader={false} />}
         </button>
         <form action={setPartnerContactActive}>
           <input type="hidden" name="id" value={contact.id} />

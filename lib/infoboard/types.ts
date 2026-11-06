@@ -102,12 +102,18 @@ export type MyLeaveRow = {
   businessDays: number;
 };
 
+export type EquipmentDueKind = 'hu_tuv' | 'general_inspection' | 'uvv';
+
 export type EquipmentUvvRow = {
+  /** Eindeutig pro Infoboard-Zeile (ein Gerät kann mehrere Termintypen haben) */
+  rowKey: string;
   id: string;
   name: string;
   kindLabel: string;
   subtitle: string;
   dueDate: string;
+  dueKind: EquipmentDueKind;
+  dueLabel: string;
   urgency: UvvUrgency;
 };
 

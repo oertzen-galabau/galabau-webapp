@@ -3,7 +3,6 @@ import { canAccess, type SessionContext } from '@/lib/auth/session';
 import { PartnerTabs } from '@/components/partners/partner-tabs';
 import { EquipmentCreateForm } from '@/components/equipment/equipment-create-form';
 import { EquipmentListClient, type EquipmentListItem } from '@/components/equipment/equipment-list-client';
-import { EquipmentTypesPanel } from '@/components/equipment/equipment-types-panel';
 import { EQUIPMENT_PHOTOS_BUCKET, getSignedFileUrls } from '@/lib/supabase/storage';
 import type { TenantEquipment, TenantEquipmentType } from '@/lib/types/database';
 
@@ -55,10 +54,6 @@ export async function EquipmentPanel({ ctx }: Props) {
   return (
     <>
       <PartnerTabs activeTab="fahrzeuge" />
-
-      <div style={{ marginTop: 16 }}>
-        <EquipmentTypesPanel ctx={ctx} />
-      </div>
 
       {canManage ? (
         <section className="panel form-panel" style={{ marginTop: 16 }}>

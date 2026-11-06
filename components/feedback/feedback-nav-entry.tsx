@@ -1,32 +1,21 @@
 'use client';
 
 import { Bug } from 'lucide-react';
-import { useCallback, useState } from 'react';
-import { FeedbackDialog } from '@/components/feedback/feedback-dialog';
 
 type Props = {
   className?: string;
-  onNavigate?: () => void;
+  onOpen?: () => void;
 };
 
-export function FeedbackNavEntry({ className = '', onNavigate }: Props) {
-  const [open, setOpen] = useState(false);
-  const closeDialog = useCallback(() => setOpen(false), []);
-
+export function FeedbackNavEntry({ className = '', onOpen }: Props) {
   return (
-    <>
-      <button
-        type="button"
-        className={['feedback-nav-button', className].filter(Boolean).join(' ')}
-        onClick={() => {
-          setOpen(true);
-          onNavigate?.();
-        }}
-      >
-        <Bug size={19} />
-        <span>Feedback / Bug</span>
-      </button>
-      <FeedbackDialog open={open} onClose={closeDialog} />
-    </>
+    <button
+      type="button"
+      className={['feedback-nav-button', className].filter(Boolean).join(' ')}
+      onClick={() => onOpen?.()}
+    >
+      <Bug size={19} />
+      <span>Feedback / Bug</span>
+    </button>
   );
 }

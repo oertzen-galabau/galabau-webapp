@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { PartnerSubresourcesPanel } from '@/components/partners/partner-subresources-panel';
+import { EditToggleLabel } from '@/components/ui/edit-toggle-label';
 import { setPartnerActive, updatePartner } from '@/lib/actions/partners';
 import { partnerContactLabel } from '@/lib/partners/labels';
 import type {
@@ -61,11 +62,13 @@ export function PartnerRow({ partner, locations, contacts, canManage }: Props) {
             <div className="inline-actions">
               <button
                 type="button"
-                className="table-action-link"
+                className="table-action-link table-action-link--icon-toggle"
                 aria-expanded={editing}
+                aria-label={editing ? 'Schließen' : 'Bearbeiten'}
+                title={editing ? 'Schließen' : 'Bearbeiten'}
                 onClick={() => setEditing((v) => !v)}
               >
-                {editing ? 'Schließen' : 'Bearbeiten'}
+                {editing ? 'Schließen' : <EditToggleLabel announceForScreenReader={false} />}
               </button>
               <form action={setPartnerActive}>
                 <input type="hidden" name="id" value={partner.id} />

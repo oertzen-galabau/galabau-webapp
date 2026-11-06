@@ -6,7 +6,13 @@ import {
   invitationStatusLabel,
   type InvitationStatus,
 } from '@/lib/auth/employee-invitations';
-import { regenerateEmployeeInvite, type EmployeeInviteResult } from '@/lib/actions/admin';
+import {
+  regenerateEmployeeInvite,
+  resendEmployeeInvitationEmail,
+  revokePendingEmployeeInvitation,
+  type EmployeeInviteResult,
+  type EmployeeInvitationMailActionResult,
+} from '@/lib/actions/admin';
 import { EmployeeInviteCredentials } from '@/components/team/employee-invite-credentials';
 import type { EmployeeInvitation } from '@/lib/types/database';
 
@@ -19,6 +25,7 @@ type Props = {
 };
 
 const initialState: EmployeeInviteResult | null = null;
+const initialMailState: EmployeeInvitationMailActionResult | null = null;
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('de-DE', {
@@ -38,6 +45,14 @@ export function EmployeeInvitationPanel({
   canManageInvites,
 }: Props) {
   const [state, action, pending] = useActionState(regenerateEmployeeInvite, initialState);
+  const [resendState, resendAction, resendPending] = useActionState(
+    resendEmployeeInvitationEmail,
+    initialMailState,
+  );
+  const [revokeState, revokeAction, revokePending] = useActionState(
+    revokePendingEmployeeInvitation,
+    initialMailState,
+  );
 
   const status: InvitationStatus | 'none' = invitation
     ? getInvitationStatus(invitation)
@@ -89,13 +104,38 @@ export function EmployeeInvitationPanel({
         <p className="form-error">{state.error}</p>
       )}
 
+      {resendState?.ok && <p className="form-success">{resendState.message}</p>}
+      {resendState && !resendState.ok && <p className="form-error">{resendState.error}</p>}
+      {revokeState?.ok && <p className="form-success">{revokeState.message}</p>}
+      {revokeState && !revokeState.ok && <p className="form-error">{revokeState.error}</p>}
+
       {canManageInvites && mustChangePassword && (
-        <form action={action} className="inline-actions" style={{ marginTop: 12 }}>
-          <input type="hidden" name="user_id" value={memberId} />
-          <button type="submit" className="text-button" disabled={pending}>
-            {pending ? 'Wird erzeugt…' : 'Neue Zugangsdaten erzeugen'}
-          </button>
-        </form>
+        <div className="inline-actions employee-invitation-actions" style={{ marginTop: 12, flexWrap: 'wrap', gap: '8px 16px' }}>
+          {invitation && (status === 'pending' || status === 'expired') && (
+            <>
+              {status === 'pending' && (
+                <form action={resendAction} className="inline-actions" style={{ display: 'inline' }}>
+                  <input type="hidden" name="user_id" value={memberId} />
+                  <button type="submit" className="text-button" disabled={resendPending || pending || revokePending}>
+                    {resendPending ? 'E-Mail wird gesendet…' : 'Einladung erneut per E-Mail'}
+                  </button>
+                </form>
+              )}
+              <form action={revokeAction} className="inline-actions" style={{ display: 'inline' }}>
+                <input type="hidden" name="user_id" value={memberId} />
+                <button type="submit" className="text-button" disabled={revokePending || pending || resendPending}>
+                  {revokePending ? 'Wird widerrufen…' : 'Ausstehende Einladung widerrufen'}
+                </button>
+              </form>
+            </>
+          )}
+          <form action={action} className="inline-actions" style={{ display: 'inline' }}>
+            <input type="hidden" name="user_id" value={memberId} />
+            <button type="submit" className="text-button" disabled={pending || resendPending || revokePending}>
+              {pending ? 'Wird erzeugt…' : 'Neue Zugangsdaten erzeugen'}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );

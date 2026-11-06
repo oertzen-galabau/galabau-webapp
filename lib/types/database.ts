@@ -666,6 +666,8 @@ export type TenantEquipment = {
   license_plate: string | null;
   manufacturer_model: string | null;
   inspection_due_date: string | null;
+  /** Allgemeine Inspektion (UI: Inspektion), getrennt von HU/TÜV und UVV */
+  general_inspection_due_date: string | null;
   operating_hours: number | null;
   mileage_km: number | null;
   license_class_required: string | null;

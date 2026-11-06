@@ -4,14 +4,14 @@ import { useRouter } from 'next/navigation';
 import { AppSelect } from '@/components/ui/app-select';
 
 type Props = {
-  employeeId: string;
+  tabBasePath: string;
   selectedYear: number;
   /** Two-digit month from URL (`month` param), preserved when changing year */
   monthPart: string;
   years: number[];
 };
 
-export function EmployeeYearFilter({ employeeId, selectedYear, monthPart, years }: Props) {
+export function EmployeeYearFilter({ tabBasePath, selectedYear, monthPart, years }: Props) {
   const router = useRouter();
   const options = years.map((y) => ({ value: String(y), label: String(y) }));
 
@@ -25,7 +25,7 @@ export function EmployeeYearFilter({ employeeId, selectedYear, monthPart, years 
             tab: 'overview',
             month: `${year}-${monthPart}`,
           });
-          router.push(`/app/team/${employeeId}?${params.toString()}`);
+          router.push(`${tabBasePath}?${params.toString()}`);
         }}
         options={options}
         allowEmpty={false}

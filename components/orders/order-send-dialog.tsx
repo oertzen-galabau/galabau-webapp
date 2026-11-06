@@ -65,7 +65,8 @@ export function OrderSendDialog({ open, onClose, orderIds, canMarkOrdered, onSen
         <p className="muted">
           {count === 1
             ? 'Das PDF wird als Anhang an den Lieferanten gesendet.'
-            : `${count} Bestellformulare werden in einer PDF-Datei versendet.`}
+            : `${count} Bestellformulare werden in einer PDF-Datei versendet.`}{' '}
+          Versand über die SMTP-Einstellungen des Mandanten (Einstellungen → E-Mail-Versand), nicht über die Plattform-Mail.
         </p>
         <label htmlFor={emailId} style={{ display: 'block', marginTop: 12 }}>
           Empfänger (Lieferant)

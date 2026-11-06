@@ -1179,6 +1179,146 @@ export async function regenerateEmployeeInvite(
   }
 }
 
+export type EmployeeInvitationMailActionResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+export async function resendEmployeeInvitationEmail(
+  _prev: EmployeeInvitationMailActionResult | null,
+  formData: FormData,
+): Promise<EmployeeInvitationMailActionResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'team.manage_invites');
+    const { tenantId, userId: actorUserId } = ctx;
+
+    const targetUserId = formData.get('user_id') as string;
+    if (!targetUserId) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const admin = createAdminClient();
+
+    const { data: profile, error: profileError } = await admin
+      .from('profiles')
+      .select('id, email, first_name, tenant_id, must_change_password')
+      .eq('id', targetUserId)
+      .single();
+
+    if (profileError || !profile) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+    if (profile.tenant_id !== tenantId) return { ok: false, error: 'Keine Berechtigung.' };
+    if (!profile.email) return { ok: false, error: 'E-Mail-Adresse fehlt.' };
+    if (!profile.must_change_password) {
+      return {
+        ok: false,
+        error: 'Dieses Konto ist bereits aktiviert. Eine erneute Einladungs-E-Mail ist nicht nötig.',
+      };
+    }
+
+    const { fetchLatestInvitation } = await import('@/lib/team/employee-invite-service');
+    const { getInvitationStatus } = await import('@/lib/auth/employee-invitations');
+
+    const invitation = await fetchLatestInvitation(admin, targetUserId);
+    if (!invitation) {
+      return { ok: false, error: 'Keine Einladung gefunden. Erzeugen Sie zuerst neue Zugangsdaten.' };
+    }
+
+    const status = getInvitationStatus(invitation);
+    if (status !== 'pending') {
+      return {
+        ok: false,
+        error:
+          status === 'expired'
+            ? 'Die Einladung ist abgelaufen. Nutzen Sie „Neue Zugangsdaten erzeugen“ und senden Sie die E-Mail erneut.'
+            : 'Keine ausstehende Einladung. Erzeugen Sie ggf. neue Zugangsdaten.',
+      };
+    }
+
+    const result = await provisionEmployeeInvitation(admin, {
+      tenantId,
+      userId: targetUserId,
+      actorUserId,
+      email: profile.email,
+      firstName: profile.first_name?.trim() || 'Kollegin/Kollege',
+      tempPassword: '',
+    });
+
+    revalidateEmployeePaths(targetUserId);
+
+    if (!result.emailSent) {
+      return {
+        ok: false,
+        error: result.emailMessage ?? 'E-Mail konnte nicht versendet werden.',
+      };
+    }
+
+    return {
+      ok: true,
+      message:
+        'Neue Einladung wurde per E-Mail versendet. Der vorherige Link und das alte Einmalpasswort sind ungültig.',
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : 'E-Mail konnte nicht versendet werden.';
+    const { formatProductionConfigError } = await import('@/lib/auth/production-config-errors');
+    return { ok: false, error: formatProductionConfigError(raw) };
+  }
+}
+
+export async function revokePendingEmployeeInvitation(
+  _prev: EmployeeInvitationMailActionResult | null,
+  formData: FormData,
+): Promise<EmployeeInvitationMailActionResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'team.manage_invites');
+    const { tenantId } = ctx;
+
+    const targetUserId = formData.get('user_id') as string;
+    if (!targetUserId) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const admin = createAdminClient();
+
+    const { data: profile, error: profileError } = await admin
+      .from('profiles')
+      .select('id, tenant_id, must_change_password')
+      .eq('id', targetUserId)
+      .single();
+
+    if (profileError || !profile) return { ok: false, error: 'Mitarbeiter nicht gefunden.' };
+    if (profile.tenant_id !== tenantId) return { ok: false, error: 'Keine Berechtigung.' };
+    if (!profile.must_change_password) {
+      return { ok: false, error: 'Dieses Konto ist bereits aktiviert.' };
+    }
+
+    const { fetchLatestInvitation, revokeActiveInvitations } = await import(
+      '@/lib/team/employee-invite-service'
+    );
+    const { getInvitationStatus } = await import('@/lib/auth/employee-invitations');
+
+    const invitation = await fetchLatestInvitation(admin, targetUserId);
+    if (!invitation) {
+      return { ok: false, error: 'Keine Einladung zum Widerrufen gefunden.' };
+    }
+
+    const status = getInvitationStatus(invitation);
+    if (status === 'used' || status === 'revoked') {
+      return { ok: false, error: 'Die Einladung ist nicht mehr widerrufbar.' };
+    }
+
+    await revokeActiveInvitations(admin, targetUserId);
+    revalidateEmployeePaths(targetUserId);
+
+    return {
+      ok: true,
+      message: 'Ausstehende Einladung wurde widerrufen. Erzeugen Sie bei Bedarf neue Zugangsdaten.',
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : 'Widerruf fehlgeschlagen.';
+    const { formatProductionConfigError } = await import('@/lib/auth/production-config-errors');
+    return { ok: false, error: formatProductionConfigError(raw) };
+  }
+}
+
 export async function updateMemberRole(formData: FormData) {
   const ctx = await getActionContext();
   requirePerm(ctx, 'team.assign_role');
@@ -1209,6 +1349,7 @@ export async function updateMemberRole(formData: FormData) {
 function revalidateEmployeePaths(userId: string) {
   revalidatePath('/app/team');
   revalidatePath(`/app/team/${userId}`);
+  revalidatePath('/app/profil');
   revalidatePath('/app/baustellen', 'layout');
   revalidatePath('/app/einsatzplanung');
 }

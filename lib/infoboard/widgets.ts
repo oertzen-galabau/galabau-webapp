@@ -158,7 +158,7 @@ export const WIDGET_REGISTRY: Record<InfoboardWidgetId, InfoboardWidgetDef> = {
   },
   equipment_uvv_due: {
     id: 'equipment_uvv_due',
-    label: 'UVV-Fälligkeit',
+    label: 'Fälligkeiten Fahrzeuge & Geräte',
     category: 'panel',
     permissions: ['nav.partners', 'partners.view'],
     ...GRID_WIDTH,

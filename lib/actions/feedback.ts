@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendFeedbackReportNotification } from '@/lib/email/feedback-notification';
+import { FEEDBACK_BOARD_DONE_RECENT_DAYS } from '@/lib/feedback/board';
 import { getActionContext, requireSuperadmin } from '@/lib/auth/session';
 import { displayName } from '@/lib/auth/roles';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -17,11 +18,13 @@ import {
 import type {
   FeedbackReport,
   FeedbackReportAttachment,
+  FeedbackReportKind,
   FeedbackReportPriority,
   FeedbackReportStatus,
   Profile,
   Tenant,
 } from '@/lib/types/database';
+import type { FeedbackBoardData } from '@/lib/feedback/board';
 
 const submitSchema = z.object({
   kind: z.enum(['bug', 'feedback']),
@@ -32,7 +35,7 @@ const submitSchema = z.object({
 });
 
 export type SubmitFeedbackResult =
-  | { ok: true }
+  | { ok: true; id: string }
   | { ok: false; error: string };
 
 export async function submitFeedbackReport(formData: FormData): Promise<SubmitFeedbackResult> {
@@ -131,7 +134,82 @@ export async function submitFeedbackReport(formData: FormData): Promise<SubmitFe
     pageUrl: parsed.data.page_url ?? null,
   });
 
-  return { ok: true };
+  revalidatePath('/app/feedback');
+  return { ok: true, id: report.id };
+}
+
+export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
+  const ctx = await getActionContext();
+  const userId = ctx.userId;
+  const admin = createAdminClient();
+
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - FEEDBACK_BOARD_DONE_RECENT_DAYS);
+  const cutoffIso = cutoff.toISOString();
+
+  const [
+    { data: mineRows, error: mineError },
+    { data: openRows, error: openError },
+    { data: recentDoneRows, error: doneError },
+  ] = await Promise.all([
+    admin
+      .from('feedback_reports')
+      .select('id, kind, title, status, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }),
+    admin
+      .from('feedback_reports')
+      .select('id, user_id, kind, title, status, updated_at')
+      .in('status', ['open', 'in_progress'])
+      .order('updated_at', { ascending: false }),
+    admin
+      .from('feedback_reports')
+      .select('id, user_id, kind, title, status, updated_at')
+      .eq('status', 'done')
+      .gte('updated_at', cutoffIso)
+      .order('updated_at', { ascending: false }),
+  ]);
+
+  if (mineError) {
+    throw new Error(mineError.message);
+  }
+  if (openError) {
+    throw new Error(openError.message);
+  }
+  if (doneError) {
+    throw new Error(doneError.message);
+  }
+
+  const mine = (mineRows ?? []).map((row) => ({
+    id: row.id,
+    kind: row.kind as FeedbackReportKind,
+    title: row.title,
+    status: row.status as FeedbackReportStatus,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }));
+
+  const publicById = new Map<
+    string,
+    { id: string; user_id: string; kind: string; title: string; status: string; updated_at: string }
+  >();
+  for (const row of [...(openRows ?? []), ...(recentDoneRows ?? [])]) {
+    publicById.set(row.id, row);
+  }
+  const publicSorted = [...publicById.values()].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  );
+
+  const publicList = publicSorted.map((row) => ({
+    id: row.id,
+    kind: row.kind as FeedbackReportKind,
+    title: row.title,
+    status: row.status as FeedbackReportStatus,
+    updated_at: row.updated_at,
+    is_mine: row.user_id === userId,
+  }));
+
+  return { mine, public: publicList };
 }
 
 export type FeedbackReportListRow = FeedbackReport & {
@@ -259,6 +337,7 @@ export async function updateFeedbackReportAdmin(formData: FormData) {
 
   if (error) throw new Error(error.message);
   revalidatePath('/superadmin');
+  revalidatePath('/app/feedback');
 }
 
 export async function deleteFeedbackReportAdmin(formData: FormData) {
@@ -279,4 +358,5 @@ export async function deleteFeedbackReportAdmin(formData: FormData) {
   const { error } = await admin.from('feedback_reports').delete().eq('id', id);
   if (error) throw new Error(error.message);
   revalidatePath('/superadmin');
+  revalidatePath('/app/feedback');
 }

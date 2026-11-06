@@ -1,11 +1,17 @@
 import type { BusinessPartnerKind } from '@/lib/types/database';
 
-export type PartnerTabId = 'subunternehmer' | 'lieferanten' | 'fahrzeuge' | 'ansprechpartner';
+export type PartnerTabId =
+  | 'subunternehmer'
+  | 'lieferanten'
+  | 'fahrzeuge'
+  | 'typen'
+  | 'ansprechpartner';
 
 export const PARTNER_TAB_LABELS: Record<PartnerTabId, string> = {
   subunternehmer: 'Subunternehmer',
   lieferanten: 'Lieferanten',
   fahrzeuge: 'Fahrzeuge & Geräte',
+  typen: 'Typen',
   ansprechpartner: 'Ansprechpartner',
 };
 
@@ -18,6 +24,7 @@ export function isPartnerTab(value: string | undefined): value is PartnerTabId {
     value === 'subunternehmer' ||
     value === 'lieferanten' ||
     value === 'fahrzeuge' ||
+    value === 'typen' ||
     value === 'ansprechpartner'
   );
 }

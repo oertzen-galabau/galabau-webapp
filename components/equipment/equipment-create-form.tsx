@@ -32,7 +32,6 @@ export function EquipmentCreateForm({ types }: Props) {
       key={formKey}
       action={action}
       className="input-form equipment-create-form"
-      encType="multipart/form-data"
     >
       <div className="input-form-core">
         <label>
@@ -61,10 +60,20 @@ export function EquipmentCreateForm({ types }: Props) {
           Inventarnummer
           <input name="inventory_number" disabled={pending} />
         </label>
-        <label>
-          UVV fällig
-          <input type="date" name="uvv_due_date" disabled={pending} />
-        </label>
+        <div className="equipment-create-dates-row">
+          <label>
+            HU / TÜV fällig
+            <input type="date" name="inspection_due_date" disabled={pending} />
+          </label>
+          <label>
+            Inspektion fällig
+            <input type="date" name="general_inspection_due_date" disabled={pending} />
+          </label>
+          <label>
+            UVV fällig
+            <input type="date" name="uvv_due_date" disabled={pending} />
+          </label>
+        </div>
         <div className="equipment-create-form-last-row">
           <label>
             Status
@@ -97,10 +106,6 @@ export function EquipmentCreateForm({ types }: Props) {
           <label>
             Hersteller / Modell
             <input name="manufacturer_model" disabled={pending} />
-          </label>
-          <label>
-            HU / TÜV fällig
-            <input type="date" name="inspection_due_date" disabled={pending} />
           </label>
           <label>
             Betriebsstunden

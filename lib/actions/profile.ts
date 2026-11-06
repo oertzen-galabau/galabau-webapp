@@ -14,8 +14,9 @@ function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: Per
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
 }
 
-function revalidateProfilePaths() {
+function revalidateProfilePaths(userId: string) {
   revalidatePath('/app/profil');
+  revalidatePath(`/app/team/${userId}`);
   revalidatePath('/app', 'layout');
 }
 
@@ -59,7 +60,7 @@ export async function updateOwnProfile(formData: FormData) {
   const { error } = await admin.from('profiles').update(profileUpdate).eq('id', ctx.userId);
   if (error) throw new Error(error.message);
 
-  revalidateProfilePaths();
+  revalidateProfilePaths(ctx.userId);
 }
 
 export async function changeOwnEmail(
@@ -118,7 +119,7 @@ export async function changeOwnEmail(
       return { ok: false, error: profileError.message };
     }
 
-    revalidateProfilePaths();
+    revalidateProfilePaths(ctx.userId);
     return { ok: true, message: 'E-Mail wurde erfolgreich geändert.' };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'E-Mail konnte nicht geändert werden.' };

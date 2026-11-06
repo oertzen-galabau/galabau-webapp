@@ -1,4 +1,10 @@
 import { sendMail } from '@/lib/email/smtp';
+import {
+  buildTransactionalMailHtml,
+  escapeHtml,
+  mailCtaButtonHtml,
+  mailSecretHighlightHtml,
+} from '@/lib/email/mail-template';
 
 export async function sendEmployeeInvitationEmail(input: {
   to: string;
@@ -27,14 +33,20 @@ export async function sendEmployeeInvitationEmail(input: {
     'Nach der Anmeldung legen Sie bitte ein persönliches Passwort fest.',
   ].join('\n');
 
-  const html = `
-    <p>Hallo <strong>${input.firstName}</strong>,</p>
-    <p>Sie wurden bei <strong>${input.platformName}</strong> als Mitarbeiter angelegt.</p>
-    <p><a href="${input.inviteUrl}">Einladung öffnen</a></p>
-    <p>Einmalpasswort: <strong>${input.tempPassword}</strong></p>
-    <p>Der Link ist bis zum <strong>${expiryLabel}</strong> gültig.</p>
-    <p>Nach der Anmeldung legen Sie bitte ein persönliches Passwort fest.</p>
-  `.trim();
+  const safeFirst = escapeHtml(input.firstName);
+  const safePlatform = escapeHtml(input.platformName);
+  const html = buildTransactionalMailHtml({
+    platformName: input.platformName,
+    title: 'Einladung zum Team',
+    leadParagraph: `Hallo ${safeFirst}, Sie wurden bei ${safePlatform} als Mitarbeiter angelegt. Öffnen Sie den Einladungslink und legen Sie ein persönliches Passwort fest.`,
+    sections: [
+      mailCtaButtonHtml(input.inviteUrl, 'Einladung öffnen'),
+      mailSecretHighlightHtml('Einmalpasswort', input.tempPassword),
+      `<tr><td style="padding:4px 24px 16px; font-size:14px; line-height:1.5; color:#52525b;">Der Link ist bis zum <strong>${escapeHtml(expiryLabel)}</strong> gültig.</td></tr>`,
+    ],
+    footnote:
+      'Bewahren Sie das Einmalpasswort vertraulich auf. Wenn Sie diese E-Mail nicht erwartet haben, ignorieren Sie sie oder wenden Sie sich an Ihre Verwaltung.',
+  });
 
   return sendMail({ to: input.to, subject, text, html });
 }

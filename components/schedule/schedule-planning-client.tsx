@@ -764,14 +764,14 @@ export function SchedulePlanningClient({
                     disabled={pending || selectedDayPublished || dayEntries.length === 0}
                     onClick={() => startTransition(async () => {
                       setActionError(null);
-                      try {
-                        const fd = new FormData();
-                        fd.set('plan_date', selectedDay);
-                        await publishScheduleDay(fd);
-                        router.refresh();
-                      } catch (e) {
-                        setActionError(e instanceof Error ? e.message : 'Tag konnte nicht veröffentlicht werden');
+                      const fd = new FormData();
+                      fd.set('plan_date', selectedDay);
+                      const res = await publishScheduleDay(fd);
+                      if (!res.ok) {
+                        setActionError(res.error);
+                        return;
                       }
+                      router.refresh();
                     })}
                   >
                     Tag veröffentlichen
@@ -783,14 +783,14 @@ export function SchedulePlanningClient({
                     disabled={pending || plan.published}
                     onClick={() => startTransition(async () => {
                       setActionError(null);
-                      try {
-                        const fd = new FormData();
-                        fd.set('week_start', plan.weekStart);
-                        await publishScheduleWeek(fd);
-                        router.refresh();
-                      } catch (e) {
-                        setActionError(e instanceof Error ? e.message : 'Woche konnte nicht veröffentlicht werden');
+                      const fd = new FormData();
+                      fd.set('week_start', plan.weekStart);
+                      const res = await publishScheduleWeek(fd);
+                      if (!res.ok) {
+                        setActionError(res.error);
+                        return;
                       }
+                      router.refresh();
                     })}
                   >
                     Woche veröffentlichen

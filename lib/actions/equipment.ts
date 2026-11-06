@@ -122,6 +122,7 @@ async function readEquipmentFields(
     license_plate: String(formData.get('license_plate') ?? '').trim() || null,
     manufacturer_model: String(formData.get('manufacturer_model') ?? '').trim() || null,
     inspection_due_date: readOptionalDate(formData.get('inspection_due_date')),
+    general_inspection_due_date: readOptionalDate(formData.get('general_inspection_due_date')),
     operating_hours: readOptionalDecimal(formData.get('operating_hours')),
     mileage_km: readOptionalDecimal(formData.get('mileage_km')),
     license_class_required: String(formData.get('license_class_required') ?? '').trim() || null,

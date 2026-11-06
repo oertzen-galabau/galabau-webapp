@@ -46,15 +46,14 @@ export function uvvUrgency(uvvDueDate: string | null, todayIso: string): UvvUrge
 }
 
 export function uvvUrgencyCssClass(urgency: UvvUrgency | null): string | undefined {
-  if (!urgency || urgency === 'later') return undefined;
+  if (!urgency || urgency === 'later' || urgency === 'within_4_weeks') return undefined;
   if (urgency === 'overdue') return 'equipment-uvv-overdue';
-  if (urgency === 'within_4_weeks') return 'equipment-uvv-within-4w';
   return 'equipment-uvv-within-8w';
 }
 
+/** Marker im Infoboard: 4-Wochen-Fenster ohne Hervorhebung (kein Warn-Marker). */
 export function uvvUrgencyJobMarkerClass(urgency: UvvUrgency | null): string {
   if (urgency === 'overdue') return 'job-marker equipment-uvv-marker-overdue';
-  if (urgency === 'within_4_weeks') return 'job-marker travel';
   if (urgency === 'within_8_weeks') return 'job-marker equipment-uvv-marker-8w';
   return 'job-marker';
 }

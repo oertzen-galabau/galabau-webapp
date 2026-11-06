@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { revokeActiveInvitations } from '@/lib/team/employee-invite-service';
 import { sendPasswordResetEmail } from '@/lib/email/password-reset';
 import { getPlatformName } from '@/lib/tenant/config';
 import {
@@ -183,6 +184,24 @@ export async function resetPasswordWithCode(
     .from('password_reset_codes')
     .update({ used_at: now })
     .eq('id', resetRow.id);
+
+  try {
+    await revokeActiveInvitations(admin, resetRow.user_id);
+  } catch (revokeErr) {
+    console.error(
+      '[password-reset] revoke invitations failed:',
+      revokeErr instanceof Error ? revokeErr.message : revokeErr,
+    );
+  }
+
+  const { error: profileFlagError } = await admin
+    .from('profiles')
+    .update({ must_change_password: false })
+    .eq('id', resetRow.user_id);
+
+  if (profileFlagError) {
+    console.error('[password-reset] clear must_change_password failed:', profileFlagError.message);
+  }
 
   return { ok: true, message: 'Passwort wurde erfolgreich geändert.' };
 }

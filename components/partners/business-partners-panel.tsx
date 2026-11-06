@@ -4,6 +4,7 @@ import { PartnerTabs } from '@/components/partners/partner-tabs';
 import { PartnerRow } from '@/components/partners/partner-row';
 import { PartnerCreateForm } from '@/components/partners/partner-create-form';
 import { EquipmentPanel } from '@/components/equipment/equipment-panel';
+import { EquipmentTypesPanel } from '@/components/equipment/equipment-types-panel';
 import { TenantContactPersonsPanel } from '@/components/contacts/tenant-contact-persons-panel';
 import { loadPartnerCatalog } from '@/lib/partners/load-catalog';
 import { partnerKindFromTab, type PartnerTabId } from '@/lib/partners/kind';
@@ -21,6 +22,17 @@ export async function BusinessPartnersPanel({ ctx, activePartnerTab }: Props) {
 
   if (activePartnerTab === 'fahrzeuge') {
     return <EquipmentPanel ctx={ctx} />;
+  }
+
+  if (activePartnerTab === 'typen') {
+    return (
+      <>
+        <PartnerTabs activeTab="typen" />
+        <div style={{ marginTop: 16 }}>
+          <EquipmentTypesPanel ctx={ctx} />
+        </div>
+      </>
+    );
   }
 
   if (activePartnerTab === 'ansprechpartner') {

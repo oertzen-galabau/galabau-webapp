@@ -6,6 +6,12 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import { partnerSettingsListPath } from '@/lib/partners/paths';
 
 const EQUIPMENT_PATH = partnerSettingsListPath('fahrzeuge');
+const EQUIPMENT_TYPES_PATH = partnerSettingsListPath('typen');
+
+function revalidateEquipmentTypeViews() {
+  revalidatePath(EQUIPMENT_PATH);
+  revalidatePath(EQUIPMENT_TYPES_PATH);
+}
 
 function requireEquipmentManage(ctx: Awaited<ReturnType<typeof getActionContext>>) {
   if (!canAccess(ctx, 'partners.manage')) throw new Error('Keine Berechtigung');
@@ -34,7 +40,7 @@ export async function createEquipmentType(formData: FormData) {
   });
   if (error) throw new Error(equipmentTypeDbError(error));
 
-  revalidatePath(EQUIPMENT_PATH);
+  revalidateEquipmentTypeViews();
 }
 
 export async function updateEquipmentType(formData: FormData) {
@@ -60,7 +66,7 @@ export async function updateEquipmentType(formData: FormData) {
     .eq('tenant_id', tenantId);
   if (error) throw new Error(equipmentTypeDbError(error));
 
-  revalidatePath(EQUIPMENT_PATH);
+  revalidateEquipmentTypeViews();
 }
 
 export async function deleteEquipmentType(formData: FormData) {
@@ -89,5 +95,5 @@ export async function deleteEquipmentType(formData: FormData) {
     .eq('tenant_id', tenantId);
   if (error) throw new Error(equipmentTypeDbError(error));
 
-  revalidatePath(EQUIPMENT_PATH);
+  revalidateEquipmentTypeViews();
 }

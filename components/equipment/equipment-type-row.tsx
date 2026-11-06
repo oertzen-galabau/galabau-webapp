@@ -1,4 +1,5 @@
 import { deleteEquipmentType, updateEquipmentType } from '@/lib/actions/equipment-types';
+import { EditToggleLabel } from '@/components/ui/edit-toggle-label';
 import { DeleteIconAction } from '@/components/ui/icon-action-button';
 import type { TenantEquipmentType } from '@/lib/types/database';
 
@@ -26,7 +27,9 @@ export function EquipmentTypeRow({ type, canManage, usageCount }: Props) {
       {canManage ? (
         <div className="work-area-row-controls">
           <details className="site-entity-edit work-area-row-edit">
-            <summary>Bearbeiten</summary>
+            <summary>
+              <EditToggleLabel />
+            </summary>
             <form action={updateEquipmentType} className="input-form site-entity-edit-form">
               <input type="hidden" name="id" value={type.id} />
               <label>

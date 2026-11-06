@@ -240,9 +240,13 @@ export async function fetchInfoboardPayload(
     canViewEquipment
       ? supabase
           .from('tenant_equipment')
-          .select('id, name, license_plate, inventory_number, uvv_due_date, tenant_equipment_types ( name )')
+          .select(
+            'id, name, license_plate, inventory_number, uvv_due_date, inspection_due_date, general_inspection_due_date, tenant_equipment_types ( name )',
+          )
           .eq('tenant_id', tenantId)
-          .not('uvv_due_date', 'is', null)
+          .or(
+            'uvv_due_date.not.is.null,inspection_due_date.not.is.null,general_inspection_due_date.not.is.null',
+          )
       : Promise.resolve({ data: [] }),
     canViewPosts
       ? supabase
@@ -344,22 +348,46 @@ export async function fetchInfoboardPayload(
     });
 
   const equipmentUvvSorted: EquipmentUvvRow[] = (equipmentWithUvv ?? [])
-    .map((row) => {
-      const dueDate = String(row.uvv_due_date);
-      const urgency = uvvUrgency(dueDate, today);
-      if (!urgency) return null;
+    .flatMap((row) => {
       const typeJoin = row.tenant_equipment_types as { name: string } | { name: string }[] | null;
       const typeName = Array.isArray(typeJoin) ? typeJoin[0]?.name : typeJoin?.name;
-      return {
-        id: row.id,
-        name: row.name,
-        kindLabel: typeName ?? '—',
-        subtitle: equipmentListSubtitle(row),
-        dueDate,
-        urgency,
-      };
+      const kindLabel = typeName ?? '—';
+      const subtitle = equipmentListSubtitle(row);
+
+      const slices: Array<{
+        dueKind: EquipmentUvvRow['dueKind'];
+        dueLabel: string;
+        rawDate: string | null;
+      }> = [
+        { dueKind: 'hu_tuv', dueLabel: 'HU/TÜV', rawDate: row.inspection_due_date as string | null },
+        {
+          dueKind: 'general_inspection',
+          dueLabel: 'Inspektion',
+          rawDate: row.general_inspection_due_date as string | null,
+        },
+        { dueKind: 'uvv', dueLabel: 'UVV', rawDate: row.uvv_due_date as string | null },
+      ];
+
+      return slices
+        .map((s) => {
+          if (!s.rawDate) return null;
+          const dueDate = String(s.rawDate);
+          const urgency = uvvUrgency(dueDate, today);
+          if (!urgency) return null;
+          return {
+            rowKey: `${row.id}-${s.dueKind}`,
+            id: row.id,
+            name: row.name,
+            kindLabel,
+            subtitle,
+            dueDate,
+            dueKind: s.dueKind,
+            dueLabel: s.dueLabel,
+            urgency,
+          };
+        })
+        .filter((row): row is EquipmentUvvRow => row != null);
     })
-    .filter((row): row is EquipmentUvvRow => row != null)
     .sort((a, b) =>
       compareUvvDueEntries(
         { uvvDueDate: a.dueDate, urgency: a.urgency },

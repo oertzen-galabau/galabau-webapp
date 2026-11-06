@@ -20,6 +20,7 @@ import { OrderBudgetMetrics } from '@/components/orders/order-budget-metrics';
 import { MemberCatalogOrdersTable } from '@/components/orders/member-catalog-orders-table';
 import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from '@/lib/orders/labels';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
+import type { EmployeeDetailMode } from '@/lib/team/employee-detail-data';
 import type {
   ClothingOrder,
   CatalogOrder,
@@ -38,7 +39,7 @@ import {
   memberAccessStatusLabel,
 } from '@/lib/team/member-access-status';
 import { groupByCalendarMonth, shiftMonth, formatMonthLabel } from '@/lib/team/group-by-calendar-month';
-import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
+import { formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
 import { EmployeeStammdatenForm } from '@/components/team/employee-stammdaten-form';
 import { LeaveRequestsTable } from '@/components/leave/leave-requests-table';
@@ -46,6 +47,7 @@ import { LEAVE_STATUS_LABELS } from '@/lib/leave/request-editable';
 import { ApproveIconAction, RejectIconAction } from '@/components/ui/icon-action-button';
 import { EmployeeYearFilter } from '@/components/team/employee-year-filter';
 import { EmployeeOverviewFeedTabs } from '@/components/team/employee-overview-feed-tabs';
+import { ProfileSecuritySection } from '@/components/profile/profile-security-section';
 
 type PermCtx = {
   permissions: Set<PermissionKey>;
@@ -61,6 +63,8 @@ type AssignmentRow = {
 
 type Props = {
   tab: EmployeeTabId;
+  mode: EmployeeDetailMode;
+  tabBasePath: string;
   member: Profile;
   roleName: string;
   tenantRoles: TenantRole[];
@@ -72,7 +76,10 @@ type Props = {
   carriedOverSource: 'manual' | 'automatic';
   carryExpiry: { month: number; day: number } | null;
   leaveRequests: LeaveRequest[];
-  timeEntries: TimeEntry[];
+  /** Jahres-Zeiten für Übersicht */
+  yearTimeEntries: TimeEntry[];
+  /** Monats-Zeiten für Tab Zeiten */
+  zeitenMonthEntries: TimeEntry[];
   assignments: AssignmentRow[];
   orders: ClothingOrder[];
   catalogOrders: (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[];
@@ -84,6 +91,8 @@ type Props = {
   todayAssignment: AssignmentRow | null;
   invitation: EmployeeInvitation | null;
   workAreas: Pick<TenantWorkArea, 'id' | 'name' | 'is_active'>[];
+  profileSecurity: { email: string; canChangeEmail: boolean; canChangePassword: boolean };
+  personalEditableSelf: boolean;
 };
 
 function can(ctx: PermCtx, key: PermissionKey) {
@@ -118,7 +127,6 @@ function buildEmployeeYearOptions(
   return years.length > 0 ? years : [currentYear];
 }
 
-/** Month group to expand on load (current calendar month in current year, else URL month). */
 function expandedOverviewMonthKey(year: number, month: string): string {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -146,6 +154,8 @@ export function EmployeeTabPanel(props: Props) {
       return <BestellungenTab {...props} />;
     case 'notizen':
       return <NotizenTab {...props} />;
+    case 'sicherheit':
+      return <SicherheitTab {...props} />;
     default:
       return null;
   }
@@ -158,25 +168,29 @@ function OverviewTab({
   month,
   pendingLeaveCount,
   todayAssignment,
-  timeEntries,
+  yearTimeEntries,
   leaveRequests,
   leaveBreakdown,
+  tabBasePath,
+  mode,
 }: Props) {
   const yearPrefix = `${year}-`;
   const leaveInYear = leaveRequests.filter((request) => request.start_date.startsWith(yearPrefix));
-  const timeGroups = groupByCalendarMonth(timeEntries, (entry) => entry.work_date);
+  const timeGroups = groupByCalendarMonth(yearTimeEntries, (entry) => entry.work_date);
   const leaveGroups = groupByCalendarMonth(leaveInYear, (request) => request.start_date);
-  const yearMinutes = timeEntries.reduce((sum, entry) => sum + (entry.work_minutes ?? 0), 0);
+  const yearMinutes = yearTimeEntries.reduce((sum, entry) => sum + (entry.work_minutes ?? 0), 0);
   const monthPart = month.slice(5, 7);
-  const yearOptions = buildEmployeeYearOptions(year, member, leaveRequests, timeEntries);
+  const yearOptions = buildEmployeeYearOptions(year, member, leaveRequests, yearTimeEntries);
   const openMonthKey = expandedOverviewMonthKey(year, month);
   const timeGroupKeys = new Set(timeGroups.map((g) => g.monthKey));
   const leaveGroupKeys = new Set(leaveGroups.map((g) => g.monthKey));
 
+  const isAdmin = mode === 'admin';
+
   return (
     <section className="panel employee-section">
       <EmployeeYearFilter
-        employeeId={member.id}
+        tabBasePath={tabBasePath}
         selectedYear={year}
         monthPart={monthPart}
         years={yearOptions}
@@ -201,42 +215,44 @@ function OverviewTab({
         </article>
       </div>
 
-      <div className="employee-quick-actions">
-        <h2>Schnellaktionen</h2>
-        <div className="inline-actions employee-quick-actions-buttons">
-          <Link
-            href={`/app/team/${member.id}?tab=stammdaten`}
-            className="secondary-button secondary-button--compact"
-          >
-            Stammdaten
-          </Link>
-          {can(ctx, 'team.assign_role') && (
+      {isAdmin && (
+        <div className="employee-quick-actions">
+          <h2>Schnellaktionen</h2>
+          <div className="inline-actions employee-quick-actions-buttons">
             <Link
-              href={`/app/team/${member.id}?tab=rolle`}
+              href={`${tabBasePath}?${new URLSearchParams({ tab: 'stammdaten', ...(month ? { month } : {}) }).toString()}`}
               className="secondary-button secondary-button--compact"
             >
-              Rolle ändern
+              Stammdaten
             </Link>
-          )}
-          {can(ctx, 'team.password_reset') && (
-            <form action={sendEmployeePasswordReset} className="employee-quick-actions-form">
-              <input type="hidden" name="user_id" value={member.id} />
-              <button type="submit" className="secondary-button secondary-button--compact">
-                Passwort-Reset senden
-              </button>
-            </form>
-          )}
-          {can(ctx, 'team.deactivate') && member.id !== ctx.userId && (
-            <form action={setMemberActive} className="employee-quick-actions-form">
-              <input type="hidden" name="user_id" value={member.id} />
-              <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
-              <button type="submit" className="secondary-button secondary-button--compact">
-                {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
-              </button>
-            </form>
-          )}
+            {can(ctx, 'team.assign_role') && (
+              <Link
+                href={`${tabBasePath}?${new URLSearchParams({ tab: 'rolle', ...(month ? { month } : {}) }).toString()}`}
+                className="secondary-button secondary-button--compact"
+              >
+                Rolle ändern
+              </Link>
+            )}
+            {can(ctx, 'team.password_reset') && (
+              <form action={sendEmployeePasswordReset} className="employee-quick-actions-form">
+                <input type="hidden" name="user_id" value={member.id} />
+                <button type="submit" className="secondary-button secondary-button--compact">
+                  Passwort-Reset senden
+                </button>
+              </form>
+            )}
+            {can(ctx, 'team.deactivate') && member.id !== ctx.userId && (
+              <form action={setMemberActive} className="employee-quick-actions-form">
+                <input type="hidden" name="user_id" value={member.id} />
+                <input type="hidden" name="is_active" value={member.is_active ? 'false' : 'true'} />
+                <button type="submit" className="secondary-button secondary-button--compact">
+                  {member.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                </button>
+              </form>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <EmployeeOverviewFeedTabs
         timeContent={
@@ -311,14 +327,19 @@ function OverviewTab({
   );
 }
 
-function StammdatenTab({ member, ctx, workAreas }: Props) {
-  const editable = can(ctx, 'team.edit_profile');
+function StammdatenTab({ member, ctx, workAreas, mode, personalEditableSelf }: Props) {
+  const editableAdmin = can(ctx, 'team.edit_profile');
 
   return (
     <section className="panel form-panel employee-section">
       <h2>Stammdaten</h2>
-      {!editable && <p className="muted">Nur Lesezugriff.</p>}
-      <EmployeeStammdatenForm member={member} editable={editable} workAreas={workAreas} />
+      <EmployeeStammdatenForm
+        member={member}
+        mode={mode}
+        workAreas={workAreas}
+        canEditPersonal={personalEditableSelf}
+        editableAdmin={editableAdmin}
+      />
     </section>
   );
 }
@@ -378,10 +399,12 @@ function RolleTab({ member, roleName, tenantRoles, ctx, invitation }: Props) {
           <p className="employee-access-status-label">
             Aktuell:{' '}
             <strong>
-              {memberAccessStatusLabel(getMemberAccessStatus({
-                is_active: member.is_active,
-                must_change_password: member.must_change_password,
-              }))}
+              {memberAccessStatusLabel(
+                getMemberAccessStatus({
+                  is_active: member.is_active,
+                  must_change_password: member.must_change_password,
+                }),
+              )}
             </strong>
           </p>
           <div className="inline-actions employee-access-actions">
@@ -426,11 +449,12 @@ function UrlaubTab({
   leaveBreakdown,
   carriedOverSource,
   carryExpiry,
+  mode,
 }: Props) {
-  const canEditEntitlement = can(ctx, 'team.leave_entitlement');
-  const canApprove = can(ctx, 'urlaub.approve');
-  const totalGross =
-    leaveBreakdown.entitlementDays + Number(balance?.carried_over_days ?? 0);
+  const isAdmin = mode === 'admin';
+  const canEditEntitlement = isAdmin && can(ctx, 'team.leave_entitlement');
+  const canApprove = isAdmin && can(ctx, 'urlaub.approve');
+  const totalGross = leaveBreakdown.entitlementDays + Number(balance?.carried_over_days ?? 0);
 
   return (
     <>
@@ -547,25 +571,36 @@ function UrlaubTab({
   );
 }
 
-function ZeitenTab({ member, month, timeEntries, monthMinutes }: Props) {
+function ZeitenTab({ month, zeitenMonthEntries, monthMinutes, tabBasePath }: Props) {
   const prevMonth = shiftMonth(month, -1);
   const nextMonth = shiftMonth(month, 1);
+  const prevHref = `${tabBasePath}?${new URLSearchParams({ tab: 'zeiten', month: prevMonth }).toString()}`;
+  const nextHref = `${tabBasePath}?${new URLSearchParams({ tab: 'zeiten', month: nextMonth }).toString()}`;
 
   return (
     <section className="panel employee-section">
       <div className="employee-month-nav">
-        <Link href={`/app/team/${member.id}?tab=zeiten&month=${prevMonth}`} className="text-button">← Vorheriger Monat</Link>
+        <Link href={prevHref} className="text-button">
+          ← Vorheriger Monat
+        </Link>
         <strong>{formatMonthLabel(month)}</strong>
-        <Link href={`/app/team/${member.id}?tab=zeiten&month=${nextMonth}`} className="text-button">Nächster Monat →</Link>
+        <Link href={nextHref} className="text-button">
+          Nächster Monat →
+        </Link>
       </div>
       <p className="muted">Summe: {formatMinutes(monthMinutes)} Std.</p>
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
-            <tr><th>Datum</th><th>Start</th><th>Ende</th><th>Arbeitszeit</th></tr>
+            <tr>
+              <th>Datum</th>
+              <th>Start</th>
+              <th>Ende</th>
+              <th>Arbeitszeit</th>
+            </tr>
           </thead>
           <tbody>
-            {timeEntries.map((entry) => (
+            {zeitenMonthEntries.map((entry) => (
               <tr key={entry.id}>
                 <td>{entry.work_date}</td>
                 <td>{entry.start_time?.slice(0, 5) ?? '—'}</td>
@@ -576,7 +611,7 @@ function ZeitenTab({ member, month, timeEntries, monthMinutes }: Props) {
           </tbody>
         </table>
       </div>
-      {timeEntries.length === 0 && <p className="muted">Keine Zeiteinträge in diesem Monat.</p>}
+      {zeitenMonthEntries.length === 0 && <p className="muted">Keine Zeiteinträge in diesem Monat.</p>}
     </section>
   );
 }
@@ -588,7 +623,11 @@ function EinsatzTab({ assignments }: Props) {
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
-            <tr><th>Datum</th><th>Baustelle</th><th>Notiz</th></tr>
+            <tr>
+              <th>Datum</th>
+              <th>Baustelle</th>
+              <th>Notiz</th>
+            </tr>
           </thead>
           <tbody>
             {assignments.map((a) => (
@@ -614,8 +653,10 @@ function BestellungenTab({
   catalogOrders,
   orderBudgetBreakdown,
   employeeOrderBudgetEur,
+  mode,
 }: Props) {
-  const canEditBudget = can(ctx, 'orders.manage_budget');
+  const isAdmin = mode === 'admin';
+  const canEditBudget = isAdmin && can(ctx, 'orders.manage_budget');
 
   return (
     <>
@@ -640,7 +681,9 @@ function BestellungenTab({
               </label>
             </div>
             <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Speichern</button>
+              <button type="submit" className="primary-button primary-button--compact">
+                Speichern
+              </button>
             </div>
           </form>
         </section>
@@ -657,7 +700,13 @@ function BestellungenTab({
           <div className="data-table-wrap">
             <table className="data-table">
               <thead>
-                <tr><th>Datum</th><th>Artikel</th><th>Größe</th><th>Menge</th><th>Status</th></tr>
+                <tr>
+                  <th>Datum</th>
+                  <th>Artikel</th>
+                  <th>Größe</th>
+                  <th>Menge</th>
+                  <th>Status</th>
+                </tr>
               </thead>
               <tbody>
                 {orders.map((order) => (
@@ -693,10 +742,15 @@ function NotizenTab({ member, ctx, notes }: Props) {
           <form action={saveEmployeeNote} className="input-form">
             <input type="hidden" name="user_id" value={member.id} />
             <div className="input-form-core">
-              <label className="input-form-span-full">Notiz<textarea name="content" rows={4} required placeholder="Interne Notiz zum Mitarbeiter…" /></label>
+              <label className="input-form-span-full">
+                Notiz
+                <textarea name="content" rows={4} required placeholder="Interne Notiz zum Mitarbeiter…" />
+              </label>
             </div>
             <div className="input-form-actions">
-              <button type="submit" className="primary-button primary-button--compact">Speichern</button>
+              <button type="submit" className="primary-button primary-button--compact">
+                Speichern
+              </button>
             </div>
           </form>
         </section>
@@ -721,3 +775,12 @@ function NotizenTab({ member, ctx, notes }: Props) {
   );
 }
 
+function SicherheitTab({ profileSecurity }: Props) {
+  return (
+    <ProfileSecuritySection
+      email={profileSecurity.email}
+      canChangeEmail={profileSecurity.canChangeEmail}
+      canChangePassword={profileSecurity.canChangePassword}
+    />
+  );
+}

@@ -1,58 +1,42 @@
 import { createClient } from '@/lib/supabase/server';
-import { canAccess, getTenantIdForSession, requireTenantMember } from '@/lib/auth/session';
-import { listMyLeaveRequestsPreview } from '@/lib/leave/queries';
-import { ProfilePageHeader } from '@/components/profile/profile-page-header';
-import { ProfileRequestsOverview } from '@/components/profile/profile-requests-overview';
-import { ProfilePersonalForm } from '@/components/profile/profile-personal-form';
-import { ProfileSecuritySection } from '@/components/profile/profile-security-section';
-import { ProfileWorkReadonly } from '@/components/profile/profile-work-readonly';
+import { requireTenantMember } from '@/lib/auth/session';
+import { EmployeeDetailView } from '@/components/team/employee-detail-view';
+import { loadEmployeeDetailData } from '@/lib/team/employee-detail-data';
+import { isEmployeeTab, visibleEmployeeTabs } from '@/lib/team/detail-tabs';
 
-export default async function ProfilPage() {
+type PageProps = {
+  searchParams: Promise<{ tab?: string; month?: string }>;
+};
+
+export default async function ProfilPage({ searchParams }: PageProps) {
   const ctx = await requireTenantMember();
-  const roleName = ctx.tenantRoleName ?? '—';
+  const { tab: tabParam, month: monthParam } = await searchParams;
 
-  const canEditSelf = canAccess(ctx, 'profile.edit_self');
-  const canChangeEmail = canAccess(ctx, 'profile.change_email');
-  const canChangePassword = canAccess(ctx, 'profile.change_password');
+  const tabs = visibleEmployeeTabs('self', ctx.permissions, ctx.isSuperadminBypass);
+  if (tabs.length === 0) {
+    return <p className="muted">Keine Berechtigung.</p>;
+  }
 
-  const tenantId = await getTenantIdForSession(ctx);
+  const activeTab =
+    isEmployeeTab(tabParam) && tabs.some((t) => t.id === tabParam) ? tabParam : tabs[0].id;
+
+  const month =
+    monthParam?.match(/^\d{4}-\d{2}$/) ? monthParam : new Date().toISOString().slice(0, 7);
+  const selectedYear = Number(month.slice(0, 4));
+
   const supabase = await createClient();
-  const [{ data: leaveRequests }, { data: catalogOrders }, { data: clothingOrders }] = await Promise.all([
-    tenantId
-      ? listMyLeaveRequestsPreview(supabase, tenantId, ctx.userId, 5)
-      : Promise.resolve({ data: [], error: null }),
-    supabase
-      .from('catalog_orders')
-      .select('id, created_at, total_eur, own_share_eur, status')
-      .eq('user_id', ctx.userId)
-      .order('created_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('clothing_orders')
-      .select('id, created_at, item_type, size, status')
-      .eq('user_id', ctx.userId)
-      .order('created_at', { ascending: false })
-      .limit(5),
-  ]);
+  const data = await loadEmployeeDetailData({
+    supabase,
+    ctx,
+    mode: 'self',
+    memberIdFromRoute: null,
+    activeTab,
+    month,
+  });
 
-  return (
-    <>
-      <ProfilePageHeader profile={ctx.profile} roleName={roleName} />
+  if (!data) {
+    return <p className="muted">Profil konnte nicht geladen werden.</p>;
+  }
 
-      <div className="profile-sections">
-        <ProfileRequestsOverview
-          leaveRequests={leaveRequests ?? []}
-          catalogOrders={catalogOrders ?? []}
-          clothingOrders={clothingOrders ?? []}
-        />
-        <ProfilePersonalForm profile={ctx.profile} editable={canEditSelf} />
-        <ProfileWorkReadonly profile={ctx.profile} roleName={roleName} />
-        <ProfileSecuritySection
-          email={ctx.profile.email}
-          canChangeEmail={canChangeEmail}
-          canChangePassword={canChangePassword}
-        />
-      </div>
-    </>
-  );
+  return <EmployeeDetailView data={data} ctx={ctx} activeTab={activeTab} month={month} selectedYear={selectedYear} />;
 }

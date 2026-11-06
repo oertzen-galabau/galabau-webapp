@@ -17,7 +17,10 @@ import {
   assertScheduleMemberUpdatesAllowed,
 } from '@/lib/schedule/member-selection-server';
 import { addDays, mondayOfWeek } from '@/lib/schedule/week';
+import { todayWorkDate } from '@/lib/time-tracking/work-day';
 import { createClient } from '@/lib/supabase/server';
+
+export type SchedulePublishResult = { ok: true } | { ok: false; error: string };
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -444,7 +447,6 @@ async function publishDaysAndSync(
   if (!uniqueDays.length) throw new Error('Keine Einsätze zum Veröffentlichen');
 
   const weekStart = mondayOfWeek(uniqueDays[0]);
-  const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
 
   for (const planDate of uniqueDays) {
     await backfillMissingForemenForPlanDate(supabase, ctx.tenantId, planDate);
@@ -490,43 +492,62 @@ async function publishDaysAndSync(
   }
 }
 
-export async function publishScheduleDay(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'schedule.publish');
-  const supabase = await createClient();
+export async function publishScheduleDay(formData: FormData): Promise<SchedulePublishResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'schedule.publish');
+    const supabase = await createClient();
 
-  const planDate = String(formData.get('plan_date') ?? '');
-  if (!planDate) throw new Error('Datum fehlt');
+    const planDate = String(formData.get('plan_date') ?? '');
+    if (!planDate) return { ok: false, error: 'Datum fehlt' };
 
-  const weekStart = mondayOfWeek(planDate);
-  const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
-  const hasEntries = plan.entries.some((e) => e.start_date === planDate);
-  if (!hasEntries) throw new Error('An diesem Tag sind keine Einsätze eingeplant');
+    const weekStart = mondayOfWeek(planDate);
+    const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
+    const hasEntries = plan.entries.some((e) => e.start_date === planDate);
+    if (!hasEntries) return { ok: false, error: 'An diesem Tag sind keine Einsätze eingeplant' };
 
-  await publishDaysAndSync(supabase, ctx, [planDate]);
+    await publishDaysAndSync(supabase, ctx, [planDate]);
 
-  revalidatePath(SCHEDULE_PATH);
-  revalidatePath('/app');
+    revalidatePath(SCHEDULE_PATH);
+    revalidatePath('/app');
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'Tag konnte nicht veröffentlicht werden',
+    };
+  }
 }
 
-export async function publishScheduleWeek(formData: FormData) {
-  const ctx = await getActionContext();
-  requirePerm(ctx, 'schedule.publish');
-  const supabase = await createClient();
+export async function publishScheduleWeek(formData: FormData): Promise<SchedulePublishResult> {
+  try {
+    const ctx = await getActionContext();
+    requirePerm(ctx, 'schedule.publish');
+    const supabase = await createClient();
 
-  const weekStart = mondayOfWeek(String(formData.get('week_start') ?? ''));
-  const weekEnd = addDays(weekStart, 6);
-  const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
+    const weekStart = mondayOfWeek(String(formData.get('week_start') ?? ''));
+    const weekEnd = addDays(weekStart, 6);
+    const plan = await loadSchedulePlanData(supabase, ctx.tenantId, weekStart);
 
-  const daysWithEntries = [...new Set(plan.entries.map((e) => e.start_date))].filter(
-    (d) => d >= weekStart && d <= weekEnd,
-  );
-  if (!daysWithEntries.length) throw new Error('In dieser Woche sind keine Einsätze eingeplant');
+    const today = todayWorkDate();
+    const daysWithEntries = [...new Set(plan.entries.map((e) => e.start_date))]
+      .filter((d) => d >= weekStart && d <= weekEnd)
+      .filter((d) => d >= today);
+    if (!daysWithEntries.length) {
+      return { ok: false, error: 'Nur vergangene Tage – nichts zu veröffentlichen' };
+    }
 
-  await publishDaysAndSync(supabase, ctx, daysWithEntries);
+    await publishDaysAndSync(supabase, ctx, daysWithEntries);
 
-  revalidatePath(SCHEDULE_PATH);
-  revalidatePath('/app');
+    revalidatePath(SCHEDULE_PATH);
+    revalidatePath('/app');
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'Woche konnte nicht veröffentlicht werden',
+    };
+  }
 }
 
 export async function copyScheduleDay(formData: FormData) {

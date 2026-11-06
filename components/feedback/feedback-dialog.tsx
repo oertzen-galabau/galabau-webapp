@@ -1,9 +1,9 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useRef, useState, useTransition } from 'react';
 import { submitFeedbackReport } from '@/lib/actions/feedback';
-import { AppDialog, NoticeDialog } from '@/components/ui/app-dialogs';
+import { AppDialog } from '@/components/ui/app-dialogs';
 import { ScreenshotDropzone, type ScreenshotDropzoneHandle } from '@/components/feedback/screenshot-dropzone';
 import type { FeedbackReportKind } from '@/lib/types/database';
 
@@ -14,12 +14,12 @@ type Props = {
 
 export function FeedbackDialog({ open, onClose }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [kind, setKind] = useState<FeedbackReportKind>('bug');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [screenshots, setScreenshots] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [successOpen, setSuccessOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const screenshotDropzoneRef = useRef<ScreenshotDropzoneHandle>(null);
 
@@ -57,9 +57,12 @@ export function FeedbackDialog({ open, onClose }: Props) {
         setError(result.error);
         return;
       }
+      const sentId = result.id;
       resetForm();
       onClose();
-      setSuccessOpen(true);
+      const qs = new URLSearchParams({ thanks: '1', sent: sentId });
+      router.replace(`/app/feedback?${qs.toString()}`);
+      router.refresh();
     });
   }
 
@@ -151,13 +154,6 @@ export function FeedbackDialog({ open, onClose }: Props) {
         </form>
       </AppDialog>
 
-      <NoticeDialog
-        open={successOpen}
-        onClose={() => setSuccessOpen(false)}
-        title="Danke!"
-        message="Ihre Meldung wurde übermittelt. Wir melden uns bei Bedarf."
-        variant="success"
-      />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { updateWorkArea } from '@/lib/actions/work-areas';
+import { EditToggleLabel } from '@/components/ui/edit-toggle-label';
 import { WorkAreaScheduleCheckbox } from '@/components/settings/work-area-schedule-checkbox';
 import type { TenantWorkArea } from '@/lib/types/database';
 
@@ -39,7 +40,9 @@ export function WorkAreaRow({ area, canManage }: Props) {
 
         {canManage ? (
           <details className="site-entity-edit work-area-row-edit">
-            <summary>Bearbeiten</summary>
+            <summary>
+              <EditToggleLabel />
+            </summary>
             <form action={updateWorkArea} className="input-form site-entity-edit-form">
               <input type="hidden" name="id" value={area.id} />
               <label>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { Ban, Check, Store } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -285,21 +286,30 @@ export function OrderCatalogManager({ categories, items, activeSubTab, sizePrese
                         )}
                       </td>
                       <td>{item.is_active ? 'Aktiv' : 'Inaktiv'}</td>
-                      <td>
+                      <td className="data-table-actions">
                         <TableIconActions>
-                          {item.shop_url && (
-                            <a href={item.shop_url} target="_blank" rel="noopener noreferrer" className="text-button">
-                              Shop
+                          {item.shop_url ? (
+                            <a
+                              href={item.shop_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="table-icon-action table-icon-action--brand"
+                              aria-label="Zum Shop"
+                              title="Zum Shop"
+                            >
+                              <Store size={18} aria-hidden />
                             </a>
-                          )}
+                          ) : null}
                           <EditIconAction onClick={() => openEdit(item)} />
                           <button
                             type="button"
-                            className="text-button"
+                            className={`table-icon-action${item.is_active ? ' table-icon-action--danger' : ' table-icon-action--brand'}`}
                             onClick={() => toggleActive(item)}
                             disabled={pending}
+                            aria-label={item.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                            title={item.is_active ? 'Deaktivieren' : 'Aktivieren'}
                           >
-                            {item.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                            {item.is_active ? <Ban size={18} aria-hidden /> : <Check size={18} aria-hidden />}
                           </button>
                         </TableIconActions>
                       </td>
