@@ -1,4 +1,5 @@
 import { deleteEquipmentType, updateEquipmentType } from '@/lib/actions/equipment-types';
+import { DeleteIconAction } from '@/components/ui/icon-action-button';
 import type { TenantEquipmentType } from '@/lib/types/database';
 
 type Props = {
@@ -32,10 +33,6 @@ export function EquipmentTypeRow({ type, canManage, usageCount }: Props) {
                 Bezeichnung
                 <input name="name" defaultValue={type.name} required />
               </label>
-              <label>
-                Reihenfolge
-                <input name="sort_order" type="number" defaultValue={type.sort_order} />
-              </label>
               <label className="input-form-checkbox">
                 <input type="checkbox" name="is_active" defaultChecked={type.is_active} />
                 Aktiv
@@ -46,11 +43,9 @@ export function EquipmentTypeRow({ type, canManage, usageCount }: Props) {
             </form>
           </details>
           {usageCount === 0 ? (
-            <form action={deleteEquipmentType}>
+            <form action={deleteEquipmentType} className="equipment-type-row-delete-form">
               <input type="hidden" name="id" value={type.id} />
-              <button type="submit" className="text-button">
-                Löschen
-              </button>
+              <DeleteIconAction type="submit" />
             </form>
           ) : null}
         </div>

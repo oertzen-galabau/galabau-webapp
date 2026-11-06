@@ -1,25 +1,17 @@
 import { createEquipmentType } from '@/lib/actions/equipment-types';
 
-type Props = {
-  nextSortOrder: number;
-};
-
-export function EquipmentTypeCreateForm({ nextSortOrder }: Props) {
+export function EquipmentTypeCreateForm() {
   return (
-    <form action={createEquipmentType} className="input-form input-form--compact">
-      <div className="input-form-core">
-        <label>
+    <form action={createEquipmentType} className="input-form input-form--compact equipment-type-create-form">
+      <div className="equipment-type-create-row">
+        <label className="equipment-type-create-field">
           Bezeichnung
           <input name="name" required placeholder="z. B. Transporter" />
         </label>
-        <label>
-          Reihenfolge
-          <input name="sort_order" type="number" defaultValue={nextSortOrder} />
-        </label>
+        <button type="submit" className="primary-button primary-button--compact">
+          Typ anlegen
+        </button>
       </div>
-      <button type="submit" className="primary-button primary-button--compact">
-        Typ anlegen
-      </button>
     </form>
   );
 }

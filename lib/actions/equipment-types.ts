@@ -26,14 +26,11 @@ export async function createEquipmentType(formData: FormData) {
   const name = String(formData.get('name') ?? '').trim();
   if (!name) throw new Error('Bezeichnung ist erforderlich');
 
-  const sortOrderRaw = Number(formData.get('sort_order'));
-  const sortOrder = Number.isFinite(sortOrderRaw) ? sortOrderRaw : 50;
-
   const supabase = await createClient();
   const { error } = await supabase.from('tenant_equipment_types').insert({
     tenant_id: tenantId,
     name,
-    sort_order: sortOrder,
+    sort_order: 0,
   });
   if (error) throw new Error(equipmentTypeDbError(error));
 
@@ -50,8 +47,6 @@ export async function updateEquipmentType(formData: FormData) {
   if (!id || !name) throw new Error('Ungültige Eingabe');
 
   const isActive = formData.get('is_active') === 'on';
-  const sortOrderRaw = Number(formData.get('sort_order'));
-  const sortOrder = Number.isFinite(sortOrderRaw) ? sortOrderRaw : 50;
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -59,7 +54,6 @@ export async function updateEquipmentType(formData: FormData) {
     .update({
       name,
       is_active: isActive,
-      sort_order: sortOrder,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

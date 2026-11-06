@@ -1,11 +1,13 @@
 'use client';
 
 import {
+  deleteEquipment,
   setEquipmentActive,
   updateEquipmentAction,
   type EquipmentFormState,
 } from '@/lib/actions/equipment';
-import { AppDialog } from '@/components/ui/app-dialogs';
+import { AppDialog, ConfirmDialog } from '@/components/ui/app-dialogs';
+import { DeleteIconAction } from '@/components/ui/icon-action-button';
 import { AppSidePanel } from '@/components/ui/app-side-panel';
 import { FileInputField } from '@/components/ui/file-input-field';
 import { EQUIPMENT_STATUS_LABELS, uvvUrgency, uvvUrgencyCssClass } from '@/lib/equipment/labels';
@@ -35,6 +37,39 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
   const [selected, setSelected] = useState<EquipmentListItem | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [togglePending, startToggleTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<EquipmentListItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePending, startDeleteTransition] = useTransition();
+
+  function confirmDeleteEquipment() {
+    if (!deleteTarget) return;
+    startDeleteTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.set('id', deleteTarget.id);
+        await deleteEquipment(fd);
+        if (selected?.id === deleteTarget.id) setSelected(null);
+        setDeleteTarget(null);
+        setDeleteError(null);
+        router.refresh();
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen');
+      }
+    });
+  }
+
+  const countByType = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.equipment_type_id, (counts.get(item.equipment_type_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [items]);
+
+  const filterTypes = useMemo(
+    () => types.filter((type) => type.is_active || (countByType.get(type.id) ?? 0) > 0),
+    [types, countByType],
+  );
 
   const filtered = useMemo(() => {
     return items.filter((item) => typeFilter === ALL_TYPES || item.equipment_type_id === typeFilter);
@@ -43,21 +78,42 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
   return (
     <>
       <div className="equipment-list-toolbar">
-        <label className="equipment-list-filter">
-          Typ
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+        <div className="equipment-list-filter-wrap">
+          <span className="equipment-list-filter-label" id="equipment-type-filter-label">
+            Typ
+          </span>
+          <div
+            className="equipment-list-filter"
+            role="group"
+            aria-labelledby="equipment-type-filter-label"
           >
-            <option value={ALL_TYPES}>Alle</option>
-            {types.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-                {!type.is_active ? ' (inaktiv)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+            <button
+              type="button"
+              className={`equipment-list-filter-segment${typeFilter === ALL_TYPES ? ' equipment-list-filter-segment--active' : ''}`}
+              aria-pressed={typeFilter === ALL_TYPES}
+              onClick={() => setTypeFilter(ALL_TYPES)}
+            >
+              Alle
+              <span className="equipment-list-filter-count">{items.length}</span>
+            </button>
+            {filterTypes.map((type) => {
+              const count = countByType.get(type.id) ?? 0;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  className={`equipment-list-filter-segment${typeFilter === type.id ? ' equipment-list-filter-segment--active' : ''}`}
+                  aria-pressed={typeFilter === type.id}
+                  onClick={() => setTypeFilter(type.id)}
+                >
+                  {type.name}
+                  {!type.is_active ? <span className="muted"> (inaktiv)</span> : null}
+                  <span className="equipment-list-filter-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="equipment-list">
@@ -115,11 +171,36 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
                   ) : null}
                 </span>
               </button>
+              {canManage ? (
+                <div className="equipment-list-row-actions">
+                  <DeleteIconAction
+                    disabled={deletePending}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteTarget(item);
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           );
         })}
         {filtered.length === 0 ? <p className="muted equipment-list-empty">Keine Einträge für diesen Filter.</p> : null}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => confirmDeleteEquipment()}
+        title="Fahrzeug / Gerät löschen"
+        message={`„${deleteTarget?.name ?? ''}“ unwiderruflich löschen? Zuordnungen in Einsatzplänen werden entfernt.${deleteError ? `\n\n${deleteError}` : ''}`}
+        confirmLabel="Löschen"
+        danger
+        pending={deletePending}
+      />
 
       <AppDialog
         open={Boolean(lightbox)}
@@ -162,6 +243,10 @@ export function EquipmentListClient({ items, types, canManage }: Props) {
                 }
               });
             }}
+            onDelete={() => {
+              setDeleteError(null);
+              setDeleteTarget(selected);
+            }}
           />
         ) : null}
       </AppSidePanel>
@@ -178,6 +263,7 @@ function EquipmentDetailPanel({
   today,
   onSaved,
   onToggleActive,
+  onDelete,
 }: {
   item: EquipmentListItem;
   canManage: boolean;
@@ -187,6 +273,7 @@ function EquipmentDetailPanel({
   today: string;
   onSaved: () => void;
   onToggleActive: () => void;
+  onDelete: () => void;
 }) {
   const [state, action, pending] = useActionState(updateEquipmentAction, equipmentFormInitialState);
   const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
@@ -382,14 +469,24 @@ function EquipmentDetailPanel({
             </div>
           </form>
           {toggleError ? <p className="form-error">{toggleError}</p> : null}
-          <button
-            type="button"
-            className="secondary-button secondary-button--compact"
-            disabled={togglePending || pending}
-            onClick={onToggleActive}
-          >
-            {item.is_active ? 'Deaktivieren' : 'Aktivieren'}
-          </button>
+          <div className="equipment-detail-manage-actions">
+            <button
+              type="button"
+              className="secondary-button secondary-button--compact"
+              disabled={togglePending || pending}
+              onClick={onToggleActive}
+            >
+              {item.is_active ? 'Deaktivieren' : 'Aktivieren'}
+            </button>
+            <button
+              type="button"
+              className="primary-button primary-button--compact primary-button--danger"
+              disabled={togglePending || pending}
+              onClick={onDelete}
+            >
+              Löschen
+            </button>
+          </div>
         </>
       ) : null}
     </div>

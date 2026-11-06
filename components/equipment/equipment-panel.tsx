@@ -35,11 +35,12 @@ export async function EquipmentPanel({ ctx }: Props) {
       .from('tenant_equipment_types')
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('sort_order')
       .order('name'),
   ]);
 
-  const types = (typeRows ?? []) as TenantEquipmentType[];
+  const types = ((typeRows ?? []) as TenantEquipmentType[]).sort((a, b) =>
+    a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }),
+  );
   const activeTypes = types.filter((type) => type.is_active);
   const list = (rows ?? []) as EquipmentRow[];
   const paths = list.map((r) => r.photo_path).filter(Boolean) as string[];

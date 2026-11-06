@@ -234,6 +234,35 @@ export async function updateEquipmentAction(
   }
 }
 
+export async function deleteEquipment(formData: FormData) {
+  const ctx = await getActionContext();
+  requireEquipmentManage(ctx);
+  const { tenantId } = ctx;
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Eintrag fehlt');
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from('tenant_equipment')
+    .select('photo_path')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (!existing) throw new Error('Eintrag nicht gefunden');
+
+  const { error } = await supabase
+    .from('tenant_equipment')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+  if (error) throw new Error(equipmentDbErrorMessage(error));
+
+  await deletePrivateFile(tenantId, EQUIPMENT_PHOTOS_BUCKET, existing.photo_path);
+
+  revalidatePath(EQUIPMENT_PATH);
+}
+
 export async function setEquipmentActive(formData: FormData) {
   const ctx = await getActionContext();
   requireEquipmentManage(ctx);

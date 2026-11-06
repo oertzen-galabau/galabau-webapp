@@ -18,19 +18,18 @@ export async function EquipmentTypesPanel({ ctx }: Props) {
       .from('tenant_equipment_types')
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('sort_order')
       .order('name'),
     supabase.from('tenant_equipment').select('equipment_type_id').eq('tenant_id', tenantId),
   ]);
 
-  const list = (typeRows ?? []) as TenantEquipmentType[];
+  const list = ((typeRows ?? []) as TenantEquipmentType[]).sort((a, b) =>
+    a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }),
+  );
   const usageByType = new Map<string, number>();
   for (const row of usageRows ?? []) {
     const typeId = row.equipment_type_id as string;
     usageByType.set(typeId, (usageByType.get(typeId) ?? 0) + 1);
   }
-
-  const nextSortOrder = list.reduce((max, row) => Math.max(max, row.sort_order), 0) + 10;
 
   return (
     <section className="panel form-panel equipment-types-panel">
@@ -40,7 +39,7 @@ export async function EquipmentTypesPanel({ ctx }: Props) {
         können umbenannt, deaktiviert oder gelöscht werden (Löschen nur ohne zugeordnete Einträge).
       </p>
 
-      {canManage ? <EquipmentTypeCreateForm nextSortOrder={nextSortOrder} /> : null}
+      {canManage ? <EquipmentTypeCreateForm /> : null}
 
       {list.length > 0 ? (
         <div className="work-area-list equipment-type-list" style={{ marginTop: 16 }}>
