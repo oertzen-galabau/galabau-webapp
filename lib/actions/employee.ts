@@ -40,7 +40,7 @@ import {
   type BadWeatherConfig,
 } from '@/lib/payroll/tenant-rules';
 import { isBadWeatherSeason } from '@/lib/payroll/constants';
-import type { DriverTrip } from '@/lib/types/database';
+import type { DriverTrip, TimeEntryApprovalStatus } from '@/lib/types/database';
 import { isDriverFlagFromTrip, parseDriverTrip } from '@/lib/time-tracking/driver-trip';
 import {
   DEFAULT_ACCENT_COLOR,
@@ -205,7 +205,11 @@ async function getOwnTimeEntry(
 }
 
 function assertOwnTimeEntryModifiable(
-  entry: { approval_status: string | null; work_date: string; end_time: string | null },
+  entry: {
+    approval_status: TimeEntryApprovalStatus | null;
+    work_date: string;
+    end_time: string | null;
+  },
   options: { requireCompleted?: boolean; forDelete?: boolean } = {},
 ) {
   if (entry.approval_status === 'approved') {
