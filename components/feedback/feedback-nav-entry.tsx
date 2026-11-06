@@ -1,7 +1,7 @@
 'use client';
 
 import { Bug } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FeedbackDialog } from '@/components/feedback/feedback-dialog';
 
 type Props = {
@@ -11,6 +11,7 @@ type Props = {
 
 export function FeedbackNavEntry({ className = '', onNavigate }: Props) {
   const [open, setOpen] = useState(false);
+  const closeDialog = useCallback(() => setOpen(false), []);
 
   return (
     <>
@@ -25,7 +26,7 @@ export function FeedbackNavEntry({ className = '', onNavigate }: Props) {
         <Bug size={19} />
         <span>Feedback / Bug</span>
       </button>
-      <FeedbackDialog open={open} onClose={() => setOpen(false)} />
+      <FeedbackDialog open={open} onClose={closeDialog} />
     </>
   );
 }

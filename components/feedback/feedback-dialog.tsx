@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useCallback, useState, useTransition } from 'react';
 import { submitFeedbackReport } from '@/lib/actions/feedback';
 import { AppDialog, NoticeDialog } from '@/components/ui/app-dialogs';
 import { ScreenshotDropzone } from '@/components/feedback/screenshot-dropzone';
@@ -30,11 +30,11 @@ export function FeedbackDialog({ open, onClose }: Props) {
     setError(null);
   }
 
-  function handleClose() {
+  const handleClose = useCallback(() => {
     if (pending) return;
     resetForm();
     onClose();
-  }
+  }, [onClose, pending]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

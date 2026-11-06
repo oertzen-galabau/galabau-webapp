@@ -45,24 +45,32 @@ export function AppDialog({
   const autoId = useId();
   const headingId = titleId ?? autoId;
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    lockDocumentScroll();
+    return () => {
+      unlockDocumentScroll();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
 
-    lockDocumentScroll();
-
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     }
 
     document.addEventListener('keydown', onKeyDown);
-    panelRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open]);
 
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      unlockDocumentScroll();
-    };
-  }, [open, onClose]);
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.focus();
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 
