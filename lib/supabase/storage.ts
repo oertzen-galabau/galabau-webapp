@@ -5,7 +5,22 @@ import {
   storagePathBelongsToTenant,
 } from '@/lib/tenant/row-access';
 
-export type PrivateBucket = 'site-documents' | 'daily-photos' | 'reports' | 'equipment-photos';
+export type PrivateBucket =
+  | 'site-documents'
+  | 'daily-photos'
+  | 'reports'
+  | 'equipment-photos'
+  | 'feedback-screenshots';
+
+export const FEEDBACK_SCREENSHOTS_BUCKET = 'feedback-screenshots' as const;
+const FEEDBACK_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+export const FEEDBACK_SCREENSHOT_MAX_COUNT = 5;
+const FEEDBACK_SCREENSHOT_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const FEEDBACK_SCREENSHOT_EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 export const EQUIPMENT_PHOTOS_BUCKET = 'equipment-photos' as const;
 const EQUIPMENT_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -42,11 +57,12 @@ export async function uploadPrivateFile(
   bucket: PrivateBucket,
   path: string,
   file: File,
+  contentType?: string,
 ) {
   assertStoragePathBelongsToTenant(tenantId, path);
   const admin = createAdminClient();
   const { error } = await admin.storage.from(bucket).upload(path, file, {
-    contentType: file.type || undefined,
+    contentType: contentType ?? (file.type || undefined),
     upsert: false,
   });
   if (error) throw new Error(error.message);
@@ -112,12 +128,21 @@ export async function deletePrivateFile(tenantId: string, bucket: PrivateBucket,
   if (error) console.warn(`Storage delete failed (${bucket}/${path}):`, error.message);
 }
 
+function resolveEquipmentPhotoMime(file: File): string {
+  if (file.type && EQUIPMENT_PHOTO_MIME_TYPES.has(file.type)) return file.type;
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (/\.jpe?g$/i.test(lower)) return 'image/jpeg';
+  return file.type || 'application/octet-stream';
+}
+
 export function validateEquipmentPhotoFile(file: File) {
   if (file.size === 0) throw new Error('Keine Datei ausgewählt');
   if (file.size > EQUIPMENT_PHOTO_MAX_BYTES) {
     throw new Error('Foto darf maximal 2 MB groß sein');
   }
-  const mime = file.type || 'application/octet-stream';
+  const mime = resolveEquipmentPhotoMime(file);
   if (!EQUIPMENT_PHOTO_MIME_TYPES.has(mime)) {
     throw new Error('Foto muss JPEG, PNG oder WebP sein');
   }
@@ -125,9 +150,10 @@ export function validateEquipmentPhotoFile(file: File) {
 
 export async function uploadEquipmentPhoto(tenantId: string, equipmentId: string, file: File) {
   validateEquipmentPhotoFile(file);
-  const ext = EQUIPMENT_PHOTO_EXT_BY_MIME[file.type] ?? 'jpg';
+  const mime = resolveEquipmentPhotoMime(file);
+  const ext = EQUIPMENT_PHOTO_EXT_BY_MIME[mime] ?? 'jpg';
   const path = buildStoragePath(tenantId, equipmentId, `photo.${ext}`);
-  await uploadPrivateFile(tenantId, EQUIPMENT_PHOTOS_BUCKET, path, file);
+  await uploadPrivateFile(tenantId, EQUIPMENT_PHOTOS_BUCKET, path, file, mime);
   return path;
 }
 
@@ -185,4 +211,39 @@ export async function deleteTenantLogo(tenantId: string, logoUrl: string | null)
   const admin = createAdminClient();
   const { error } = await admin.storage.from(TENANT_LOGOS_BUCKET).remove([path]);
   if (error) console.warn(`Tenant logo delete failed (${path}):`, error.message);
+}
+
+function resolveFeedbackScreenshotMime(file: File): string {
+  if (file.type && FEEDBACK_SCREENSHOT_MIME_TYPES.has(file.type)) return file.type;
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (/\.jpe?g$/i.test(lower)) return 'image/jpeg';
+  return file.type || 'application/octet-stream';
+}
+
+export function validateFeedbackScreenshotFile(file: File) {
+  if (file.size === 0) throw new Error('Leere Datei übersprungen');
+  if (file.size > FEEDBACK_SCREENSHOT_MAX_BYTES) {
+    throw new Error('Screenshot darf maximal 5 MB groß sein');
+  }
+  const mime = resolveFeedbackScreenshotMime(file);
+  if (!FEEDBACK_SCREENSHOT_MIME_TYPES.has(mime)) {
+    throw new Error('Screenshot muss JPEG, PNG oder WebP sein');
+  }
+}
+
+export async function uploadFeedbackScreenshot(
+  tenantId: string,
+  reportId: string,
+  file: File,
+  index: number,
+) {
+  validateFeedbackScreenshotFile(file);
+  const mime = resolveFeedbackScreenshotMime(file);
+  const ext = FEEDBACK_SCREENSHOT_EXT_BY_MIME[mime] ?? 'jpg';
+  const safeName = sanitizeFileName(file.name.replace(/\.[^.]+$/, '') || 'screenshot');
+  const path = buildStoragePath(tenantId, 'feedback', reportId, `${Date.now()}-${index}-${safeName}.${ext}`);
+  await uploadPrivateFile(tenantId, FEEDBACK_SCREENSHOTS_BUCKET, path, file, mime);
+  return { path, mime };
 }

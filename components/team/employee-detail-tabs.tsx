@@ -15,7 +15,7 @@ export function EmployeeDetailTabs({ employeeId, tabs, activeTab, month }: Props
     <nav className="employee-detail-tabs" aria-label="Mitarbeiter-Bereiche">
       {tabs.map((tab) => {
         const params = new URLSearchParams({ tab: tab.id });
-        if (tab.id === 'zeiten' && month) params.set('month', month);
+        if ((tab.id === 'zeiten' || tab.id === 'overview') && month) params.set('month', month);
         const href = `/app/team/${employeeId}?${params.toString()}`;
         return (
           <Link

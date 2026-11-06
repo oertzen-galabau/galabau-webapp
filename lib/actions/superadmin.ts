@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireSuperadmin } from '@/lib/auth/session';
 import { getTenantBySlug } from '@/lib/tenant/resolve';
 import { seedTenantRoles } from '@/lib/tenant/roles';
+import { seedTenantEquipmentTypes } from '@/lib/tenant/equipment-types';
 import { seedTenantWorkAreas } from '@/lib/tenant/work-areas';
 
 export async function openTenantAsSuperadmin(formData: FormData) {
@@ -55,6 +56,7 @@ export async function createTenant(formData: FormData) {
   }
 
   await seedTenantWorkAreas(admin, tenant.id);
+  await seedTenantEquipmentTypes(admin, tenant.id);
   const roleIds = await seedTenantRoles(admin, tenant.id);
   const adminRoleId = roleIds.get('administrator');
   if (!adminRoleId) {

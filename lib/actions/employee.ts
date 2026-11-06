@@ -7,6 +7,7 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import { parseSegmentsFromForm } from '@/lib/time-tracking/form-parsing';
 import { processTimeEntrySubmission } from '@/lib/time-tracking/submission';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
+import { isOwnSubmittedTimeEntryLocked } from '@/lib/time-tracking/entry-editable';
 import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 import {
   closeOpenInterval,
@@ -205,10 +206,17 @@ async function getOwnTimeEntry(
 
 function assertOwnTimeEntryModifiable(
   entry: { approval_status: string | null; work_date: string; end_time: string | null },
-  options: { requireCompleted?: boolean } = {},
+  options: { requireCompleted?: boolean; forDelete?: boolean } = {},
 ) {
   if (entry.approval_status === 'approved') {
     throw new Error('Freigegebene Zeiteinträge können nicht mehr geändert werden.');
+  }
+  if (isOwnSubmittedTimeEntryLocked(entry)) {
+    throw new Error(
+      options.forDelete
+        ? 'Eingereichte Zeiten können nicht mehr gelöscht werden.'
+        : 'Eingereichte Zeiten können nicht mehr geändert werden.',
+    );
   }
   if (options.requireCompleted && !entry.end_time) {
     throw new Error('Laufende Zeiteinträge können hier nicht bearbeitet werden.');
@@ -555,7 +563,7 @@ export async function deleteTimeEntry(formData: FormData) {
 
   const supabase = await createClient();
   const existing = await getOwnTimeEntry(supabase, tenantId, userId, entryId);
-  assertOwnTimeEntryModifiable(existing);
+  assertOwnTimeEntryModifiable(existing, { forDelete: true });
 
   const { error } = await supabase
     .from('time_entries')

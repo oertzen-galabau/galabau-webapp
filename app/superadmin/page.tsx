@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createTenant, openTenantAsSuperadmin, updateTenantStatus } from '@/lib/actions/superadmin';
 import { AppSelect } from '@/components/ui/app-select';
 import { SaveIconAction, TableIconActions } from '@/components/ui/icon-action-button';
+import { FeedbackAdminPanel } from '@/components/feedback/feedback-admin-panel';
+import { listFeedbackReportsForSuperadmin } from '@/lib/actions/feedback';
 
 const TENANT_STATUS_OPTIONS = [
   { value: 'trial', label: 'trial' },
@@ -15,9 +17,10 @@ export default async function SuperadminPage() {
   await requireSuperadmin();
   const admin = createAdminClient();
 
-  const [{ data: tenants }, { data: requests }] = await Promise.all([
+  const [{ data: tenants }, { data: requests }, feedbackRows] = await Promise.all([
     admin.from('tenants').select('*').order('created_at', { ascending: false }),
     admin.from('tenant_requests').select('*').order('created_at', { ascending: false }).limit(20),
+    listFeedbackReportsForSuperadmin(),
   ]);
 
   return (
@@ -87,6 +90,8 @@ export default async function SuperadminPage() {
           </table>
         </div>
       </section>
+
+      <FeedbackAdminPanel initialRows={feedbackRows} />
 
       <section className="panel" style={{ marginTop: 16 }}>
         <h2>Anfragen (Marketing)</h2>

@@ -10,11 +10,9 @@ import type {
 } from '@/lib/infoboard/types';
 import {
   compareUvvDueEntries,
-  EQUIPMENT_KIND_LABELS,
   equipmentListSubtitle,
   uvvUrgency,
 } from '@/lib/equipment/labels';
-import type { TenantEquipmentKind } from '@/lib/types/database';
 import { formatLeaveType } from '@/lib/leave/labels';
 import {
   listMyLeaveRequestsForInfoboard,
@@ -242,7 +240,7 @@ export async function fetchInfoboardPayload(
     canViewEquipment
       ? supabase
           .from('tenant_equipment')
-          .select('id, name, kind, license_plate, inventory_number, uvv_due_date')
+          .select('id, name, license_plate, inventory_number, uvv_due_date, tenant_equipment_types ( name )')
           .eq('tenant_id', tenantId)
           .not('uvv_due_date', 'is', null)
       : Promise.resolve({ data: [] }),
@@ -350,11 +348,12 @@ export async function fetchInfoboardPayload(
       const dueDate = String(row.uvv_due_date);
       const urgency = uvvUrgency(dueDate, today);
       if (!urgency) return null;
-      const kind = row.kind as TenantEquipmentKind;
+      const typeJoin = row.tenant_equipment_types as { name: string } | { name: string }[] | null;
+      const typeName = Array.isArray(typeJoin) ? typeJoin[0]?.name : typeJoin?.name;
       return {
         id: row.id,
         name: row.name,
-        kindLabel: EQUIPMENT_KIND_LABELS[kind] ?? row.kind,
+        kindLabel: typeName ?? '—',
         subtitle: equipmentListSubtitle(row),
         dueDate,
         urgency,

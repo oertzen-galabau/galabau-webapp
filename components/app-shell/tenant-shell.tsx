@@ -20,6 +20,7 @@ import { getPendingOrderCount } from '@/lib/actions/orders';
 import { getPendingTimeApprovalCount, getUnreadMessageCount } from '@/lib/actions/employee';
 import { createClient } from '@/lib/supabase/client';
 import { LogoutButton } from '@/components/auth/logout-button';
+import { FeedbackNavEntry } from '@/components/feedback/feedback-nav-entry';
 import { RoleSwitcher } from '@/components/dev/role-switcher';
 import { HeaderTimeClock } from '@/components/time-tracking/header-time-clock';
 import { IntervalConfirmDialog } from '@/components/time-tracking/interval-confirm-dialog';
@@ -406,6 +407,7 @@ function TenantShellInner({
                 </AppNavLink>
               );
             })}
+            <FeedbackNavEntry />
           </nav>
           <div className="sidebar-user">
             <AppNavLink
@@ -490,6 +492,7 @@ function TenantShellInner({
                   </AppNavLink>
                 );
               })}
+              <FeedbackNavEntry className="mobile-drawer-feedback" onNavigate={() => setMobileMenu(false)} />
               <AppNavLink
                 href="/app/profil"
                 className={profileActive ? 'active' : ''}

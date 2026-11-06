@@ -1,40 +1,44 @@
 'use client';
 
-import { setEquipmentActive, updateEquipment } from '@/lib/actions/equipment';
+import {
+  setEquipmentActive,
+  updateEquipmentAction,
+  type EquipmentFormState,
+} from '@/lib/actions/equipment';
 import { AppDialog } from '@/components/ui/app-dialogs';
 import { AppSidePanel } from '@/components/ui/app-side-panel';
 import { FileInputField } from '@/components/ui/file-input-field';
-import {
-  EQUIPMENT_KIND_LABELS,
-  EQUIPMENT_STATUS_LABELS,
-  uvvUrgency,
-  uvvUrgencyCssClass,
-} from '@/lib/equipment/labels';
+import { EQUIPMENT_STATUS_LABELS, uvvUrgency, uvvUrgencyCssClass } from '@/lib/equipment/labels';
 import { todayIsoInBerlin } from '@/lib/schedule/week';
-import type { TenantEquipment, TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
+import type { TenantEquipment, TenantEquipmentStatus, TenantEquipmentType } from '@/lib/types/database';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
 
-export type EquipmentListItem = TenantEquipment & { photoUrl: string | null };
+const equipmentFormInitialState: EquipmentFormState = { error: null };
+
+export type EquipmentListItem = TenantEquipment & { photoUrl: string | null; typeName: string };
 
 type Props = {
   items: EquipmentListItem[];
+  types: TenantEquipmentType[];
   canManage: boolean;
 };
 
-const ALL_KIND = 'all' as const;
+const ALL_TYPES = 'all' as const;
 
-export function EquipmentListClient({ items, canManage }: Props) {
+export function EquipmentListClient({ items, types, canManage }: Props) {
   const router = useRouter();
   const today = todayIsoInBerlin();
-  const [kindFilter, setKindFilter] = useState<TenantEquipmentKind | typeof ALL_KIND>(ALL_KIND);
+  const activeTypes = useMemo(() => types.filter((type) => type.is_active), [types]);
+  const [typeFilter, setTypeFilter] = useState<string | typeof ALL_TYPES>(ALL_TYPES);
   const [lightbox, setLightbox] = useState<{ url: string; title: string } | null>(null);
   const [selected, setSelected] = useState<EquipmentListItem | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  const [togglePending, startToggleTransition] = useTransition();
 
   const filtered = useMemo(() => {
-    return items.filter((item) => kindFilter === ALL_KIND || item.kind === kindFilter);
-  }, [items, kindFilter]);
+    return items.filter((item) => typeFilter === ALL_TYPES || item.equipment_type_id === typeFilter);
+  }, [items, typeFilter]);
 
   return (
     <>
@@ -42,13 +46,14 @@ export function EquipmentListClient({ items, canManage }: Props) {
         <label className="equipment-list-filter">
           Typ
           <select
-            value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value as TenantEquipmentKind | typeof ALL_KIND)}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
           >
-            <option value={ALL_KIND}>Alle</option>
-            {(Object.keys(EQUIPMENT_KIND_LABELS) as TenantEquipmentKind[]).map((k) => (
-              <option key={k} value={k}>
-                {EQUIPMENT_KIND_LABELS[k]}
+            <option value={ALL_TYPES}>Alle</option>
+            {types.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+                {!type.is_active ? ' (inaktiv)' : ''}
               </option>
             ))}
           </select>
@@ -73,13 +78,20 @@ export function EquipmentListClient({ items, canManage }: Props) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={item.photoUrl} alt="" />
                 ) : (
-                  <span className="equipment-list-thumb-placeholder">{EQUIPMENT_KIND_LABELS[item.kind].charAt(0)}</span>
+                  <span className="equipment-list-thumb-placeholder">{item.typeName.charAt(0)}</span>
                 )}
               </button>
-              <button type="button" className="equipment-list-main" onClick={() => setSelected(item)}>
+              <button
+                type="button"
+                className="equipment-list-main"
+                onClick={() => {
+                  setToggleError(null);
+                  setSelected(item);
+                }}
+              >
                 <span className="equipment-list-title">
                   <strong>{item.name}</strong>
-                  <span className="status-badge">{EQUIPMENT_KIND_LABELS[item.kind]}</span>
+                  <span className="status-badge">{item.typeName}</span>
                   {item.status !== 'active' ? (
                     <span className="status-badge">{EQUIPMENT_STATUS_LABELS[item.status]}</span>
                   ) : null}
@@ -124,25 +136,30 @@ export function EquipmentListClient({ items, canManage }: Props) {
       <AppSidePanel open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.name ?? ''}>
         {selected ? (
           <EquipmentDetailPanel
+            key={selected.id}
             item={selected}
             canManage={canManage}
-            pending={pending}
+            activeTypes={activeTypes}
+            togglePending={togglePending}
+            toggleError={toggleError}
             today={today}
-            onSubmit={(fd) => {
-              startTransition(async () => {
-                await updateEquipment(fd);
-                setSelected(null);
-                router.refresh();
-              });
+            onSaved={() => {
+              setSelected(null);
+              router.refresh();
             }}
             onToggleActive={() => {
-              startTransition(async () => {
-                const fd = new FormData();
-                fd.set('id', selected.id);
-                fd.set('is_active', selected.is_active ? 'false' : 'true');
-                await setEquipmentActive(fd);
-                setSelected(null);
-                router.refresh();
+              setToggleError(null);
+              startToggleTransition(async () => {
+                try {
+                  const fd = new FormData();
+                  fd.set('id', selected.id);
+                  fd.set('is_active', selected.is_active ? 'false' : 'true');
+                  await setEquipmentActive(fd);
+                  setSelected(null);
+                  router.refresh();
+                } catch (err) {
+                  setToggleError(err instanceof Error ? err.message : 'Aktion fehlgeschlagen');
+                }
               });
             }}
           />
@@ -155,19 +172,29 @@ export function EquipmentListClient({ items, canManage }: Props) {
 function EquipmentDetailPanel({
   item,
   canManage,
-  pending,
+  activeTypes,
+  togglePending,
+  toggleError,
   today,
-  onSubmit,
+  onSaved,
   onToggleActive,
 }: {
   item: EquipmentListItem;
   canManage: boolean;
-  pending: boolean;
+  activeTypes: TenantEquipmentType[];
+  togglePending: boolean;
+  toggleError: string | null;
   today: string;
-  onSubmit: (fd: FormData) => void;
+  onSaved: () => void;
   onToggleActive: () => void;
 }) {
+  const [state, action, pending] = useActionState(updateEquipmentAction, equipmentFormInitialState);
   const uvvClass = uvvUrgencyCssClass(uvvUrgency(item.uvv_due_date, today));
+
+  useEffect(() => {
+    if (!state.ok || state.error) return;
+    onSaved();
+  }, [state.ok, state.error, onSaved]);
 
   return (
     <div className="equipment-detail">
@@ -179,7 +206,7 @@ function EquipmentDetailPanel({
         <dl className="equipment-detail-facts">
           <div>
             <dt>Typ</dt>
-            <dd>{EQUIPMENT_KIND_LABELS[item.kind]}</dd>
+            <dd>{item.typeName}</dd>
           </div>
           <div>
             <dt>Status</dt>
@@ -254,14 +281,7 @@ function EquipmentDetailPanel({
 
       {canManage ? (
         <>
-          <form
-            className="input-form equipment-detail-form"
-            encType="multipart/form-data"
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSubmit(new FormData(e.currentTarget));
-            }}
-          >
+          <form action={action} className="input-form equipment-detail-form" encType="multipart/form-data">
             <input type="hidden" name="id" value={item.id} />
             <p className="input-form-section-title">Bearbeiten</p>
             <div className="input-form-core">
@@ -271,12 +291,15 @@ function EquipmentDetailPanel({
               </label>
               <label>
                 Typ
-                <select name="kind" required defaultValue={item.kind} disabled={pending}>
-                  {(Object.keys(EQUIPMENT_KIND_LABELS) as TenantEquipmentKind[]).map((k) => (
-                    <option key={k} value={k}>
-                      {EQUIPMENT_KIND_LABELS[k]}
+                <select name="equipment_type_id" required defaultValue={item.equipment_type_id} disabled={pending}>
+                  {activeTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
                     </option>
                   ))}
+                  {!activeTypes.some((type) => type.id === item.equipment_type_id) ? (
+                    <option value={item.equipment_type_id}>{item.typeName} (inaktiv)</option>
+                  ) : null}
                 </select>
               </label>
               <FileInputField
@@ -352,12 +375,19 @@ function EquipmentDetailPanel({
               </label>
             </div>
             <div className="input-form-actions">
+              {state.error ? <p className="form-error">{state.error}</p> : null}
               <button type="submit" className="primary-button primary-button--compact" disabled={pending}>
                 {pending ? 'Speichern…' : 'Speichern'}
               </button>
             </div>
           </form>
-          <button type="button" className="secondary-button secondary-button--compact" disabled={pending} onClick={onToggleActive}>
+          {toggleError ? <p className="form-error">{toggleError}</p> : null}
+          <button
+            type="button"
+            className="secondary-button secondary-button--compact"
+            disabled={togglePending || pending}
+            onClick={onToggleActive}
+          >
             {item.is_active ? 'Deaktivieren' : 'Aktivieren'}
           </button>
         </>

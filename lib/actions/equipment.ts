@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, getActionContext } from '@/lib/auth/session';
-import type { TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
+import type { TenantEquipmentStatus } from '@/lib/types/database';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   deletePrivateFile,
   EQUIPMENT_PHOTOS_BUCKET,
@@ -13,14 +14,44 @@ import { partnerSettingsListPath } from '@/lib/partners/paths';
 
 const EQUIPMENT_PATH = partnerSettingsListPath('fahrzeuge');
 
+export type EquipmentFormState = { error: string | null; ok?: boolean };
+
+function equipmentActionError(err: unknown): EquipmentFormState {
+  return {
+    error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen',
+    ok: false,
+  };
+}
+
+function readPhotoFromForm(formData: FormData): File | null {
+  const photo = formData.get('photo');
+  if (typeof photo !== 'object' || photo === null || !('size' in photo)) return null;
+  const size = photo.size;
+  if (typeof size !== 'number' || size <= 0) return null;
+  return photo as File;
+}
+
 function requireEquipmentManage(ctx: Awaited<ReturnType<typeof getActionContext>>) {
   if (!canAccess(ctx, 'partners.manage')) throw new Error('Keine Berechtigung');
 }
 
-function parseKind(raw: FormDataEntryValue | null): TenantEquipmentKind {
-  const v = String(raw ?? '');
-  if (v === 'vehicle' || v === 'equipment' || v === 'trailer') return v;
-  throw new Error('Ungültiger Typ');
+async function resolveEquipmentTypeId(
+  supabase: SupabaseClient,
+  tenantId: string,
+  raw: FormDataEntryValue | null,
+): Promise<string> {
+  const id = String(raw ?? '').trim();
+  if (!id) throw new Error('Typ ist erforderlich');
+
+  const { data, error } = await supabase
+    .from('tenant_equipment_types')
+    .select('id, is_active')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error || !data) throw new Error('Typ nicht gefunden');
+  if (!data.is_active) throw new Error('Typ ist inaktiv');
+  return id;
 }
 
 function parseStatus(raw: FormDataEntryValue | null): TenantEquipmentStatus {
@@ -52,6 +83,14 @@ function readOptionalDate(raw: FormDataEntryValue | null): string | null {
 
 const BOOKING_NUMBER_MAX_LEN = 50;
 
+function equipmentDbErrorMessage(error: { code?: string; message?: string }): string {
+  const msg = error.message ?? 'Speichern fehlgeschlagen';
+  if (error.code === '23505' && msg.includes('tenant_equipment_tenant_inventory_uidx')) {
+    return 'Diese Inventarnummer ist im Mandanten bereits vergeben.';
+  }
+  return msg;
+}
+
 function readOptionalBookingNumber(raw: FormDataEntryValue | null): string | null {
   const s = String(raw ?? '').trim();
   if (!s) return null;
@@ -61,11 +100,20 @@ function readOptionalBookingNumber(raw: FormDataEntryValue | null): string | nul
   return s;
 }
 
-function readEquipmentFields(formData: FormData) {
+async function readEquipmentFields(
+  supabase: SupabaseClient,
+  tenantId: string,
+  formData: FormData,
+) {
   const name = String(formData.get('name') ?? '').trim();
   if (!name) throw new Error('Bezeichnung ist erforderlich');
+  const equipment_type_id = await resolveEquipmentTypeId(
+    supabase,
+    tenantId,
+    formData.get('equipment_type_id'),
+  );
   return {
-    kind: parseKind(formData.get('kind')),
+    equipment_type_id,
     name,
     build_year: readOptionalInt(formData.get('build_year')),
     serial_number: String(formData.get('serial_number') ?? '').trim() || null,
@@ -89,8 +137,8 @@ async function applyPhotoFromForm(
   formData: FormData,
   existingPath: string | null,
 ): Promise<string | null> {
-  const photo = formData.get('photo');
-  if (!(photo instanceof File) || photo.size === 0) return existingPath;
+  const photo = readPhotoFromForm(formData);
+  if (!photo) return existingPath;
   if (existingPath) {
     await deletePrivateFile(tenantId, EQUIPMENT_PHOTOS_BUCKET, existingPath);
   }
@@ -102,7 +150,7 @@ export async function createEquipment(formData: FormData) {
   requireEquipmentManage(ctx);
   const { tenantId } = ctx;
   const supabase = await createClient();
-  const fields = readEquipmentFields(formData);
+  const fields = await readEquipmentFields(supabase, tenantId, formData);
 
   const { data, error } = await supabase
     .from('tenant_equipment')
@@ -113,7 +161,7 @@ export async function createEquipment(formData: FormData) {
     })
     .select('id')
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(equipmentDbErrorMessage(error));
 
   const photoPath = await applyPhotoFromForm(tenantId, data.id, formData, null);
   if (photoPath) {
@@ -122,10 +170,22 @@ export async function createEquipment(formData: FormData) {
       .update({ photo_path: photoPath, updated_at: new Date().toISOString() })
       .eq('id', data.id)
       .eq('tenant_id', tenantId);
-    if (photoError) throw new Error(photoError.message);
+    if (photoError) throw new Error(equipmentDbErrorMessage(photoError));
   }
 
   revalidatePath(EQUIPMENT_PATH);
+}
+
+export async function createEquipmentAction(
+  _prev: EquipmentFormState,
+  formData: FormData,
+): Promise<EquipmentFormState> {
+  try {
+    await createEquipment(formData);
+    return { error: null, ok: true };
+  } catch (err) {
+    return equipmentActionError(err);
+  }
 }
 
 export async function updateEquipment(formData: FormData) {
@@ -145,7 +205,7 @@ export async function updateEquipment(formData: FormData) {
     .maybeSingle();
   if (!existing) throw new Error('Eintrag nicht gefunden');
 
-  const fields = readEquipmentFields(formData);
+  const fields = await readEquipmentFields(supabase, tenantId, formData);
   const photoPath = await applyPhotoFromForm(tenantId, id, formData, existing.photo_path);
 
   const { error } = await supabase
@@ -157,9 +217,21 @@ export async function updateEquipment(formData: FormData) {
     })
     .eq('id', id)
     .eq('tenant_id', tenantId);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(equipmentDbErrorMessage(error));
 
   revalidatePath(EQUIPMENT_PATH);
+}
+
+export async function updateEquipmentAction(
+  _prev: EquipmentFormState,
+  formData: FormData,
+): Promise<EquipmentFormState> {
+  try {
+    await updateEquipment(formData);
+    return { error: null, ok: true };
+  } catch (err) {
+    return equipmentActionError(err);
+  }
 }
 
 export async function setEquipmentActive(formData: FormData) {
@@ -177,7 +249,7 @@ export async function setEquipmentActive(formData: FormData) {
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('tenant_id', tenantId);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(equipmentDbErrorMessage(error));
 
   revalidatePath(EQUIPMENT_PATH);
 }

@@ -1,31 +1,38 @@
 'use client';
 
-import { createEquipment } from '@/lib/actions/equipment';
+import { createEquipmentAction, type EquipmentFormState } from '@/lib/actions/equipment';
 import { FileInputField } from '@/components/ui/file-input-field';
-import { EQUIPMENT_KIND_LABELS, EQUIPMENT_STATUS_LABELS } from '@/lib/equipment/labels';
-import type { TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
+import { EQUIPMENT_STATUS_LABELS } from '@/lib/equipment/labels';
+import type { TenantEquipmentStatus, TenantEquipmentType } from '@/lib/types/database';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 
-const KINDS = Object.keys(EQUIPMENT_KIND_LABELS) as TenantEquipmentKind[];
+const initialState: EquipmentFormState = { error: null };
+
 const STATUSES = Object.keys(EQUIPMENT_STATUS_LABELS) as TenantEquipmentStatus[];
 
-export function EquipmentCreateForm() {
+type Props = {
+  types: TenantEquipmentType[];
+};
+
+export function EquipmentCreateForm({ types }: Props) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [state, action, pending] = useActionState(createEquipmentAction, initialState);
+  const [formKey, setFormKey] = useState(0);
+  const defaultTypeId = types[0]?.id ?? '';
+
+  useEffect(() => {
+    if (!state.ok || state.error) return;
+    router.refresh();
+    setFormKey((key) => key + 1);
+  }, [state.ok, state.error, router]);
 
   return (
     <form
+      key={formKey}
+      action={action}
       className="input-form equipment-create-form"
       encType="multipart/form-data"
-      onSubmit={(e) => {
-        e.preventDefault();
-        startTransition(async () => {
-          await createEquipment(new FormData(e.currentTarget));
-          e.currentTarget.reset();
-          router.refresh();
-        });
-      }}
     >
       <div className="input-form-core">
         <label>
@@ -34,10 +41,10 @@ export function EquipmentCreateForm() {
         </label>
         <label>
           Typ
-          <select name="kind" required disabled={pending} defaultValue="equipment">
-            {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {EQUIPMENT_KIND_LABELS[k]}
+          <select name="equipment_type_id" required disabled={pending} defaultValue={defaultTypeId}>
+            {types.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
               </option>
             ))}
           </select>
@@ -74,7 +81,7 @@ export function EquipmentCreateForm() {
             className="equipment-create-photo"
             label="Foto"
             name="photo"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,image/*"
             hint="JPG, PNG oder WebP"
             disabled={pending}
           />
@@ -118,6 +125,7 @@ export function EquipmentCreateForm() {
         </div>
       </details>
       <div className="input-form-actions">
+        {state.error ? <p className="form-error">{state.error}</p> : null}
         <button type="submit" className="primary-button primary-button--compact" disabled={pending}>
           {pending ? 'Speichern…' : 'Anlegen'}
         </button>

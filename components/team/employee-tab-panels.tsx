@@ -37,12 +37,15 @@ import {
   getMemberAccessStatus,
   memberAccessStatusLabel,
 } from '@/lib/team/member-access-status';
+import { groupByCalendarMonth, shiftMonth, formatMonthLabel } from '@/lib/team/group-by-calendar-month';
 import { businessDaysBetween, formatMinutes } from '@/lib/utils/time';
 import { AppSelect } from '@/components/ui/app-select';
 import { EmployeeStammdatenForm } from '@/components/team/employee-stammdaten-form';
 import { LeaveRequestsTable } from '@/components/leave/leave-requests-table';
 import { LEAVE_STATUS_LABELS } from '@/lib/leave/request-editable';
 import { ApproveIconAction, RejectIconAction } from '@/components/ui/icon-action-button';
+import { EmployeeYearFilter } from '@/components/team/employee-year-filter';
+import { EmployeeOverviewFeedTabs } from '@/components/team/employee-overview-feed-tabs';
 
 type PermCtx = {
   permissions: Set<PermissionKey>;
@@ -87,6 +90,44 @@ function can(ctx: PermCtx, key: PermissionKey) {
   return canAccess(ctx, key);
 }
 
+function buildEmployeeYearOptions(
+  selectedYear: number,
+  member: Profile,
+  leaveRequests: LeaveRequest[],
+  timeEntries: TimeEntry[],
+): number[] {
+  const currentYear = new Date().getFullYear();
+  let minYear = selectedYear;
+
+  if (member.entry_date && member.entry_date.length >= 4) {
+    minYear = Math.min(minYear, Number(member.entry_date.slice(0, 4)));
+  }
+  for (const request of leaveRequests) {
+    if (request.start_date.length >= 4) {
+      minYear = Math.min(minYear, Number(request.start_date.slice(0, 4)));
+    }
+  }
+  for (const entry of timeEntries) {
+    if (entry.work_date.length >= 4) {
+      minYear = Math.min(minYear, Number(entry.work_date.slice(0, 4)));
+    }
+  }
+
+  const years: number[] = [];
+  for (let y = currentYear; y >= minYear; y -= 1) years.push(y);
+  return years.length > 0 ? years : [currentYear];
+}
+
+/** Month group to expand on load (current calendar month in current year, else URL month). */
+function expandedOverviewMonthKey(year: number, month: string): string {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  if (year === currentYear) {
+    return `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+  return month;
+}
+
 export function EmployeeTabPanel(props: Props) {
   switch (props.tab) {
     case 'overview':
@@ -114,23 +155,41 @@ function OverviewTab({
   member,
   ctx,
   year,
-  monthMinutes,
+  month,
   pendingLeaveCount,
   todayAssignment,
   timeEntries,
   leaveRequests,
   leaveBreakdown,
 }: Props) {
+  const yearPrefix = `${year}-`;
+  const leaveInYear = leaveRequests.filter((request) => request.start_date.startsWith(yearPrefix));
+  const timeGroups = groupByCalendarMonth(timeEntries, (entry) => entry.work_date);
+  const leaveGroups = groupByCalendarMonth(leaveInYear, (request) => request.start_date);
+  const yearMinutes = timeEntries.reduce((sum, entry) => sum + (entry.work_minutes ?? 0), 0);
+  const monthPart = month.slice(5, 7);
+  const yearOptions = buildEmployeeYearOptions(year, member, leaveRequests, timeEntries);
+  const openMonthKey = expandedOverviewMonthKey(year, month);
+  const timeGroupKeys = new Set(timeGroups.map((g) => g.monthKey));
+  const leaveGroupKeys = new Set(leaveGroups.map((g) => g.monthKey));
+
   return (
     <section className="panel employee-section">
+      <EmployeeYearFilter
+        employeeId={member.id}
+        selectedYear={year}
+        monthPart={monthPart}
+        years={yearOptions}
+      />
+
       <div className="employee-overview-grid metric-grid">
         <article className="metric-card">
           <span>Resturlaub {year}</span>
           <strong>{leaveBreakdown.remaining.toFixed(1)}</strong>
         </article>
         <article className="metric-card">
-          <span>Stunden (Monat)</span>
-          <strong>{formatMinutes(monthMinutes)}</strong>
+          <span>Stunden {year}</span>
+          <strong>{formatMinutes(yearMinutes)}</strong>
         </article>
         <article className="metric-card">
           <span>Offene Anträge</span>
@@ -179,28 +238,75 @@ function OverviewTab({
         </div>
       </div>
 
-      <div className="employee-feed-grid">
-        <div>
-          <h2>Letzte Zeiteinträge</h2>
-          {timeEntries.length === 0 && <p className="muted">Keine Einträge.</p>}
-          <ul className="simple-list">
-            {timeEntries.slice(0, 5).map((e) => (
-              <li key={e.id}>{e.work_date} · {formatMinutes(e.work_minutes ?? 0)} Std.</li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h2>Letzte Urlaubsanträge</h2>
-          {leaveRequests.length === 0 && <p className="muted">Keine Anträge.</p>}
-          <ul className="simple-list">
-            {leaveRequests.slice(0, 3).map((r) => (
-              <li key={r.id}>
-                {formatLeaveType(r.leave_type, r.notes)} · {r.start_date} – {r.end_date} · {LEAVE_STATUS_LABELS[r.status]}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      <EmployeeOverviewFeedTabs
+        timeContent={
+          timeGroups.length === 0 ? (
+            <p className="muted">Keine Einträge in {year}.</p>
+          ) : (
+            timeGroups.map((group) => {
+              const groupMinutes = group.items.reduce(
+                (sum, entry) => sum + (entry.work_minutes ?? 0),
+                0,
+              );
+              const isOpen = group.monthKey === openMonthKey && timeGroupKeys.has(openMonthKey);
+              return (
+                <details
+                  key={group.monthKey}
+                  className="employee-feed-month-group employee-feed-month-accordion"
+                  open={isOpen}
+                >
+                  <summary className="employee-feed-month-summary">
+                    <span className="employee-feed-month-title">{group.label}</span>
+                    <span className="employee-feed-month-meta muted">
+                      {formatMinutes(groupMinutes)} · {group.items.length}{' '}
+                      {group.items.length === 1 ? 'Eintrag' : 'Einträge'}
+                    </span>
+                  </summary>
+                  <ul className="simple-list employee-feed-month-list">
+                    {group.items.map((entry) => (
+                      <li key={entry.id}>
+                        {entry.work_date} · {formatMinutes(entry.work_minutes ?? 0)} Std.
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              );
+            })
+          )
+        }
+        leaveContent={
+          leaveGroups.length === 0 ? (
+            <p className="muted">Keine Anträge in {year}.</p>
+          ) : (
+            leaveGroups.map((group) => {
+              const isOpen = group.monthKey === openMonthKey && leaveGroupKeys.has(openMonthKey);
+              return (
+                <details
+                  key={group.monthKey}
+                  className="employee-feed-month-group employee-feed-month-accordion"
+                  open={isOpen}
+                >
+                  <summary className="employee-feed-month-summary">
+                    <span className="employee-feed-month-title">{group.label}</span>
+                    <span className="employee-feed-month-meta muted">
+                      {group.items.length}{' '}
+                      {group.items.length === 1 ? 'Antrag' : 'Anträge'}
+                    </span>
+                  </summary>
+                  <ul className="simple-list employee-feed-month-list">
+                    {group.items.map((request) => (
+                      <li key={request.id}>
+                        {formatLeaveType(request.leave_type, request.notes)} · {request.start_date} –{' '}
+                        {request.end_date} · {LEAVE_STATUS_LABELS[request.status]}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              );
+            })
+          )
+        }
+      />
     </section>
   );
 }
@@ -615,13 +721,3 @@ function NotizenTab({ member, ctx, notes }: Props) {
   );
 }
 
-function shiftMonth(month: string, delta: number) {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatMonthLabel(month: string) {
-  const [y, m] = month.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-}

@@ -632,13 +632,31 @@ export type TenantWorkArea = {
   updated_at: string;
 };
 
-export type TenantEquipmentKind = 'vehicle' | 'equipment' | 'trailer';
+export type TimeRejectionTemplate = {
+  id: string;
+  tenant_id: string;
+  label: string;
+  body: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type TenantEquipmentStatus = 'active' | 'workshop' | 'retired';
+
+export type TenantEquipmentType = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
 
 export type TenantEquipment = {
   id: string;
   tenant_id: string;
-  kind: TenantEquipmentKind;
+  equipment_type_id: string;
   name: string;
   photo_path: string | null;
   build_year: number | null;
@@ -708,5 +726,36 @@ export type PasswordResetCode = {
   expires_at: string;
   attempts: number;
   used_at: string | null;
+  created_at: string;
+};
+
+export type FeedbackReportKind = 'bug' | 'feedback';
+export type FeedbackReportStatus = 'open' | 'in_progress' | 'done';
+export type FeedbackReportPriority = 'low' | 'normal' | 'high';
+
+export type FeedbackReport = {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  kind: FeedbackReportKind;
+  title: string;
+  description: string;
+  page_url: string | null;
+  user_agent: string | null;
+  status: FeedbackReportStatus;
+  priority: FeedbackReportPriority;
+  internal_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FeedbackReportAttachment = {
+  id: string;
+  report_id: string;
+  tenant_id: string;
+  storage_path: string;
+  file_name: string;
+  file_size: number;
+  mime_type: string | null;
   created_at: string;
 };

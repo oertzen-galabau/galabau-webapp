@@ -3,12 +3,17 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { deleteTimeEntryAction, updateTimeEntryAction } from '@/lib/actions/employee';
+import {
+  deleteTimeEntryAction,
+  resubmitTimeEntryAction,
+  updateTimeEntryAction,
+} from '@/lib/actions/employee';
 import {
   timeEntryStatusBadgeClass,
   timeEntryStatusLabel,
 } from '@/lib/time-tracking/approval-labels';
 import {
+  isOwnSubmittedTimeEntryLocked,
   isTimeEntryDeletable,
   isTimeEntryEditable,
   minEditableWorkDate,
@@ -101,6 +106,7 @@ export function TimeEntryOverviewRow({
   const editable = isTimeEntryEditable(entry);
   const deletable = isTimeEntryDeletable(entry, today);
   const isRejected = entry.approval_status === 'rejected';
+  const isSubmittedLocked = isOwnSubmittedTimeEntryLocked(entry);
   const badgeClass = timeEntryStatusBadgeClass(entry.approval_status, !!entry.end_time);
   const showActions = editable || deletable;
 
@@ -139,6 +145,11 @@ export function TimeEntryOverviewRow({
             <Link href="/app/zeiten#korrektur" className="text-button" style={{ marginLeft: 8 }}>
               Korrigieren
             </Link>
+          ) : null}
+          {isSubmittedLocked && entry.approval_status === 'pending' ? (
+            <span className="muted" style={{ display: 'block', marginTop: 4, fontSize: '0.85rem' }}>
+              Eingereicht — Änderung nicht möglich
+            </span>
           ) : null}
         </td>
         {showActions && (
@@ -207,12 +218,12 @@ export function TimeEntryOverviewRow({
               </div>
             ) : null}
             <TimeEntrySaveForm
-              action={updateTimeEntryAction}
+              action={isRejected ? resubmitTimeEntryAction : updateTimeEntryAction}
               hiddenFields={<input type="hidden" name="id" value={entry.id} />}
               sites={sites}
               entry={entry}
               initialBlocks={initialBlocks}
-              submitLabel="Speichern"
+              submitLabel={isRejected ? 'Erneut einreichen' : 'Speichern'}
               minDate={minEditableWorkDate(today)}
               maxDate={today}
               compact

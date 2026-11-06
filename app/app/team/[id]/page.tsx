@@ -52,8 +52,11 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     : tabs[0].id;
 
   const supabase = await createClient();
-  const year = new Date().getFullYear();
+  const budgetYear = new Date().getFullYear();
   const month = monthParam?.match(/^\d{4}-\d{2}$/) ? monthParam : new Date().toISOString().slice(0, 7);
+  const selectedYear = Number(month.slice(0, 4));
+  const yearStart = `${selectedYear}-01-01`;
+  const yearEnd = `${selectedYear + 1}-01-01`;
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = `${month}-01`;
   const monthEnd = nextMonthStart(month);
@@ -75,7 +78,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     { data: tenantRoles },
     leaveContext,
     { data: leaveRequests },
-    { data: overviewTimeEntries },
+    { data: overviewYearTimeEntries },
     { data: monthTimeEntries },
     { data: monthMinuteRows },
     { data: assignments },
@@ -85,9 +88,15 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     { data: workAreas },
   ] = await Promise.all([
     supabase.from('tenant_roles').select('*').order('sort_order'),
-    loadLeaveBalanceContext(supabase, ctx.tenant!.id, id, year),
+    loadLeaveBalanceContext(supabase, ctx.tenant!.id, id, selectedYear),
     supabase.from('leave_requests').select('*').eq('user_id', id).order('created_at', { ascending: false }),
-    supabase.from('time_entries').select('*').eq('user_id', id).order('work_date', { ascending: false }).limit(5),
+    supabase
+      .from('time_entries')
+      .select('*')
+      .eq('user_id', id)
+      .gte('work_date', yearStart)
+      .lt('work_date', yearEnd)
+      .order('work_date', { ascending: false }),
     supabase.from('time_entries').select('*').eq('user_id', id).gte('work_date', monthStart).lt('work_date', monthEnd).order('work_date', { ascending: false }),
     supabase.from('time_entries').select('work_minutes').eq('user_id', id).gte('work_date', monthStart).lt('work_date', monthEnd),
     supabase.from('daily_assignments').select('id, assignment_date, notes, sites(name)').eq('user_id', id).gte('assignment_date', today).order('assignment_date').limit(20),
@@ -107,7 +116,9 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     : { data: [] as { id: string; first_name: string; last_name: string }[] };
   const authorById = new Map((authors ?? []).map((a) => [a.id, a]));
 
-  const timeEntries = (activeTab === 'zeiten' ? monthTimeEntries : overviewTimeEntries) ?? [] as TimeEntry[];
+  const timeEntries =
+    (activeTab === 'zeiten' ? monthTimeEntries : activeTab === 'overview' ? overviewYearTimeEntries : []) ??
+    ([] as TimeEntry[]);
   const monthMinutes = (monthMinuteRows ?? []).reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const pendingLeaveCount = (leaveRequests ?? []).filter((r) => r.status === 'pending').length;
 
@@ -121,7 +132,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     : null;
 
   let catalogOrders: (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[] = [];
-  let orderBudgetBreakdown = buildBudgetBreakdown(year, null, 0);
+  let orderBudgetBreakdown = buildBudgetBreakdown(budgetYear, null, 0);
   let employeeOrderBudgetEur: number | null = null;
 
   if (activeTab === 'bestellungen' && ctx.tenant?.id) {
@@ -138,9 +149,9 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         .select('budget_eur')
         .eq('tenant_id', tenantId)
         .eq('user_id', id)
-        .eq('year', year)
+        .eq('year', budgetYear)
         .maybeSingle(),
-      loadClothingOrderBudgetBreakdown(supabase, tenantId, id, year),
+      loadClothingOrderBudgetBreakdown(supabase, tenantId, id, budgetYear),
     ]);
     catalogOrders = (catalogRes.data ?? []) as (CatalogOrder & { catalog_order_items: CatalogOrderItem[] })[];
     employeeOrderBudgetEur = budgetRow.data?.budget_eur != null ? Number(budgetRow.data.budget_eur) : null;
@@ -154,7 +165,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
         employeeId={id}
         tabs={tabs}
         activeTab={activeTab}
-        month={activeTab === 'zeiten' ? month : undefined}
+        month={month}
       />
       <EmployeeTabPanel
         tab={activeTab}
@@ -166,7 +177,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
           permissions: ctx.permissions,
           isSuperadminBypass: ctx.isSuperadminBypass,
         }}
-        year={year}
+        year={selectedYear}
         month={month}
         balance={leaveContext.balance}
         leaveBreakdown={leaveContext.breakdown}

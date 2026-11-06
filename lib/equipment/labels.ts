@@ -1,11 +1,5 @@
 import { addDays } from '@/lib/schedule/week';
-import type { TenantEquipmentKind, TenantEquipmentStatus } from '@/lib/types/database';
-
-export const EQUIPMENT_KIND_LABELS: Record<TenantEquipmentKind, string> = {
-  vehicle: 'Fahrzeug',
-  equipment: 'Gerät',
-  trailer: 'Anhänger',
-};
+import type { TenantEquipmentStatus } from '@/lib/types/database';
 
 export const EQUIPMENT_STATUS_LABELS: Record<TenantEquipmentStatus, string> = {
   active: 'Aktiv',

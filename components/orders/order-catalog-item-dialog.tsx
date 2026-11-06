@@ -262,7 +262,7 @@ function OrderCatalogItemForm({
           </datalist>
         </label>
         <label>
-          Preis (EUR)
+          Brutto-Listenpreis (EUR)
           <input name="price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
         </label>
         <label className="input-form-span-full">

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { approveTimeEntry, rejectTimeEntry } from '@/lib/actions/employee';
+import { approveTimeEntry } from '@/lib/actions/employee';
 import {
   regenerateBookingsForEntry,
   saveManualBooking,
@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/payroll';
 import { BookingPreviewList } from '@/components/payroll/booking-preview-list';
 import { AppSelect } from '@/components/ui/app-select';
+import { TimeRejectDialog } from '@/components/payroll/time-reject-dialog';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 import { formatMinutes } from '@/lib/utils/time';
 import { BLOCK_TYPE_LABELS, blockDurationMinutes, isTimelineMode } from '@/lib/time-tracking/timeline';
@@ -18,7 +19,7 @@ const UNIT_OPTIONS = [
   { value: 'hours', label: 'Std.' },
   { value: 'eur', label: '€' },
 ];
-import type { PayrollBooking, PayrollBookingCode, TimeEntry } from '@/lib/types/database';
+import type { PayrollBooking, PayrollBookingCode, TimeEntry, TimeRejectionTemplate } from '@/lib/types/database';
 import { computeBookingPreview } from '@/lib/payroll/booking-rules';
 import { driverTripLabel } from '@/lib/time-tracking/driver-trip';
 import type { SegmentInput } from '@/lib/payroll/booking-rules';
@@ -38,6 +39,7 @@ type Props = {
   payrollFlags?: { lkw_hours?: boolean };
   isBadWeatherDay?: boolean;
   tenantConfig: SerializableTenantPayrollConfig;
+  rejectionTemplates: TimeRejectionTemplate[];
 };
 
 function asProfile(value: unknown): ProfileRef | null {
@@ -55,12 +57,15 @@ export function TimeApprovalRow({
   payrollFlags,
   isBadWeatherDay,
   tenantConfig,
+  rejectionTemplates,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const profile = asProfile(entry.profiles);
+  const employeeLabel = profile ? `${profile.first_name} ${profile.last_name}` : '—';
 
   function runFormAction(action: (formData: FormData) => Promise<void>, form: HTMLFormElement) {
     setActionError(null);
@@ -92,7 +97,7 @@ export function TimeApprovalRow({
   return (
     <>
       <tr>
-        <td>{profile ? `${profile.first_name} ${profile.last_name}` : '—'}</td>
+        <td>{employeeLabel}</td>
         <td>{entry.work_date}</td>
         <td className="data-table-col--optional">
           {entry.start_time?.slice(0, 5)}
@@ -132,20 +137,22 @@ export function TimeApprovalRow({
               ) : null}
               <ApproveIconAction type="submit" disabled={pending} busy={pending} />
             </form>
-            <form
-              className="time-reject-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                runFormAction(rejectTimeEntry, event.currentTarget);
-              }}
-            >
-              <input type="hidden" name="id" value={entry.id} />
-              <textarea name="reason" rows={2} placeholder="Ablehnungsgrund (Pflicht)" required />
-              <RejectIconAction type="submit" disabled={pending} busy={pending} />
-            </form>
+            <RejectIconAction
+              type="button"
+              disabled={pending}
+              onClick={() => setRejectDialogOpen(true)}
+            />
           </TableIconActions>
         </td>
       </tr>
+      <TimeRejectDialog
+        open={rejectDialogOpen}
+        onClose={() => setRejectDialogOpen(false)}
+        entryId={entry.id}
+        employeeLabel={employeeLabel}
+        workDate={entry.work_date}
+        templates={rejectionTemplates}
+      />
       {expanded && (
         <tr>
           <td colSpan={9}>

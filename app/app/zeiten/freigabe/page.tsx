@@ -26,6 +26,7 @@ export default async function ZeitenFreigabePage() {
     { data: pendingEntries, error: pendingEntriesError },
     { data: bookingCodes },
     { data: badWeatherDays },
+    { data: rejectionTemplates },
   ] = await Promise.all([
     supabase
       .from('time_entries')
@@ -44,6 +45,12 @@ export default async function ZeitenFreigabePage() {
           .select('work_date')
           .eq('tenant_id', ctx.tenant!.id)
       : Promise.resolve({ data: [] as { work_date: string }[] }),
+    supabase
+      .from('time_rejection_templates')
+      .select('id, tenant_id, label, body, sort_order, created_at')
+      .eq('tenant_id', ctx.tenant!.id)
+      .order('sort_order')
+      .order('label'),
   ]);
 
   const pendingIds = (pendingEntries ?? []).map((e) => e.id);
@@ -148,6 +155,7 @@ export default async function ZeitenFreigabePage() {
                     payrollFlags={entry.payrollFlags}
                     isBadWeatherDay={entry.isBadWeatherDay}
                     tenantConfig={tenantConfigSerialized}
+                    rejectionTemplates={rejectionTemplates ?? []}
                   />
                 ))}
               </tbody>
