@@ -1244,6 +1244,10 @@ export async function resendEmployeeInvitationEmail(
 
     revalidateEmployeePaths(targetUserId);
 
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+
     if (!result.emailSent) {
       return {
         ok: false,
