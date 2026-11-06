@@ -1,10 +1,10 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useCallback, useState, useTransition } from 'react';
+import { useCallback, useRef, useState, useTransition } from 'react';
 import { submitFeedbackReport } from '@/lib/actions/feedback';
 import { AppDialog, NoticeDialog } from '@/components/ui/app-dialogs';
-import { ScreenshotDropzone } from '@/components/feedback/screenshot-dropzone';
+import { ScreenshotDropzone, type ScreenshotDropzoneHandle } from '@/components/feedback/screenshot-dropzone';
 import type { FeedbackReportKind } from '@/lib/types/database';
 
 type Props = {
@@ -21,6 +21,7 @@ export function FeedbackDialog({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [successOpen, setSuccessOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const screenshotDropzoneRef = useRef<ScreenshotDropzoneHandle>(null);
 
   function resetForm() {
     setKind('bug');
@@ -85,7 +86,16 @@ export function FeedbackDialog({ open, onClose }: Props) {
           </div>
         }
       >
-        <form id="feedback-report-form" className="feedback-dialog-form" onSubmit={handleSubmit}>
+        <form
+          id="feedback-report-form"
+          className="feedback-dialog-form"
+          onSubmit={handleSubmit}
+          onPaste={(e) => {
+            if (screenshotDropzoneRef.current?.pasteFromClipboard(e.clipboardData)) {
+              e.preventDefault();
+            }
+          }}
+        >
           <div className="feedback-kind-toggle" role="group" aria-label="Art der Meldung">
             <button
               type="button"
@@ -130,7 +140,12 @@ export function FeedbackDialog({ open, onClose }: Props) {
             />
           </label>
 
-          <ScreenshotDropzone files={screenshots} onChange={setScreenshots} disabled={pending} />
+          <ScreenshotDropzone
+            ref={screenshotDropzoneRef}
+            files={screenshots}
+            onChange={setScreenshots}
+            disabled={pending}
+          />
 
           {error ? <p className="dialog-error">{error}</p> : null}
         </form>
