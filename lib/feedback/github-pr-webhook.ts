@@ -41,11 +41,12 @@ type PullRequestOpenedPayload = {
 export async function handleGithubPullRequestWebhook(
   payload: PullRequestOpenedPayload,
 ): Promise<{ handled: boolean; reportId?: string }> {
-  if (payload.action !== 'opened' || !payload.pull_request?.html_url) {
+  const pr = payload.pull_request;
+  const prUrl = pr?.html_url;
+  if (payload.action !== 'opened' || !pr || !prUrl) {
     return { handled: false };
   }
 
-  const pr = payload.pull_request;
   const reportId =
     extractFeedbackReportIdFromPrText(pr.title ?? '') ??
     extractFeedbackReportIdFromPrText(pr.body ?? '');
@@ -64,7 +65,6 @@ export async function handleGithubPullRequestWebhook(
     return { handled: false };
   }
 
-  const prUrl = pr.html_url;
   if (report.internal_note?.includes(prUrl)) {
     return { handled: true, reportId };
   }
