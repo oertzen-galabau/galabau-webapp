@@ -2968,6 +2968,61 @@ a.site-doc-photo-title:hover { color: var(--brand); text-decoration: underline; 
 .marketing-page, .auth-page { overflow-x: clip; }
 .superadmin-page { padding-bottom: var(--marketing-safe-bottom); }
 .superadmin-page > section.panel { margin-inline: var(--marketing-safe-x); }
+.superadmin-loading { padding: 24px var(--marketing-safe-x); }
+.superadmin-tabs-wrap {
+  margin-top: 8px;
+  margin-inline: var(--marketing-safe-x);
+}
+.superadmin-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid var(--line);
+}
+.superadmin-tabs button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--radius-small) var(--radius-small) 0 0;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.superadmin-tabs button:hover {
+  color: var(--text);
+  background: var(--surface-muted);
+}
+.superadmin-tabs button.active {
+  color: var(--brand);
+  background: var(--surface-raised);
+  box-shadow: inset 0 -2px 0 var(--brand);
+}
+.superadmin-tab-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface-muted));
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+.superadmin-tab-panels { display: flex; flex-direction: column; gap: 0; }
+.superadmin-tab-panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.superadmin-tab-panel { margin-top: 0 !important; margin-inline: 0 !important; }
 .marketing-shell { width: min(1120px, 100%); margin: 0 auto; padding-inline: var(--marketing-safe-x); }
 .marketing-header {
   position: sticky; z-index: 40; top: 0;
@@ -6505,9 +6560,16 @@ button.schedule-day-timeline-event {
   padding: 18px 16px 14px;
   border-bottom: 1px solid var(--line);
 }
-.app-side-panel-head h2 {
+.app-side-panel-head-text {
   flex: 1;
   min-width: 0;
+}
+.app-side-panel-subtitle {
+  margin: 4px 0 0;
+  font-size: var(--text-caption);
+  line-height: 1.35;
+}
+.app-side-panel-head h2 {
   margin: 0;
   font-family: var(--font-display);
   font-size: 1.375rem;
@@ -6539,6 +6601,19 @@ button.schedule-day-timeline-event {
   margin: 8px -16px -16px;
   padding: 12px 16px max(12px, env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+.app-side-panel--feedback-detail {
+  width: min(100%, 560px);
+}
+.app-side-panel--feedback-detail .feedback-detail-admin-form .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 16px -16px -16px;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
   backdrop-filter: blur(8px);
 }
 .equipment-list-toolbar { margin-bottom: 12px; }
@@ -7128,6 +7203,139 @@ button.schedule-day-timeline-event {
   font-size: var(--text-caption);
   font-weight: 750;
   color: var(--brand);
+}
+
+/* Superadmin: Feedback-Kanban */
+.feedback-kanban-error { margin: 0 0 12px; }
+.feedback-kanban-board-wrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 4px;
+}
+.feedback-kanban-board {
+  display: grid;
+  min-width: min(100%, 720px);
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.feedback-kanban-column {
+  display: flex;
+  min-height: 120px;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-muted);
+}
+.feedback-kanban-column--over {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface-muted));
+}
+.feedback-kanban-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-ui);
+}
+.feedback-kanban-column-count {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-align: center;
+}
+.feedback-kanban-column-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(65vh, 560px);
+  padding: 10px;
+  overflow-y: auto;
+}
+.feedback-kanban-empty {
+  margin: 0;
+  padding: 8px 4px;
+  font-size: var(--text-caption);
+}
+.feedback-kanban-card {
+  border-radius: var(--radius-small);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
+}
+.feedback-kanban-card--dragging { opacity: 0.35; }
+.feedback-kanban-card--overlay {
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  box-shadow: 4px 4px 0 var(--text);
+}
+.feedback-kanban-card--priority-high {
+  border-left: 3px solid var(--brand);
+}
+.feedback-kanban-card-open {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  color: inherit;
+  text-align: left;
+  cursor: grab;
+}
+.feedback-kanban-card-open:active { cursor: grabbing; }
+.feedback-kanban-card-open:disabled { opacity: 0.7; cursor: not-allowed; }
+.feedback-kanban-card-title {
+  font-weight: 750;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.feedback-kanban-card-attach { font-size: var(--text-caption); }
+.feedback-kanban-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--text-caption);
+  line-height: 1.35;
+}
+.feedback-kanban-chip {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+.feedback-kanban-chip--priority-high {
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface-muted));
+  color: var(--brand);
+}
+.feedback-kanban-chip--priority-normal {
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+.feedback-kanban-chip--priority-low {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+@media (max-width: 860px) {
+  .feedback-kanban-board {
+    min-width: 0;
+    grid-template-columns: 1fr;
+  }
+  .feedback-kanban-column-body { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

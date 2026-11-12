@@ -8,14 +8,11 @@ import {
   type FeedbackReportDetail,
   type FeedbackReportListRow,
 } from '@/lib/actions/feedback';
-import {
-  feedbackKindLabel,
-  feedbackPriorityLabel,
-  feedbackStatusLabel,
-} from '@/lib/feedback/labels';
+import { feedbackKindLabel } from '@/lib/feedback/labels';
+import { FeedbackKanbanBoard } from '@/components/feedback/feedback-kanban-board';
 import { AppDialog, ConfirmDialog } from '@/components/ui/app-dialogs';
 import { AppSelect } from '@/components/ui/app-select';
-import { SaveIconAction, TableIconActions } from '@/components/ui/icon-action-button';
+import { AppSidePanel } from '@/components/ui/app-side-panel';
 import type { FeedbackReportPriority, FeedbackReportStatus } from '@/lib/types/database';
 
 const STATUS_OPTIONS = [
@@ -36,13 +33,6 @@ const KIND_FILTER_OPTIONS = [
   { value: 'feedback', label: 'Feedback' },
 ];
 
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Alle Status' },
-  { value: 'open', label: 'Offen' },
-  { value: 'in_progress', label: 'In Arbeit' },
-  { value: 'done', label: 'Erledigt' },
-];
-
 type Props = {
   initialRows: FeedbackReportListRow[];
 };
@@ -54,8 +44,9 @@ function displayUser(row: FeedbackReportListRow) {
 
 export function FeedbackAdminPanel({ initialRows }: Props) {
   const [rows, setRows] = useState(initialRows);
-  const [statusFilter, setStatusFilter] = useState('');
   const [kindFilter, setKindFilter] = useState('');
+  const [boardError, setBoardError] = useState<string | null>(null);
+  const [movePending, startMoveTransition] = useTransition();
   const [detail, setDetail] = useState<FeedbackReportDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -66,11 +57,36 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
 
   const filtered = useMemo(() => {
     return rows.filter((row) => {
-      if (statusFilter && row.status !== statusFilter) return false;
       if (kindFilter && row.kind !== kindFilter) return false;
       return true;
     });
-  }, [rows, statusFilter, kindFilter]);
+  }, [rows, kindFilter]);
+
+  function moveCardToStatus(id: string, status: FeedbackReportStatus) {
+    const row = rows.find((r) => r.id === id);
+    if (!row || row.status === status) return Promise.resolve();
+
+    const previousStatus = row.status;
+    patchRow(id, { status, updated_at: new Date().toISOString() });
+
+    return new Promise<void>((resolve) => {
+      startMoveTransition(async () => {
+        const formData = new FormData();
+        formData.set('id', id);
+        formData.set('status', status);
+        formData.set('priority', row.priority);
+        formData.set('internal_note', row.internal_note ?? '');
+        try {
+          await updateFeedbackReportAdmin(formData);
+          setBoardError(null);
+        } catch (err) {
+          patchRow(id, { status: previousStatus });
+          setBoardError(err instanceof Error ? err.message : 'Status konnte nicht gespeichert werden.');
+        }
+        resolve();
+      });
+    });
+  }
 
   async function openDetail(id: string) {
     setDetailLoading(true);
@@ -91,20 +107,13 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
   }
 
   return (
-    <section className="panel" style={{ marginTop: 16 }}>
+    <section className="panel superadmin-tab-panel">
       <div className="feedback-admin-head">
         <h2>
           Feedback &amp; Bugs
           {openCount > 0 ? <span className="feedback-admin-open-badge">{openCount} offen</span> : null}
         </h2>
         <div className="feedback-admin-filters">
-          <AppSelect
-            name="filter_status"
-            value={statusFilter}
-            onValueChange={setStatusFilter}
-            allowEmpty={false}
-            options={STATUS_FILTER_OPTIONS}
-          />
           <AppSelect
             name="filter_kind"
             value={kindFilter}
@@ -115,88 +124,16 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
         </div>
       </div>
 
-      <div className="data-table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Datum</th>
-              <th>Mandant</th>
-              <th>Nutzer</th>
-              <th>Typ</th>
-              <th>Titel</th>
-              <th>Priorität</th>
-              <th>Status</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="muted">
-                  Keine Einträge
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <tr key={row.id} className={row.status === 'open' ? 'feedback-row--open' : ''}>
-                  <td>{new Date(row.created_at).toLocaleString('de-DE')}</td>
-                  <td>{row.tenant_name}</td>
-                  <td>{displayUser(row)}</td>
-                  <td>{feedbackKindLabel(row.kind)}</td>
-                  <td>
-                    <button type="button" className="text-button" onClick={() => openDetail(row.id)}>
-                      {row.title}
-                      {row.attachment_count > 0
-                        ? ` (${row.attachment_count} Bild${row.attachment_count === 1 ? '' : 'er'})`
-                        : ''}
-                    </button>
-                  </td>
-                  <td>{feedbackPriorityLabel(row.priority)}</td>
-                  <td>{feedbackStatusLabel(row.status)}</td>
-                  <td className="data-table-actions">
-                    <form
-                      action={updateFeedbackReportAdmin}
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const form = e.currentTarget;
-                        const formData = new FormData(form);
-                        startTransition(async () => {
-                          await updateFeedbackReportAdmin(formData);
-                          patchRow(row.id, {
-                            status: formData.get('status') as FeedbackReportStatus,
-                            priority: formData.get('priority') as FeedbackReportPriority,
-                            internal_note: String(formData.get('internal_note') ?? '') || null,
-                          });
-                        });
-                      }}
-                    >
-                      <input type="hidden" name="id" value={row.id} />
-                      <AppSelect
-                        name="status"
-                        defaultValue={row.status}
-                        allowEmpty={false}
-                        options={STATUS_OPTIONS}
-                      />
-                      <AppSelect
-                        name="priority"
-                        defaultValue={row.priority}
-                        allowEmpty={false}
-                        options={PRIORITY_OPTIONS}
-                      />
-                      <input type="hidden" name="internal_note" value={row.internal_note ?? ''} />
-                      <TableIconActions>
-                        <SaveIconAction type="submit" disabled={pending} />
-                      </TableIconActions>
-                    </form>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {boardError ? <p className="dialog-error feedback-kanban-error">{boardError}</p> : null}
 
-      <AppDialog
+      <FeedbackKanbanBoard
+        rows={filtered}
+        onOpenDetail={openDetail}
+        onMoveCard={moveCardToStatus}
+        movePending={movePending}
+      />
+
+      <AppSidePanel
         open={detailLoading || Boolean(detail)}
         onClose={() => {
           if (detailLoading) return;
@@ -204,7 +141,7 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
         }}
         title={detail?.title ?? 'Details'}
         subtitle={detail ? `${feedbackKindLabel(detail.kind)} · ${detail.tenant_name}` : undefined}
-        panelClassName="dialog-panel--feedback-detail"
+        panelClassName="app-side-panel--feedback-detail"
       >
         {detailLoading && !detail ? <p className="muted">Lade…</p> : null}
         {detail ? (
@@ -298,7 +235,7 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
             </form>
           </div>
         ) : null}
-      </AppDialog>
+      </AppSidePanel>
 
       <AppDialog open={Boolean(lightboxUrl)} onClose={() => setLightboxUrl(null)} title="Screenshot">
         {lightboxUrl ? <img src={lightboxUrl} alt="" className="equipment-lightbox-image" /> : null}

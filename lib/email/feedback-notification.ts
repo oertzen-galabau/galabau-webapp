@@ -7,9 +7,9 @@ function superadminAppUrl() {
   const rootHost = root.split(':')[0];
   const port = root.includes(':') ? `:${root.split(':')[1]}` : '';
   if (rootHost === 'localhost') {
-    return `http://localhost${port}/superadmin`;
+    return `http://localhost${port}/superadmin?tab=feedback`;
   }
-  return `https://${rootHost}${port}/superadmin`;
+  return `https://${rootHost}${port}/superadmin?tab=feedback`;
 }
 
 function kindLabel(kind: FeedbackReportKind) {

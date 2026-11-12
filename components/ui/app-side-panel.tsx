@@ -8,6 +8,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   title: string;
+  subtitle?: string;
+  panelClassName?: string;
   children: React.ReactNode;
   titleId?: string;
 };
@@ -15,7 +17,15 @@ type Props = {
 const PANEL_TRANSITION = { type: 'tween' as const, duration: 0.28, ease: [0.32, 0.72, 0, 1] as const };
 const BACKDROP_TRANSITION = { type: 'tween' as const, duration: 0.22, ease: 'easeOut' as const };
 
-export function AppSidePanel({ open, onClose, title, children, titleId }: Props) {
+export function AppSidePanel({
+  open,
+  onClose,
+  title,
+  subtitle,
+  panelClassName,
+  children,
+  titleId,
+}: Props) {
   const autoId = useId();
   const headingId = titleId ?? autoId;
   const panelRef = useRef<HTMLElement>(null);
@@ -79,7 +89,7 @@ export function AppSidePanel({ open, onClose, title, children, titleId }: Props)
           />
           <motion.aside
             ref={panelRef}
-            className="app-side-panel"
+            className={['app-side-panel', panelClassName].filter(Boolean).join(' ')}
             role="dialog"
             aria-modal="true"
             aria-labelledby={headingId}
@@ -90,7 +100,10 @@ export function AppSidePanel({ open, onClose, title, children, titleId }: Props)
             transition={reduceMotion ? { duration: 0 } : PANEL_TRANSITION}
           >
             <header className="app-side-panel-head">
-              <h2 id={headingId}>{title}</h2>
+              <div className="app-side-panel-head-text">
+                <h2 id={headingId}>{title}</h2>
+                {subtitle ? <p className="app-side-panel-subtitle muted">{subtitle}</p> : null}
+              </div>
               <button type="button" className="text-button app-side-panel-close" onClick={onClose}>
                 Schließen
               </button>
