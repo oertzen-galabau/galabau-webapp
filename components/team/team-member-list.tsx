@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { MemberAccessBadge } from '@/components/team/member-access-badge';
 import { TeamMemberRowActions } from '@/components/team/team-member-row-actions';
+import { profileRoleDisplayName } from '@/lib/team/role-display';
 import type { Profile } from '@/lib/types/database';
 
 export type TeamMemberListItem = Profile & {
@@ -77,7 +78,7 @@ export function TeamMemberList({
           </p>
         ) : (
           filtered.map((member) => {
-            const roleName = member.tenant_roles?.name ?? '—';
+            const roleName = profileRoleDisplayName(member.role, member.tenant_roles);
             const fn = member.first_name?.[0] ?? '?';
             const ln = member.last_name?.[0] ?? '?';
             return (

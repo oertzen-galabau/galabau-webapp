@@ -1,5 +1,6 @@
 import type { Message, Profile } from '@/lib/types/database';
 import { truncatePreview } from '@/lib/messages/format';
+import { profileRoleDisplayName } from '@/lib/team/role-display';
 
 export type ChatContact = {
   id: string;
@@ -202,7 +203,7 @@ export function profileToChatContact(
     last_name: profile.last_name,
     email: profile.email,
     job_title: profile.job_title,
-    roleName: profile.tenant_roles?.name ?? null,
+    roleName: profileRoleDisplayName(profile.role, profile.tenant_roles) || null,
   };
 }
 

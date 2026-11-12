@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { profileRoleDisplayName } from '@/lib/team/role-display';
 import { createClient } from '@/lib/supabase/server';
 import { canAccess, requireTenantMember } from '@/lib/auth/session';
 import { markIncomingMessagesRead } from '@/lib/messages/read-state';
@@ -63,7 +64,7 @@ export default async function NachrichtenChatPage({
         last_name: profile.last_name,
         email: profile.email,
         job_title: profile.job_title,
-        roleName: profile.tenant_roles?.name ?? null,
+        roleName: profileRoleDisplayName(profile.role, profile.tenant_roles) || null,
       }}
       initialMessages={(messages ?? []) as Message[]}
     />

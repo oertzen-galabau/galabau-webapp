@@ -7,6 +7,7 @@ import { loadClothingOrderBudgetBreakdown } from '@/lib/orders/load-budget';
 import { canAccess, getTenantIdForSession } from '@/lib/auth/session';
 import type { SessionContext } from '@/lib/auth/session';
 import type { EmployeeTabId } from '@/lib/team/detail-tabs';
+import { profileRoleDisplayName } from '@/lib/team/role-display';
 import type {
   CatalogOrder,
   CatalogOrderItem,
@@ -120,7 +121,7 @@ export async function loadEmployeeDetailData(args: {
   }
 
   const member = rawMember as Profile & { tenant_roles: { name: string; slug: string } | null };
-  const roleName = member.tenant_roles?.name ?? '—';
+  const roleName = profileRoleDisplayName(member.role, member.tenant_roles);
   const tabBasePath = mode === 'self' ? '/app/profil' : `/app/team/${targetUserId}`;
 
   const loadNotesAndInvitation = mode === 'admin';

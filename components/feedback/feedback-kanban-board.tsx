@@ -94,11 +94,18 @@ function FeedbackKanbanColumn({
 type Props = {
   rows: FeedbackReportListRow[];
   onOpenDetail: (id: string) => void;
+  onRequestDelete: (id: string) => void;
   onMoveCard: (id: string, toStatus: FeedbackReportStatus) => Promise<void>;
   movePending?: boolean;
 };
 
-export function FeedbackKanbanBoard({ rows, onOpenDetail, onMoveCard, movePending }: Props) {
+export function FeedbackKanbanBoard({
+  rows,
+  onOpenDetail,
+  onRequestDelete,
+  onMoveCard,
+  movePending,
+}: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -116,7 +123,7 @@ export function FeedbackKanbanBoard({ rows, onOpenDetail, onMoveCard, movePendin
       map[row.status].push(row);
     }
     for (const status of COLUMNS) {
-      map[status].sort(sortFeedbackKanbanRows);
+      map[status].sort((a, b) => sortFeedbackKanbanRows(a, b, status));
     }
     return map;
   }, [rows]);
@@ -178,6 +185,7 @@ export function FeedbackKanbanBoard({ rows, onOpenDetail, onMoveCard, movePendin
                     row={row}
                     userLabel={displayUser(row)}
                     onOpen={onOpenDetail}
+                    onRequestDelete={onRequestDelete}
                     disabled={movePending}
                   />
                 ))

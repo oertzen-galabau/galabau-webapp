@@ -7,15 +7,31 @@ import {
   feedbackPriorityLabel,
 } from '@/lib/feedback/labels';
 import type { FeedbackReportListRow } from '@/lib/actions/feedback';
+import { extractGithubPullRequestUrl } from '@/lib/feedback/pr-link';
+import { DeleteIconAction } from '@/components/ui/icon-action-button';
 
 type Props = {
   row: FeedbackReportListRow;
   userLabel: string;
   onOpen: (id: string) => void;
+  onRequestDelete?: (id: string) => void;
   disabled?: boolean;
 };
 
-export function FeedbackKanbanCard({ row, userLabel, onOpen, disabled }: Props) {
+function cardClassNames(row: FeedbackReportListRow, dragging: boolean, overlay?: boolean) {
+  return [
+    'feedback-kanban-card',
+    dragging ? 'feedback-kanban-card--dragging' : '',
+    row.kind === 'bug' ? 'feedback-kanban-card--kind-bug' : 'feedback-kanban-card--kind-feedback',
+    `feedback-kanban-card--priority-${row.priority}`,
+    overlay ? 'feedback-kanban-card--overlay' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function FeedbackKanbanCard({ row, userLabel, onOpen, onRequestDelete, disabled }: Props) {
+  const prUrl = extractGithubPullRequestUrl(row.internal_note);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `card-${row.id}`,
     data: { reportId: row.id, status: row.status },
@@ -30,14 +46,34 @@ export function FeedbackKanbanCard({ row, userLabel, onOpen, disabled }: Props) 
     <article
       ref={setNodeRef}
       style={style}
-      className={[
-        'feedback-kanban-card',
-        isDragging ? 'feedback-kanban-card--dragging' : '',
-        `feedback-kanban-card--priority-${row.priority}`,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={cardClassNames(row, isDragging)}
     >
+      <div className="feedback-kanban-card-toolbar">
+        <span
+          className={[
+            'feedback-kanban-kind-chip',
+            row.kind === 'bug' ? 'feedback-kanban-kind-chip--bug' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {feedbackKindLabel(row.kind)}
+        </span>
+        {onRequestDelete ? (
+          <span
+            className="feedback-kanban-card-delete"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <DeleteIconAction
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestDelete(row.id);
+              }}
+            />
+          </span>
+        ) : null}
+      </div>
       <button
         type="button"
         className="feedback-kanban-card-open"
@@ -53,8 +89,6 @@ export function FeedbackKanbanCard({ row, userLabel, onOpen, disabled }: Props) 
           </span>
         ) : null}
         <div className="feedback-kanban-card-meta muted">
-          <span>{feedbackKindLabel(row.kind)}</span>
-          <span aria-hidden>·</span>
           <span>{row.tenant_name}</span>
         </div>
         <div className="feedback-kanban-card-meta muted">
@@ -78,6 +112,18 @@ export function FeedbackKanbanCard({ row, userLabel, onOpen, disabled }: Props) 
         >
           {feedbackPriorityLabel(row.priority)}
         </span>
+        {prUrl ? (
+          <a
+            href={prUrl}
+            className="feedback-kanban-pr-link"
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            PR ansehen
+          </a>
+        ) : null}
       </button>
     </article>
   );
@@ -91,15 +137,11 @@ export function FeedbackKanbanCardOverlay({
   userLabel: string;
 }) {
   return (
-    <div
-      className={[
-        'feedback-kanban-card',
-        'feedback-kanban-card--overlay',
-        `feedback-kanban-card--priority-${row.priority}`,
-      ].join(' ')}
-    >
+    <div className={cardClassNames(row, false, true)}>
       <span className="feedback-kanban-card-title">{row.title}</span>
       <div className="feedback-kanban-card-meta muted">
+        <span>{feedbackKindLabel(row.kind)}</span>
+        <span aria-hidden>·</span>
         <span>{row.tenant_name}</span>
         <span aria-hidden>·</span>
         <span>{userLabel}</span>

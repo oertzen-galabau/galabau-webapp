@@ -49,8 +49,19 @@ export function AppNavLink({ href, onClick, activePath, ...rest }: AppNavLinkPro
         const active = activePath
           ? pathname === activePath || pathname.startsWith(`${activePath}/`)
           : targetHref === currentLocation(pathname);
-        if (!active && nav) {
-          nav.beginNavigation();
+        if (active || !nav) return;
+
+        const newTab =
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey ||
+          event.button !== 0;
+        if (newTab) return;
+
+        if (targetHref.startsWith('/')) {
+          event.preventDefault();
+          nav.navigate(targetHref);
         }
       }}
     />

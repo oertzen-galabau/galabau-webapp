@@ -9,11 +9,13 @@ import {
   type FeedbackReportListRow,
 } from '@/lib/actions/feedback';
 import { feedbackKindLabel } from '@/lib/feedback/labels';
+import { FeedbackInternalNoteField } from '@/components/feedback/feedback-internal-note-field';
 import { FeedbackKanbanBoard } from '@/components/feedback/feedback-kanban-board';
 import { AppDialog, ConfirmDialog } from '@/components/ui/app-dialogs';
 import { AppSelect } from '@/components/ui/app-select';
 import { AppSidePanel } from '@/components/ui/app-side-panel';
 import type { FeedbackReportPriority, FeedbackReportStatus } from '@/lib/types/database';
+import { extractGithubPullRequestUrl } from '@/lib/feedback/pr-link';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Offen' },
@@ -46,7 +48,7 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
   const [rows, setRows] = useState(initialRows);
   const [kindFilter, setKindFilter] = useState('');
   const [boardError, setBoardError] = useState<string | null>(null);
-  const [movePending, startMoveTransition] = useTransition();
+  const [movePending, setMovePending] = useState(false);
   const [detail, setDetail] = useState<FeedbackReportDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -62,30 +64,29 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
     });
   }, [rows, kindFilter]);
 
-  function moveCardToStatus(id: string, status: FeedbackReportStatus) {
+  async function moveCardToStatus(id: string, status: FeedbackReportStatus) {
     const row = rows.find((r) => r.id === id);
-    if (!row || row.status === status) return Promise.resolve();
+    if (!row || row.status === status) return;
 
     const previousStatus = row.status;
     patchRow(id, { status, updated_at: new Date().toISOString() });
 
-    return new Promise<void>((resolve) => {
-      startMoveTransition(async () => {
-        const formData = new FormData();
-        formData.set('id', id);
-        formData.set('status', status);
-        formData.set('priority', row.priority);
-        formData.set('internal_note', row.internal_note ?? '');
-        try {
-          await updateFeedbackReportAdmin(formData);
-          setBoardError(null);
-        } catch (err) {
-          patchRow(id, { status: previousStatus });
-          setBoardError(err instanceof Error ? err.message : 'Status konnte nicht gespeichert werden.');
-        }
-        resolve();
-      });
-    });
+    const formData = new FormData();
+    formData.set('id', id);
+    formData.set('status', status);
+    formData.set('priority', row.priority);
+    formData.set('internal_note', row.internal_note ?? '');
+
+    setMovePending(true);
+    try {
+      await updateFeedbackReportAdmin(formData);
+      setBoardError(null);
+    } catch (err) {
+      patchRow(id, { status: previousStatus });
+      setBoardError(err instanceof Error ? err.message : 'Status konnte nicht gespeichert werden.');
+    } finally {
+      setMovePending(false);
+    }
   }
 
   async function openDetail(id: string) {
@@ -129,6 +130,7 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
       <FeedbackKanbanBoard
         rows={filtered}
         onOpenDetail={openDetail}
+        onRequestDelete={setDeleteId}
         onMoveCard={moveCardToStatus}
         movePending={movePending}
       />
@@ -146,6 +148,21 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
         {detailLoading && !detail ? <p className="muted">Lade…</p> : null}
         {detail ? (
           <div className="feedback-detail">
+            {(() => {
+              const prUrl = extractGithubPullRequestUrl(detail.internal_note);
+              return prUrl ? (
+                <p>
+                  <a
+                    href={prUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="feedback-detail-pr-link"
+                  >
+                    Pull Request ansehen
+                  </a>
+                </p>
+              ) : null;
+            })()}
             <p className="muted">
               {displayUser(detail)} · {detail.user_email} ·{' '}
               {new Date(detail.created_at).toLocaleString('de-DE')}
@@ -173,6 +190,17 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
               </ul>
             ) : null}
 
+            <FeedbackInternalNoteField
+              key={detail.id}
+              reportId={detail.id}
+              initialLog={detail.internal_note}
+              disabled={pending}
+              onAppended={(internalNote) => {
+                patchRow(detail.id, { internal_note: internalNote });
+                setDetail({ ...detail, internal_note: internalNote });
+              }}
+            />
+
             <form
               className="feedback-detail-admin-form"
               onSubmit={(e) => {
@@ -183,18 +211,17 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
                   patchRow(detail.id, {
                     status: formData.get('status') as FeedbackReportStatus,
                     priority: formData.get('priority') as FeedbackReportPriority,
-                    internal_note: String(formData.get('internal_note') ?? '').trim() || null,
                   });
                   setDetail({
                     ...detail,
                     status: formData.get('status') as FeedbackReportStatus,
                     priority: formData.get('priority') as FeedbackReportPriority,
-                    internal_note: String(formData.get('internal_note') ?? '').trim() || null,
                   });
                 });
               }}
             >
               <input type="hidden" name="id" value={detail.id} />
+              <input type="hidden" name="internal_note" value={detail.internal_note ?? ''} />
               <div className="feedback-detail-admin-grid">
                 <label>
                   Status
@@ -215,15 +242,6 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
                   />
                 </label>
               </div>
-              <label className="dialog-field">
-                Interne Notiz
-                <textarea
-                  name="internal_note"
-                  defaultValue={detail.internal_note ?? ''}
-                  rows={4}
-                  maxLength={8000}
-                />
-              </label>
               <div className="dialog-actions">
                 <button type="button" className="text-button" onClick={() => setDeleteId(detail.id)}>
                   Löschen
@@ -237,8 +255,16 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
         ) : null}
       </AppSidePanel>
 
-      <AppDialog open={Boolean(lightboxUrl)} onClose={() => setLightboxUrl(null)} title="Screenshot">
-        {lightboxUrl ? <img src={lightboxUrl} alt="" className="equipment-lightbox-image" /> : null}
+      <AppDialog
+        open={Boolean(lightboxUrl)}
+        onClose={() => setLightboxUrl(null)}
+        title="Screenshot"
+        panelClassName="dialog-panel--image"
+      >
+        {lightboxUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={lightboxUrl} alt="Screenshot der Meldung" className="equipment-lightbox-image" />
+        ) : null}
       </AppDialog>
 
       <ConfirmDialog

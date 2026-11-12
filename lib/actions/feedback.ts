@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendFeedbackReportNotification } from '@/lib/email/feedback-notification';
 import { FEEDBACK_BOARD_DONE_RECENT_DAYS } from '@/lib/feedback/board';
+import { appendInternalNote } from '@/lib/feedback/internal-note';
 import { getActionContext, requireSuperadmin } from '@/lib/auth/session';
 import { displayName } from '@/lib/auth/roles';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -25,6 +26,7 @@ import type {
   Tenant,
 } from '@/lib/types/database';
 import type { FeedbackBoardData } from '@/lib/feedback/board';
+import { triggerCursorAgentForFeedbackReport } from '@/lib/feedback/trigger-cursor-agent';
 
 const submitSchema = z.object({
   kind: z.enum(['bug', 'feedback']),
@@ -132,6 +134,15 @@ export async function submitFeedbackReport(formData: FormData): Promise<SubmitFe
     userName: profile ? displayName(profile as Profile) : ctx.userId,
     userEmail: profile?.email ?? '',
     pageUrl: parsed.data.page_url ?? null,
+  });
+
+  triggerCursorAgentForFeedbackReport({
+    reportId: report.id,
+    kind: parsed.data.kind,
+    title: parsed.data.title,
+    description: parsed.data.description,
+    pageUrl: parsed.data.page_url ?? null,
+    tenantName: tenant?.name ?? ctx.tenantId,
   });
 
   revalidatePath('/app/feedback');
@@ -305,6 +316,57 @@ export async function getFeedbackReportDetailForSuperadmin(
       signed_url: signed.get(a.storage_path) ?? null,
     })),
   };
+}
+
+const appendNoteSchema = z.object({
+  id: z.string().uuid(),
+  text: z.string().trim().min(1, 'Notiz fehlt').max(4000),
+});
+
+export type AppendFeedbackInternalNoteResult =
+  | { ok: true; internal_note: string }
+  | { ok: false; error: string };
+
+export async function appendFeedbackInternalNote(formData: FormData): Promise<AppendFeedbackInternalNoteResult> {
+  await requireSuperadmin();
+  const parsed = appendNoteSchema.safeParse({
+    id: formData.get('id'),
+    text: formData.get('text'),
+  });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? 'Ungültige Eingabe';
+    return { ok: false, error: msg };
+  }
+
+  const admin = createAdminClient();
+  const { data: report, error: loadError } = await admin
+    .from('feedback_reports')
+    .select('internal_note')
+    .eq('id', parsed.data.id)
+    .maybeSingle();
+
+  if (loadError) return { ok: false, error: loadError.message };
+  if (!report) return { ok: false, error: 'Meldung nicht gefunden' };
+
+  let internal_note: string;
+  try {
+    internal_note = appendInternalNote(report.internal_note, parsed.data.text);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' };
+  }
+
+  const { error } = await admin
+    .from('feedback_reports')
+    .update({
+      internal_note,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.id);
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/superadmin');
+  revalidatePath('/app/feedback');
+  return { ok: true, internal_note };
 }
 
 const updateSchema = z.object({

@@ -16,11 +16,21 @@ const adminPermissions = new Set<PermissionKey>([
   'nav.zeiten',
   'nav.rapporte',
   'sites.view',
+  'schedule.view',
   'zeiten.approve',
   'zeiten.view_all',
   'zeiten.record',
   'infoboard.posts',
   'urlaub.approve',
+  'infoboard.customize',
+]);
+
+const mitarbeiterPermissions = new Set<PermissionKey>([
+  'nav.infoboard',
+  'nav.zeiten',
+  'zeiten.record',
+  'urlaub.request',
+  'schedule.view',
   'infoboard.customize',
 ]);
 
@@ -47,6 +57,15 @@ describe('resolveEffectiveLayout', () => {
     assert.ok(layout.items.some((item) => item.id === 'leave_mine'));
     assert.ok(layout.items.some((item) => item.id === 'metric_hours_today'));
     assert.ok(!layout.items.some((item) => item.id === 'infoboard_posts'));
+    assert.ok(!layout.items.some((item) => item.id === 'tomorrow_schedule'));
+  });
+
+  it('shows locked schedule widget for Mitarbeiter with schedule.view', () => {
+    const layout = resolveEffectiveLayout(null, mitarbeiterPermissions, false);
+    const tomorrow = layout.items.find((item) => item.id === 'tomorrow_schedule');
+    assert.ok(tomorrow?.visible);
+    assert.equal(tomorrow?.y, 0);
+    assert.equal(tomorrow?.w, INFOBOARD_GRID_COLS);
   });
 
   it('prevents hiding locked widgets via setWidgetVisibility', () => {

@@ -93,7 +93,7 @@ export const WIDGET_REGISTRY: Record<InfoboardWidgetId, InfoboardWidgetDef> = {
     id: 'tomorrow_schedule',
     label: 'Heute & Morgen',
     category: 'panel',
-    permissions: ['sites.view'],
+    permissions: ['schedule.view'],
     ...GRID_WIDTH,
     minH: 6,
     defaultW: 4,

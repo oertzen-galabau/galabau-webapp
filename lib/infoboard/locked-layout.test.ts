@@ -7,6 +7,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 const adminPermissions = new Set<PermissionKey>([
   'nav.infoboard',
   'sites.view',
+  'schedule.view',
   'infoboard.posts',
   'infoboard.customize',
 ]);
