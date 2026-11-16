@@ -5,8 +5,17 @@ export const DEFAULT_SIDEBAR_TEXT_COLOR = '#fff9ef';
 export const DEFAULT_SURFACE_COLOR = '#eeeae3';
 export const DEFAULT_PLATFORM_NAME = 'BauDiggie';
 
+function normalizeRootDomain(value: string | undefined) {
+  if (!value) return undefined;
+  return value.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
 export function getRootDomain() {
-  return process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'localhost:3000';
+  return (
+    normalizeRootDomain(process.env.ROOT_DOMAIN) ??
+    normalizeRootDomain(process.env.NEXT_PUBLIC_ROOT_DOMAIN) ??
+    'localhost:3000'
+  );
 }
 
 export function getPlatformName() {

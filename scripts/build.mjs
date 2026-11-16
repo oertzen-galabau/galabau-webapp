@@ -33,6 +33,13 @@ if (!env.PASSWORD_RESET_PEPPER) {
   );
 }
 
+const rootDomain = (env.NEXT_PUBLIC_ROOT_DOMAIN ?? '').replace(/^https?:\/\//, '').trim();
+if (!rootDomain || rootDomain.startsWith('localhost')) {
+  console.warn(
+    '[build] WARNUNG: NEXT_PUBLIC_ROOT_DOMAIN fehlt oder ist localhost — Einladungslinks zeigen auf localhost. Auf Hostinger auf baudiggie.de setzen und neu bauen.',
+  );
+}
+
 const platformName = env.NEXT_PUBLIC_PLATFORM_NAME?.trim();
 if (platformName && platformName !== 'BauDiggie') {
   console.warn(
