@@ -105,7 +105,7 @@ export const WIDGET_REGISTRY: Record<InfoboardWidgetId, InfoboardWidgetDef> = {
     id: 'infoboard_posts',
     label: 'Beiträge',
     category: 'panel',
-    permissions: ['nav.infoboard'],
+    permissions: ['infoboard.view_posts'],
     ...GRID_WIDTH,
     minH: 4,
     defaultW: 2,

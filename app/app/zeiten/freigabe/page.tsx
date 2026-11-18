@@ -128,8 +128,8 @@ export default async function ZeitenFreigabePage() {
           </p>
         ) : null}
         {pendingWithMeta.length > 0 ? (
-          <div className="data-table-wrap">
-            <table className="data-table">
+          <div className="data-table-wrap time-approval-table-wrap">
+            <table className="data-table time-approval-table">
               <thead>
                 <tr>
                   <th>Mitarbeiter</th>

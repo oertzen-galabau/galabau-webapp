@@ -140,7 +140,8 @@ export function InfoboardPostsSurfaces({ posts, canManagePosts }: Props) {
     ? 'Noch keine Beiträge — lege den ersten an.'
     : 'Noch keine Beiträge veröffentlicht.';
 
-  const showQuietLink = !showBanner && canManagePosts;
+  // View-only: nach gelesenen Beiträgen sonst kein Einstieg mehr
+  const showQuietLink = !showBanner && (canManagePosts || posts.length > 0);
 
   return (
     <>

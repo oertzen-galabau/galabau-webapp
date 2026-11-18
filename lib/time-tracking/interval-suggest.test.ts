@@ -46,4 +46,16 @@ describe('suggestPauseBlockType', () => {
     });
     assert.equal(result.blockType, 'lunch');
   });
+
+  it('never suggests other_work for a long pause outside the duration windows', () => {
+    const result = suggestPauseBlockType({
+      workDate: '2026-06-15',
+      dayStartIso: '2026-06-15T06:39:00+02:00',
+      pauseStartedAt: '2026-06-15T10:28:00+02:00',
+      pauseEndedAt: '2026-06-15T11:50:00+02:00',
+      pauseIndex: 1,
+      rules,
+    });
+    assert.equal(result.blockType, 'breakfast');
+  });
 });

@@ -10,8 +10,7 @@ import { isDictationConfigured } from '@/lib/ai/daily-log-dictation';
 import { getSignedFileUrls } from '@/lib/supabase/storage';
 import {
   applyAccessibleSiteIdFilter,
-  canViewAllSites,
-  fetchAccessibleSites,
+  fetchSitesForDailyReportForm,
   resolveAccessibleSiteIds,
 } from '@/lib/sites/access';
 import {
@@ -47,11 +46,23 @@ export default async function DokumentationPage({ searchParams }: PageProps) {
 
   const supabase = await createClient();
   const accessibleSiteIds = await resolveAccessibleSiteIds(supabase, ctx);
+  let formLogDate = new Date().toISOString().slice(0, 10);
+  if (editLogId) {
+    const { data: editDateRow } = await supabase
+      .from('daily_logs')
+      .select('log_date')
+      .eq('id', editLogId)
+      .eq('tenant_id', ctx.tenant!.id)
+      .maybeSingle();
+    if (editDateRow?.log_date) formLogDate = editDateRow.log_date;
+  }
   const [sitesRaw, { data: employees }, { data: businessPartners }] = await Promise.all([
-    // Formular: nur zugewiesene Baustellen (Verantwortlicher / Baustellen-Team)
-    fetchAccessibleSites(supabase, ctx, 'id, name, client_name, address, street, zip_code, city, latitude, longitude', {
-      onlyAssigned: !canViewAllSites(ctx),
-    }),
+    fetchSitesForDailyReportForm(
+      supabase,
+      ctx,
+      formLogDate,
+      'id, name, client_name, address, street, zip_code, city, latitude, longitude',
+    ),
     supabase.from('profiles').select('id, first_name, last_name, job_title').eq('tenant_id', ctx.tenant!.id).eq('is_active', true).order('last_name'),
     supabase
       .from('tenant_business_partners')

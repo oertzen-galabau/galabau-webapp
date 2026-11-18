@@ -15,7 +15,8 @@ import {
   type LiveClockSnapshot,
 } from '@/lib/actions/time-clock';
 import {
-  needsEarlyStartReasonNow,
+  outsidePlanReasonVariant,
+  type OutsidePlanReasonVariant,
   type TodayScheduleContext,
 } from '@/lib/time-tracking/today-schedule-context';
 import type { PauseEndConfirmPrompt } from '@/lib/time-tracking/pause-confirm-prompt';
@@ -64,6 +65,7 @@ export function HeaderTimeClock({
   const [clockOutContext, setClockOutContext] = useState<ClockOutContext | null>(null);
   const [loadingClockOut, setLoadingClockOut] = useState(false);
   const [earlyStartOpen, setEarlyStartOpen] = useState(false);
+  const [outsidePlanVariant, setOutsidePlanVariant] = useState<OutsidePlanReasonVariant>('early_start');
   const [scheduleContext, setScheduleContext] = useState<TodayScheduleContext | null>(null);
   const freshClockInRef = useRef(false);
   const [displayBaselineSeconds, setDisplayBaselineSeconds] = useState<number | null>(null);
@@ -162,12 +164,11 @@ export function HeaderTimeClock({
 
   function handleClockInClick() {
     setError(null);
-    if (
-      todayScheduleContext &&
-      needsEarlyStartReasonNow(todayScheduleContext) &&
-      todayScheduleContext.plannedStartTime
-    ) {
+    const variant =
+      todayScheduleContext && outsidePlanReasonVariant(todayScheduleContext);
+    if (variant) {
       setScheduleContext(todayScheduleContext);
+      setOutsidePlanVariant(variant);
       setEarlyStartOpen(true);
       return;
     }
@@ -251,6 +252,7 @@ export function HeaderTimeClock({
             open={earlyStartOpen}
             onClose={() => setEarlyStartOpen(false)}
             schedule={scheduleContext}
+            variant={outsidePlanVariant}
             onSuccess={(snapshot) => {
               applyLiveSnapshot(snapshot);
               freshClockInRef.current = true;

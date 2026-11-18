@@ -75,7 +75,7 @@ export async function fetchInfoboardPayload(
     throw new Error('Kein Mandant');
   }
   const canApprove = canAccess(ctx, 'zeiten.approve');
-  const canViewPosts = canAccess(ctx, 'nav.infoboard');
+  const canViewPosts = canAccess(ctx, 'infoboard.view_posts');
   const canManagePosts = canAccess(ctx, 'infoboard.posts');
   const canApproveLeave = canAccess(ctx, 'urlaub.approve');
   const canRequestLeave = canAccess(ctx, 'urlaub.request');
@@ -266,7 +266,7 @@ export async function fetchInfoboardPayload(
     .reduce((sum, e) => sum + (e.work_minutes ?? 0), 0);
   const activeWorkers = (todayEntries ?? []).filter((e) => !e.end_time).length;
   const totalWorkers = activeProfiles?.length ?? 0;
-  const showTeamTimeStats = canAccess(ctx, 'zeiten.view_all');
+  const showTeamTimeStats = canAccess(ctx, 'infoboard.team_hours');
   const showActiveWorkersLine = canAccess(ctx, 'zeiten.approve');
   const pendingReports = (openReports ?? []).filter((r) => r.status === 'draft').length;
   const rejectedCount = rejectedTimeEntries?.length ?? 0;
@@ -464,7 +464,7 @@ export async function fetchInfoboardPayload(
         emptyQuip: approvalEmptyQuip(today),
       },
       metrics: {
-        totalMinutesToday,
+        totalMinutesToday: showTeamTimeStats ? totalMinutesToday : 0,
         activeWorkers,
         totalWorkers,
         activeSites: activeSites?.length ?? 0,

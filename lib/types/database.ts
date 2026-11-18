@@ -155,7 +155,10 @@ export type TimeEntry = {
   missing_breakfast_reason: string | null;
   missing_lunch_reason: string | null;
   early_start_reason: string | null;
+  late_start_reason: string | null;
+  late_end_reason: string | null;
   planned_start_time: string | null;
+  planned_end_time: string | null;
   schedule_entry_id: string | null;
 };
 

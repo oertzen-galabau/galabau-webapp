@@ -1225,6 +1225,22 @@ label.dialog-field.input-form-checkbox {
   font-size: var(--text-ui);
 }
 .time-approval-actions { align-items: flex-start; }
+.time-approval-table-wrap {
+  max-height: min(72vh, calc(100dvh - 15rem));
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+.data-table.time-approval-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-top: 0;
+  background: var(--surface-raised);
+  box-shadow: inset 0 -1px 0 var(--line);
+  vertical-align: middle;
+}
 .approval-preview-count { margin: 12px 0 0; color: var(--text-soft); font-size: var(--text-caption); }
 html.dialog-open,
 html.dialog-open body {

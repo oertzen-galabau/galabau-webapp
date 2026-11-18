@@ -80,5 +80,7 @@ export function suggestPauseBlockType(params: {
     return { blockType: 'travel', confidence: 'low' };
   }
 
-  return { blockType: 'other_work', confidence: 'low' };
+  // Eine Pause ist keine Arbeit: lange Pausen außerhalb der Dauerfenster der nächstliegenden Pausenart zuordnen.
+  const lunchStart = parseTime(params.rules.lunch_window_start.slice(0, 5)) ?? 12 * 60;
+  return { blockType: startMinute < lunchStart ? 'breakfast' : 'lunch', confidence: 'low' };
 }

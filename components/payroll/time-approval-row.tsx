@@ -94,6 +94,14 @@ export function TimeApprovalRow({
   );
   const hasTimeline = isTimelineMode(entry.segments ?? []);
 
+  const planReasonTitle = [
+    entry.early_start_reason ? `Früher Start: ${entry.early_start_reason}` : null,
+    entry.late_start_reason ? `Später Start: ${entry.late_start_reason}` : null,
+    entry.late_end_reason ? `Spätes Ende: ${entry.late_end_reason}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
   return (
     <>
       <tr>
@@ -101,14 +109,17 @@ export function TimeApprovalRow({
         <td>{entry.work_date}</td>
         <td className="data-table-col--optional">
           {entry.start_time?.slice(0, 5)}
-          {entry.planned_start_time ? (
-            <span className="muted" title={entry.early_start_reason ?? undefined}>
+          {entry.planned_start_time || entry.planned_end_time ? (
+            <span className="muted" title={planReasonTitle || undefined}>
               {' '}
-              (Plan {entry.planned_start_time.slice(0, 5)})
+              (Plan {entry.planned_start_time?.slice(0, 5) ?? '–'}
+              {entry.planned_end_time ? `–${entry.planned_end_time.slice(0, 5)}` : ''})
             </span>
           ) : null}
         </td>
-        <td className="data-table-col--optional">{entry.end_time?.slice(0, 5)}</td>
+        <td className="data-table-col--optional" title={planReasonTitle || undefined}>
+          {entry.end_time?.slice(0, 5)}
+        </td>
         <td>{formatMinutes(entry.work_minutes)}</td>
         <td>{driverTripLabel(entry)}</td>
         <td className="data-table-col--optional">

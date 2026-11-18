@@ -25,6 +25,8 @@ import {
   pausesNeedingConfirmation,
 } from '@/components/time-tracking/clock-out-interval-confirm';
 import { getClockOutContext } from '@/lib/actions/payroll';
+import { needsLateEndReasonNow } from '@/lib/time-tracking/today-schedule-context';
+import { EARLY_START_REASON_MIN_LENGTH } from '@/lib/schedule/planned-day-start';
 
 export type ClockOutContext = Awaited<ReturnType<typeof getClockOutContext>>;
 
@@ -39,7 +41,7 @@ type Props = {
 type WizardStepId = 'pauses' | 'site' | 'extras' | 'summary';
 
 const STEP_LABELS: Record<WizardStepId, string> = {
-  pauses: 'Pausen',
+  pauses: 'Zwischenzeiten',
   site: 'Baustelle',
   extras: 'Fahrt & Zusatz',
   summary: 'Zusammenfassung',
@@ -119,6 +121,7 @@ function ClockOutDialogSession({
   const [badWeatherClaimed, setBadWeatherClaimed] = useState(false);
   const [missingBreakfastReason, setMissingBreakfastReason] = useState('');
   const [missingLunchReason, setMissingLunchReason] = useState('');
+  const [lateEndReason, setLateEndReason] = useState('');
   const [primarySiteId, setPrimarySiteId] = useState(initialSiteId);
   const [intervals] = useState(context.intervals ?? []);
 
@@ -152,6 +155,14 @@ function ClockOutDialogSession({
     () => validateTimeline(timelineBlocks, dayStart, dayEnd, { requireFullCoverage: true }),
     [timelineBlocks, dayStart, dayEnd],
   );
+
+  const scheduleContext = {
+    plannedStartTime: context.plannedStartTime,
+    plannedEndTime: context.plannedEndTime,
+    plannedSiteName: null,
+    earlyStartToleranceMinutes: context.timeRules.early_start_tolerance_minutes,
+  };
+  const lateEndReasonRequired = needsLateEndReasonNow(scheduleContext, dayEnd);
 
   const breakCompliance = evaluateBreakCompliance({
     rules: context.timeRules,
@@ -202,6 +213,9 @@ function ClockOutDialogSession({
       if (breakCompliance.missingLunchReasonRequired && !missingLunchReason.trim()) {
         return 'Bitte einen Grund für die fehlende Mittagspause angeben.';
       }
+      if (lateEndReasonRequired && lateEndReason.trim().length < EARLY_START_REASON_MIN_LENGTH) {
+        return `Bitte einen Grund für das späte Ende angeben (min. ${EARLY_START_REASON_MIN_LENGTH} Zeichen).`;
+      }
     }
     return null;
   }
@@ -211,7 +225,7 @@ function ClockOutDialogSession({
     if (pauses.length > 0) {
       for (const row of pauses) {
         if (!pauseSelections[row.id]) {
-          return 'Bitte alle Pausen zuordnen.';
+          return 'Bitte alle Zwischenzeiten zuordnen.';
         }
       }
     }
@@ -257,6 +271,7 @@ function ClockOutDialogSession({
       primarySiteId: primarySiteId || null,
       missingBreakfastReason: missingBreakfastReason.trim() || null,
       missingLunchReason: missingLunchReason.trim() || null,
+      lateEndReason: lateEndReasonRequired ? lateEndReason.trim() || null : null,
       pauseConfirmations,
     };
 
@@ -296,7 +311,11 @@ function ClockOutDialogSession({
                 <button
                   type="button"
                   className="primary-button primary-button--clock-out-save"
-                  disabled={pending}
+                  disabled={
+                    pending ||
+                    (lateEndReasonRequired &&
+                      lateEndReason.trim().length < EARLY_START_REASON_MIN_LENGTH)
+                  }
                   onClick={submitClockOut}
                 >
                   {pending ? 'Speichern…' : 'Feierabend speichern'}
@@ -384,6 +403,23 @@ function ClockOutDialogSession({
                 />
               </label>
             ) : null}
+            {lateEndReasonRequired ? (
+              <label className="dialog-field">
+                Grund spätes Ende (Pflicht)
+                <textarea
+                  rows={2}
+                  value={lateEndReason}
+                  onChange={(event) => setLateEndReason(event.target.value)}
+                  minLength={EARLY_START_REASON_MIN_LENGTH}
+                />
+                {context.plannedEndTime ? (
+                  <span className="muted clock-out-hint">
+                    Plan bis {context.plannedEndTime} (Toleranz {context.timeRules.early_start_tolerance_minutes}{' '}
+                    Min.)
+                  </span>
+                ) : null}
+              </label>
+            ) : null}
           </div>
         ) : null}
 
@@ -403,15 +439,18 @@ function ClockOutDialogSession({
                 <strong>{netLabel}</strong>
               </div>
             </div>
-            {context.plannedStartTime ? (
+            {context.plannedStartTime || context.plannedEndTime ? (
               <p className="muted">
-                Plan: {context.plannedStartTime}
+                Plan: {context.plannedStartTime ?? '–'}
+                {context.plannedEndTime ? `–${context.plannedEndTime}` : ''}
                 {context.earlyStartReason ? ` · Grund früher Start: ${context.earlyStartReason}` : ''}
+                {context.lateStartReason ? ` · Grund später Start: ${context.lateStartReason}` : ''}
+                {lateEndReason.trim() ? ` · Grund spätes Ende: ${lateEndReason.trim()}` : ''}
               </p>
             ) : null}
             {pauseSummaryLines.length > 0 ? (
               <div className="clock-out-summary-block">
-                <span className="clock-out-summary-label">Pausen</span>
+                <span className="clock-out-summary-label">Zwischenzeiten</span>
                 <ul className="clock-out-summary-list">
                   {pauseSummaryLines.map((line) => (
                     <li key={line}>{line}</li>

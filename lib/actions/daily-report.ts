@@ -24,7 +24,35 @@ import {
   parseDailyLogReportType,
   type DailyLogReportType,
 } from '@/lib/documentation/report-labels';
-import { requireSiteAccess } from '@/lib/sites/access';
+import { fetchSitesForDailyReportForm, requireSiteAccess } from '@/lib/sites/access';
+
+export type DailyReportFormSiteOption = {
+  id: string;
+  name: string;
+  client_name: string | null;
+  address: string | null;
+  street: string | null;
+  zip_code: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+/** Baustellen-Liste fürs Formular bei Datumswechsel (Vorarbeiter am Tag). */
+export async function listDailyReportFormSites(logDate: string): Promise<DailyReportFormSiteOption[]> {
+  const ctx = await getActionContext();
+  requirePerm(ctx, 'documentation.manage');
+  const trimmed = logDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) throw new Error('Ungültiges Datum');
+  const supabase = await createClient();
+  const rows = await fetchSitesForDailyReportForm(
+    supabase,
+    ctx,
+    trimmed,
+    'id, name, client_name, address, street, zip_code, city, latitude, longitude',
+  );
+  return rows as DailyReportFormSiteOption[];
+}
 
 function requirePerm(ctx: Awaited<ReturnType<typeof getActionContext>>, key: PermissionKey) {
   if (!canAccess(ctx, key)) throw new Error('Keine Berechtigung');
@@ -216,7 +244,20 @@ async function saveSignatures(
   }
 }
 
-export async function saveDailyReport(formData: FormData) {
+export type SaveDailyReportResult = { ok: true; logId: string } | { ok: false; error: string };
+
+/** Fehler als Rückgabewert: geworfene Meldungen blendet Next.js in Production aus (React #441). */
+export async function saveDailyReport(formData: FormData): Promise<SaveDailyReportResult> {
+  try {
+    const { logId } = await saveDailyReportOrThrow(formData);
+    return { ok: true, logId };
+  } catch (err) {
+    console.error('[saveDailyReport]', err);
+    return { ok: false, error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' };
+  }
+}
+
+async function saveDailyReportOrThrow(formData: FormData) {
   const ctx = await getActionContext();
   const { tenantId, userId } = ctx;
 

@@ -39,10 +39,10 @@ export function IntervalConfirmDialog({ open, prompt, loading = false, onClose }
 
   if (loading) {
     return (
-      <AppDialog open={open} onClose={onClose} title="Pause zuordnen">
+      <AppDialog open={open} onClose={onClose} title="Zeit zuordnen">
         <div className="dialog-loading-state" role="status" aria-live="polite">
           <InlineSpinner size={28} />
-          <p>Pause wird geladen …</p>
+          <p>Wird geladen …</p>
         </div>
       </AppDialog>
     );
@@ -69,7 +69,7 @@ export function IntervalConfirmDialog({ open, prompt, loading = false, onClose }
     <AppDialog
       open={open}
       onClose={onClose}
-      title="Pause zuordnen"
+      title="Zeit zuordnen"
       footer={
         <div className="dialog-actions">
           <button
@@ -84,13 +84,17 @@ export function IntervalConfirmDialog({ open, prompt, loading = false, onClose }
       }
     >
       <p>
-        Deine Pause von <strong>{from}</strong> bis <strong>{to}</strong> — welche Art war das?
+        Von <strong>{from}</strong> bis <strong>{to}</strong> warst du nicht auf einer Baustelle. Was
+        hast du gemacht?
+      </p>
+      <p className="muted">
+        Ladezeit und Sonstige Arbeit zählen als Arbeitszeit, Frühstück und Mittag als Pause.
       </p>
       <p className="muted">
         Vorschlag: {BLOCK_TYPE_LABELS[prompt.suggestedBlockType]}
       </p>
       <label className="dialog-field">
-        Art der Pause
+        Was war das?
         <AppSelect
           value={selectedType}
           onValueChange={(value) => setSelectedType(value as TimeBlockType)}

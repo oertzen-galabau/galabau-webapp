@@ -5,6 +5,7 @@ export type PlannedDayStart = {
   scheduleEntryId: string;
   siteId: string;
   plannedStartTime: string;
+  plannedEndTime: string;
   siteName: string | null;
 };
 
@@ -12,6 +13,7 @@ type ScheduleRow = {
   id: string;
   site_id: string;
   start_time: string;
+  end_time: string;
   start_date: string;
   end_date: string;
   foreman_user_id: string | null;
@@ -36,7 +38,7 @@ export async function getPlannedDayStartForUser(
   const { data, error } = await supabase
     .from('schedule_entries')
     .select(
-      'id, site_id, start_time, start_date, end_date, foreman_user_id, schedule_entry_members(user_id), sites(name)',
+      'id, site_id, start_time, end_time, start_date, end_date, foreman_user_id, schedule_entry_members(user_id), sites(name)',
     )
     .eq('tenant_id', tenantId)
     .lte('start_date', workDate)
@@ -45,7 +47,9 @@ export async function getPlannedDayStartForUser(
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as ScheduleRow[];
 
-  let best: PlannedDayStart | null = null;
+  let bestStartEntry: ScheduleRow | null = null;
+  let latestEndTime = '';
+
   for (const row of rows) {
     const memberIds = memberUserIdsIncludingForeman(
       (row.schedule_entry_members ?? []).map((m) => m.user_id),
@@ -53,17 +57,30 @@ export async function getPlannedDayStartForUser(
     );
     if (!memberIds.includes(userId)) continue;
 
-    if (!best || row.start_time < best.plannedStartTime) {
-      best = {
-        scheduleEntryId: row.id,
-        siteId: row.site_id,
-        plannedStartTime: row.start_time,
-        siteName: siteNameFromRow(row),
-      };
+    if (!bestStartEntry || row.start_time < bestStartEntry.start_time) {
+      bestStartEntry = row;
+    }
+    if (!latestEndTime || row.end_time > latestEndTime) {
+      latestEndTime = row.end_time;
     }
   }
 
-  return best;
+  if (!bestStartEntry) return null;
+
+  return {
+    scheduleEntryId: bestStartEntry.id,
+    siteId: bestStartEntry.site_id,
+    plannedStartTime: bestStartEntry.start_time,
+    plannedEndTime: latestEndTime,
+    siteName: siteNameFromRow(bestStartEntry),
+  };
+}
+
+function timeToMinutes(value: string): number {
+  const parts = value.trim().slice(0, 8).split(':');
+  const h = Number(parts[0] ?? 0);
+  const m = Number(parts[1] ?? 0);
+  return h * 60 + m;
 }
 
 export function isStartBeforePlannedWithTolerance(
@@ -71,15 +88,26 @@ export function isStartBeforePlannedWithTolerance(
   plannedTime: string,
   toleranceMinutes: number,
 ): boolean {
-  const toMinutes = (value: string) => {
-    const parts = value.trim().slice(0, 8).split(':');
-    const h = Number(parts[0] ?? 0);
-    const m = Number(parts[1] ?? 0);
-    return h * 60 + m;
-  };
-  const actual = toMinutes(actualTime);
-  const planned = toMinutes(plannedTime);
+  const actual = timeToMinutes(actualTime);
+  const planned = timeToMinutes(plannedTime);
   return actual < planned - Math.max(0, toleranceMinutes);
 }
 
+/** Clock-in strictly after the planned window end (no start tolerance). */
+export function isStartAfterPlannedEnd(actualTime: string, plannedEndTime: string): boolean {
+  return timeToMinutes(actualTime) > timeToMinutes(plannedEndTime);
+}
+
+/** Clock-out after planned end plus tolerance. */
+export function isEndAfterPlannedEndWithTolerance(
+  actualTime: string,
+  plannedEndTime: string,
+  toleranceMinutes: number,
+): boolean {
+  const actual = timeToMinutes(actualTime);
+  const plannedEnd = timeToMinutes(plannedEndTime);
+  return actual > plannedEnd + Math.max(0, toleranceMinutes);
+}
+
 export const EARLY_START_REASON_MIN_LENGTH = 10;
+export const OUTSIDE_PLAN_REASON_MIN_LENGTH = EARLY_START_REASON_MIN_LENGTH;

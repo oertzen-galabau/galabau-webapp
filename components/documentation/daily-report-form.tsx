@@ -9,7 +9,8 @@ import {
 } from '@/lib/documentation/load-report-weather';
 import { formatSiteAddress, hasSiteAddress } from '@/lib/sites/format-address';
 import { useRouter } from 'next/navigation';
-import { saveDailyReport } from '@/lib/actions/daily-report';
+import { listDailyReportFormSites, saveDailyReport, type DailyReportFormSiteOption } from '@/lib/actions/daily-report';
+import { MAX_REPORT_PHOTO_UPLOAD_BYTES } from '@/lib/documentation/compress-report-photo';
 import type { DailyLogDictationDraft } from '@/lib/ai/daily-log-dictation';
 import { MIN_REPORT_PHOTOS, REPORT_UNIT_OPTIONS } from '@/lib/types/database';
 import { AppSelect } from '@/components/ui/app-select';
@@ -218,8 +219,10 @@ export function DailyReportForm({
   const dailyReportLabel = shortLabelForReportType('daily_report', reportLabels);
   const hourlyRapportLabel = shortLabelForReportType('hourly_wage_rapport', reportLabels);
 
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>(sites);
   const [siteId, setSiteId] = useState(initial?.siteId ?? sites[0]?.id ?? '');
   const [logDate, setLogDate] = useState(initial?.logDate ?? new Date().toISOString().slice(0, 10));
+  const initialLogDateRef = useRef(initial?.logDate ?? new Date().toISOString().slice(0, 10));
   const [weather, setWeather] = useState(initial?.weather ?? '');
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherHint, setWeatherHint] = useState<string | null>(null);
@@ -289,7 +292,31 @@ export function DailyReportForm({
   );
   const [deliveryBlocks, setDeliveryBlocks] = useState<{ id: number }[]>([]);
 
-  const selectedSite = useMemo(() => sites.find((site) => site.id === siteId) ?? null, [siteId, sites]);
+  useEffect(() => {
+    setSiteOptions(sites);
+  }, [sites]);
+
+  useEffect(() => {
+    if (logDate === initialLogDateRef.current) return;
+    let cancelled = false;
+  void listDailyReportFormSites(logDate).then((next: DailyReportFormSiteOption[]) => {
+      if (cancelled) return;
+      setSiteOptions(next);
+      setSiteId((current) => {
+        if (next.some((site) => site.id === current)) return current;
+        if (initial?.siteId && next.some((site) => site.id === initial.siteId)) return initial.siteId;
+        return next[0]?.id ?? '';
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [logDate, initial?.siteId]);
+
+  const selectedSite = useMemo(
+    () => siteOptions.find((site) => site.id === siteId) ?? null,
+    [siteId, siteOptions],
+  );
 
   const formattedSiteAddress = selectedSite ? formatSiteAddress(selectedSite) : null;
 
@@ -495,9 +522,23 @@ export function DailyReportForm({
       );
     }
 
+    const photoBytes = formData
+      .getAll('photos')
+      .reduce((sum, entry) => sum + (entry instanceof File ? entry.size : 0), 0);
+    if (photoBytes > MAX_REPORT_PHOTO_UPLOAD_BYTES) {
+      setError(
+        `Die Fotos sind zusammen zu groß (${(photoBytes / 1024 / 1024).toFixed(1)} MB, max. ${MAX_REPORT_PHOTO_UPLOAD_BYTES / 1024 / 1024} MB). Bitte weniger oder kleinere Fotos wählen.`,
+      );
+      return;
+    }
+
     startTransition(async () => {
       try {
-        await saveDailyReport(formData);
+        const result = await saveDailyReport(formData);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         router.refresh();
         if (!initial?.dailyLogId) form.reset();
         setDictationMessage(null);
@@ -576,17 +617,24 @@ export function DailyReportForm({
       <section className="input-form-section">
         <h3 className="input-form-section-title">Kopfdaten</h3>
         <div className="input-form-core daily-report-core">
-          <label>
-            Baustelle
+          <div className="input-form-span-full" style={{ display: 'grid', gap: 3 }}>
+            <span className="field-required">Baustelle</span>
             <AppSelect
               name="site_id"
               value={siteId}
               onValueChange={setSiteId}
               required
               allowEmpty={false}
-              options={sites.map((site) => ({ value: site.id, label: site.name }))}
+              disabled={pending || siteOptions.length === 0}
+              aria-label="Baustelle"
+              options={siteOptions.map((site) => ({ value: site.id, label: site.name }))}
             />
-          </label>
+            {siteOptions.length === 0 && (
+              <span className="muted">
+                Keine Baustelle für dieses Datum — bitte Datum prüfen oder Einsatzplan / Team-Zuweisung.
+              </span>
+            )}
+          </div>
           <label>
             Datum
             <input type="date" name="log_date" value={logDate} onChange={(event) => setLogDate(event.target.value)} required />

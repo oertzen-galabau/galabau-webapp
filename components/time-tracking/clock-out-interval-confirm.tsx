@@ -43,8 +43,9 @@ export function ClockOutIntervalConfirm({ intervals, selections, onSelectionChan
   return (
     <div className="clock-out-pause-step">
       <p className="clock-out-step-intro">
-        Ordne jede Pause zu. Der Vorschlag ist vorausgewählt — du kannst ihn anpassen. Beim Speichern
-        werden alle Auswahlen übernommen.
+        In diesen Zeiten warst du nicht auf einer Baustelle. Was hast du gemacht? Ladezeit und
+        Sonstige Arbeit zählen als Arbeitszeit, Frühstück und Mittag als Pause. Der Vorschlag ist
+        vorausgewählt — du kannst ihn anpassen.
       </p>
       <ul className="clock-out-pause-cards">
         {pauses.map((row) => {
@@ -74,7 +75,7 @@ export function ClockOutIntervalConfirm({ intervals, selections, onSelectionChan
                   Vorschlag: {BLOCK_TYPE_LABELS[suggested]}
                 </p>
               ) : null}
-              <div className="clock-out-pause-chips" role="group" aria-label={`Pause ${start} bis ${end}`}>
+              <div className="clock-out-pause-chips" role="group" aria-label={`Zeit ${start} bis ${end}`}>
                 {CHIP_TYPES.map((type) => {
                   const active = selected === type;
                   const isSuggested = suggested === type;

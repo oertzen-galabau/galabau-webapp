@@ -21,6 +21,7 @@ import { formatBadWeatherSeasonLabel, isBadWeatherSeason } from '@/lib/payroll/c
 import { buildDefaultTimeline, type TimelineBlockInput } from '@/lib/time-tracking/timeline';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import { getPlannedDaySitesForUser } from '@/lib/schedule/planned-day-sites';
+import { getPlannedDayStartForUser } from '@/lib/schedule/planned-day-start';
 import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 import { loadTodayWorkSession } from '@/lib/time-tracking/today-work-session';
 import { buildTimelineFromIntervals } from '@/lib/time-tracking/interval-timeline';
@@ -61,7 +62,7 @@ export async function getClockOutContext() {
     default_travel_minutes: site.defaultTravelMinutes,
   }));
 
-  const [{ data: assignment }, session, tenantConfig, timeRules] = await Promise.all([
+  const [{ data: assignment }, session, tenantConfig, timeRules, plan] = await Promise.all([
     supabase
       .from('daily_assignments')
       .select('site_id, sites(id, name, default_travel_minutes)')
@@ -71,6 +72,7 @@ export async function getClockOutContext() {
     loadTodayWorkSession(supabase, ctx.tenantId, ctx.userId, workDate, { migrateLegacy: true }),
     loadTenantPayrollConfig(supabase, ctx.tenantId),
     loadTenantTimeTrackingRules(supabase, ctx.tenantId),
+    getPlannedDayStartForUser(supabase, ctx.tenantId, ctx.userId, workDate).catch(() => null),
   ]);
 
   const todayEntry = session.entry?.end_time ? null : session.entry;
@@ -126,8 +128,12 @@ export async function getClockOutContext() {
     startTime: todayEntry?.start_time?.slice(0, 5) ?? null,
     endTime,
     timeRules,
-    plannedStartTime: todayEntry?.planned_start_time?.slice(0, 5) ?? null,
+    plannedStartTime:
+      todayEntry?.planned_start_time?.slice(0, 5) ?? plan?.plannedStartTime.slice(0, 5) ?? null,
+    plannedEndTime:
+      todayEntry?.planned_end_time?.slice(0, 5) ?? plan?.plannedEndTime.slice(0, 5) ?? null,
     earlyStartReason: todayEntry?.early_start_reason ?? null,
+    lateStartReason: todayEntry?.late_start_reason ?? null,
     isBadWeatherSeason: isBadWeatherSeason(workDate, season_start, season_end),
     badWeatherSeasonLabel: formatBadWeatherSeasonLabel(season_start, season_end),
   };

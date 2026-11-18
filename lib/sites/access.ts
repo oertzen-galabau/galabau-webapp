@@ -214,3 +214,24 @@ export async function fetchAccessibleSites(
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as AccessibleSiteRow[];
 }
+
+/** Baustellen fürs Tagesbericht-Formular (Team + Vorarbeiter am Berichtsdatum). */
+export async function fetchSitesForDailyReportForm(
+  supabase: SupabaseClient,
+  ctx: SessionContext | ActionContext,
+  logDate: string,
+  columns = 'id, name, default_travel_minutes',
+): Promise<AccessibleSiteRow[]> {
+  const ids = await resolveSitesForDailyReportCreate(supabase, ctx, logDate);
+  const { tenantId } = asSiteAccessContext(ctx);
+  let query = supabase
+    .from('sites')
+    .select(columns)
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('name');
+  query = applySiteListFilter(query, { ids });
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as AccessibleSiteRow[];
+}

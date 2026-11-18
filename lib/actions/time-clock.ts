@@ -7,6 +7,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
 import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 import { confirmPauseIntervalsForUser } from '@/lib/time-tracking/confirm-pause-intervals';
+import { timeEntryWriteError } from '@/lib/time-tracking/entry-editable';
 import {
   closeIntervalById,
   getOpenInterval,
@@ -23,6 +24,7 @@ import {
 import {
   EARLY_START_REASON_MIN_LENGTH,
   getPlannedDayStartForUser,
+  isStartAfterPlannedEnd,
   isStartBeforePlannedWithTolerance,
 } from '@/lib/schedule/planned-day-start';
 import type { TimeBlockType, TimeEntry, TimeEntryInterval } from '@/lib/types/database';
@@ -64,6 +66,7 @@ function revalidateLiveClock() {
 
 export async function clockInWork(payload?: {
   earlyStartReason?: string | null;
+  lateStartReason?: string | null;
 }): Promise<LiveClockSnapshot> {
   const ctx = await getActionContext();
   requirePerm(ctx, 'zeiten.record');
@@ -78,15 +81,14 @@ export async function clockInWork(payload?: {
   }
 
   const rules = await loadTenantTimeTrackingRules(supabase, tenantId);
-  const plan = rules.compare_schedule_on_clock_in
-    ? await getPlannedDayStartForUser(supabase, tenantId, userId, workDate)
-    : null;
+  const plan = await getPlannedDayStartForUser(supabase, tenantId, userId, workDate);
 
   const nowDate = new Date();
   const now = toTimeString(nowDate);
 
   let earlyStartReason: string | null = null;
-  if (plan && rules.compare_schedule_on_clock_in) {
+  let lateStartReason: string | null = null;
+  if (plan) {
     const early = isStartBeforePlannedWithTolerance(
       now,
       plan.plannedStartTime,
@@ -100,6 +102,17 @@ export async function clockInWork(payload?: {
         );
       }
       earlyStartReason = reason;
+    }
+
+    const lateStart = isStartAfterPlannedEnd(now, plan.plannedEndTime);
+    if (lateStart) {
+      const reason = payload?.lateStartReason?.trim() ?? '';
+      if (reason.length < EARLY_START_REASON_MIN_LENGTH) {
+        throw new Error(
+          `Geplant bis ${plan.plannedEndTime.slice(0, 5)} — bitte einen Grund für den späten Start angeben (min. ${EARLY_START_REASON_MIN_LENGTH} Zeichen).`,
+        );
+      }
+      lateStartReason = reason;
     }
   }
 
@@ -124,12 +137,15 @@ export async function clockInWork(payload?: {
       travel_minutes: 0,
       work_minutes: 0,
       planned_start_time: plan?.plannedStartTime ?? null,
+      planned_end_time: plan?.plannedEndTime ?? null,
       schedule_entry_id: plan?.scheduleEntryId ?? null,
       early_start_reason: earlyStartReason,
+      late_start_reason: lateStartReason,
     })
     .select('*')
     .single();
-  if (error || !inserted) throw new Error(error?.message ?? 'Start fehlgeschlagen.');
+  if (error) throw timeEntryWriteError(error);
+  if (!inserted) throw new Error('Start fehlgeschlagen.');
 
   await openInterval(supabase, {
     tenantId,

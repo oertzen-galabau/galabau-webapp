@@ -9,7 +9,7 @@ export async function markInfoboardPostsRead(postIds: string[]) {
   if (!ids.length) return;
 
   const ctx = await getActionContext();
-  if (!canAccess(ctx, 'nav.infoboard')) throw new Error('Keine Berechtigung');
+  if (!canAccess(ctx, 'infoboard.view_posts')) throw new Error('Keine Berechtigung');
 
   const { tenantId, userId } = ctx;
   const supabase = await createClient();

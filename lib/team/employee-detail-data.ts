@@ -21,6 +21,12 @@ import type {
 
 export type EmployeeDetailMode = 'self' | 'admin';
 
+/** In der Team-Ansicht nur nach Freigabe sichtbar (eigenes Profil: alle abgeschlossenen). */
+export function teamVisibleTimeEntryQuery<T>(query: T, mode: EmployeeDetailMode): T {
+  if (mode !== 'admin') return query;
+  return (query as unknown as { eq: (col: string, val: string) => T }).eq('approval_status', 'approved');
+}
+
 type AssignmentRow = {
   id: string;
   assignment_date: string;
@@ -149,26 +155,35 @@ export async function loadEmployeeDetailData(args: {
       .select('*')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false }),
-    supabase
-      .from('time_entries')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .gte('work_date', yearStart)
-      .lt('work_date', yearEnd)
-      .order('work_date', { ascending: false }),
-    supabase
-      .from('time_entries')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .gte('work_date', monthStart)
-      .lt('work_date', monthEnd)
-      .order('work_date', { ascending: false }),
-    supabase
-      .from('time_entries')
-      .select('work_minutes')
-      .eq('user_id', targetUserId)
-      .gte('work_date', monthStart)
-      .lt('work_date', monthEnd),
+    teamVisibleTimeEntryQuery(
+      supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .gte('work_date', yearStart)
+        .lt('work_date', yearEnd)
+        .order('work_date', { ascending: false }),
+      mode,
+    ),
+    teamVisibleTimeEntryQuery(
+      supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .gte('work_date', monthStart)
+        .lt('work_date', monthEnd)
+        .order('work_date', { ascending: false }),
+      mode,
+    ),
+    teamVisibleTimeEntryQuery(
+      supabase
+        .from('time_entries')
+        .select('work_minutes')
+        .eq('user_id', targetUserId)
+        .gte('work_date', monthStart)
+        .lt('work_date', monthEnd),
+      mode,
+    ),
     loadAssignments
       ? supabase
           .from('daily_assignments')

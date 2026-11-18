@@ -1,10 +1,30 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  DUPLICATE_DAY_ERROR,
   isTimeEntryDeletable,
   isTimeEntryEditable,
+  isWithinEditableDateRange,
   minEditableWorkDate,
+  timeEntryWriteError,
 } from './entry-editable';
+
+describe('isWithinEditableDateRange', () => {
+  it('allows today and up to 3 days back, never future', () => {
+    const today = '2026-11-17';
+    assert.equal(isWithinEditableDateRange('2026-11-17', today), true);
+    assert.equal(isWithinEditableDateRange('2026-11-14', today), true);
+    assert.equal(isWithinEditableDateRange('2026-11-13', today), false);
+    assert.equal(isWithinEditableDateRange('2026-11-18', today), false);
+  });
+});
+
+describe('timeEntryWriteError', () => {
+  it('maps unique violations to the one-entry-per-day message', () => {
+    assert.equal(timeEntryWriteError({ code: '23505', message: 'dup' }).message, DUPLICATE_DAY_ERROR);
+    assert.equal(timeEntryWriteError({ code: '42501', message: 'rls' }).message, 'rls');
+  });
+});
 
 describe('isTimeEntryEditable', () => {
   it('allows rejected completed entries', () => {

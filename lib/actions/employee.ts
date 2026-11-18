@@ -7,7 +7,18 @@ import { canAccess, getActionContext } from '@/lib/auth/session';
 import { parseSegmentsFromForm } from '@/lib/time-tracking/form-parsing';
 import { processTimeEntrySubmission } from '@/lib/time-tracking/submission';
 import { loadTenantTimeTrackingRules } from '@/lib/time-tracking/break-rules';
-import { isOwnSubmittedTimeEntryLocked } from '@/lib/time-tracking/entry-editable';
+import {
+  EARLY_START_REASON_MIN_LENGTH,
+  getPlannedDayStartForUser,
+  isEndAfterPlannedEndWithTolerance,
+} from '@/lib/schedule/planned-day-start';
+import {
+  DUPLICATE_DAY_ERROR,
+  EDITABLE_DAYS_BACK,
+  isOwnSubmittedTimeEntryLocked,
+  isWithinEditableDateRange,
+  timeEntryWriteError,
+} from '@/lib/time-tracking/entry-editable';
 import { todayWorkDate, toTimeString } from '@/lib/time-tracking/work-day';
 import {
   closeOpenInterval,
@@ -90,6 +101,7 @@ export type ClockOutPayload = {
   badWeatherClaimed?: boolean;
   missingBreakfastReason?: string | null;
   missingLunchReason?: string | null;
+  lateEndReason?: string | null;
   pauseConfirmations?: PauseIntervalConfirmation[];
 };
 
@@ -121,7 +133,31 @@ export async function clockOutWork(_legacyNoBreakReason?: string | null, payload
     throw new Error('Bitte alle Pausen am Feierabend bestätigen.');
   }
 
+  const rules = await loadTenantTimeTrackingRules(supabase, tenantId);
+  const plan = await getPlannedDayStartForUser(supabase, tenantId, userId, workDate);
+  const plannedEndTime =
+    entry!.planned_end_time ?? plan?.plannedEndTime ?? null;
+
   const endTime = toTimeString(new Date());
+
+  let lateEndReason: string | null = null;
+  if (plannedEndTime) {
+    const lateEnd = isEndAfterPlannedEndWithTolerance(
+      endTime,
+      plannedEndTime,
+      rules.early_start_tolerance_minutes,
+    );
+    if (lateEnd) {
+      const reason = payload?.lateEndReason?.trim() ?? '';
+      if (reason.length < EARLY_START_REASON_MIN_LENGTH) {
+        throw new Error(
+          `Geplant bis ${plannedEndTime.slice(0, 5)} — bitte einen Grund für das späte Ende angeben (min. ${EARLY_START_REASON_MIN_LENGTH} Zeichen).`,
+        );
+      }
+      lateEndReason = reason;
+    }
+  }
+
   const legacyBreaks = legacyBreakFieldsFromIntervals(allIntervals);
 
   const segmentsFromPayload = payload?.segments ?? [];
@@ -167,6 +203,8 @@ export async function clockOutWork(_legacyNoBreakReason?: string | null, payload
       lunch_end: processed.lunch_end,
       missing_breakfast_reason: processed.missing_breakfast_reason,
       missing_lunch_reason: processed.missing_lunch_reason,
+      planned_end_time: plannedEndTime ?? entry!.planned_end_time,
+      late_end_reason: lateEndReason,
       driver_trip: payload?.driverTrip ?? 'none',
       is_driver: isDriverFlagFromTrip(payload?.driverTrip ?? 'none'),
       bad_weather_claimed: badWeatherClaimed,
@@ -224,6 +262,36 @@ function assertOwnTimeEntryModifiable(
   }
   if (options.requireCompleted && !entry.end_time) {
     throw new Error('Laufende Zeiteinträge können hier nicht bearbeitet werden.');
+  }
+}
+
+/** Datum nicht in der Zukunft und max. EDITABLE_DAYS_BACK Tage zurück; höchstens ein Eintrag pro Tag. */
+async function assertWorkDateAllowed(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  userId: string,
+  workDate: string,
+  excludeEntryId?: string,
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) throw new Error('Bitte ein gültiges Datum angeben.');
+  if (!isWithinEditableDateRange(workDate)) {
+    throw new Error(
+      `Zeiten können nur für heute und die letzten ${EDITABLE_DAYS_BACK} Tage erfasst werden, nicht für die Zukunft.`,
+    );
+  }
+
+  let query = supabase
+    .from('time_entries')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('work_date', workDate)
+    .limit(1);
+  if (excludeEntryId) query = query.neq('id', excludeEntryId);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  if (data && data.length > 0) {
+    throw new Error(DUPLICATE_DAY_ERROR);
   }
 }
 
@@ -304,6 +372,7 @@ export async function saveTimeEntry(formData: FormData) {
   const supabase = await createClient();
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
+  await assertWorkDateAllowed(supabase, tenantId, userId, entryFields.work_date);
   entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
     supabase,
     tenantId,
@@ -339,7 +408,7 @@ export async function saveTimeEntry(formData: FormData) {
     approval_status: 'pending',
     submitted_at: now,
   }).select('id').single();
-  if (error) throw new Error(error.message);
+  if (error) throw timeEntryWriteError(error);
 
   if (processed.segments.length > 0 && inserted) {
     await saveEntrySegments(supabase, tenantId, inserted.id, processed.segments);
@@ -370,6 +439,9 @@ export async function resubmitTimeEntry(formData: FormData) {
 
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
+  if (entryFields.work_date !== existing.work_date) {
+    await assertWorkDateAllowed(supabase, tenantId, userId, entryFields.work_date, entryId);
+  }
   entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
     supabase,
     tenantId,
@@ -409,7 +481,7 @@ export async function resubmitTimeEntry(formData: FormData) {
       bad_weather_confirmed: null,
     })
     .eq('id', entryId);
-  if (error) throw new Error(error.message);
+  if (error) throw timeEntryWriteError(error);
 
   await saveEntrySegments(supabase, tenantId, entryId, processed.segments);
   revalidateTimePaths();
@@ -511,6 +583,9 @@ export async function updateTimeEntry(formData: FormData) {
 
   const parsed = parseTimeEntryForm(formData);
   const { segments, ...entryFields } = parsed;
+  if (entryFields.work_date !== existing.work_date) {
+    await assertWorkDateAllowed(supabase, tenantId, userId, entryFields.work_date, entryId);
+  }
 
   entryFields.bad_weather_claimed = await sanitizeBadWeatherClaimed(
     supabase,
@@ -551,7 +626,7 @@ export async function updateTimeEntry(formData: FormData) {
       bad_weather_confirmed: null,
     })
     .eq('id', entryId);
-  if (error) throw new Error(error.message);
+  if (error) throw timeEntryWriteError(error);
 
   await saveEntrySegments(supabase, tenantId, entryId, processed.segments);
   revalidateTimePaths();

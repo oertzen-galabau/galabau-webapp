@@ -3,6 +3,13 @@ import { todayWorkDate } from '@/lib/time-tracking/work-day';
 
 export const EDITABLE_DAYS_BACK = 3;
 
+export const DUPLICATE_DAY_ERROR = 'Für diesen Tag existiert bereits ein Zeiteintrag.';
+
+/** Postgres unique_violation (Index time_entries_user_work_date_key) → verständliche Meldung. */
+export function timeEntryWriteError(error: { code?: string; message: string }): Error {
+  return new Error(error.code === '23505' ? DUPLICATE_DAY_ERROR : error.message);
+}
+
 type EntryLike = {
   approval_status: TimeEntryApprovalStatus | null;
   work_date: string;

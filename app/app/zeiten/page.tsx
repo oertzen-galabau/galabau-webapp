@@ -6,6 +6,7 @@ import { TimeEntrySaveForm } from '@/components/time-tracking/time-entry-save-fo
 import { TimeEntryOverviewRow } from '@/components/time-tracking/time-entry-overview-row';
 import { fetchAccessibleSites, type AccessibleSiteRow } from '@/lib/sites/access';
 import { todayWorkDate } from '@/lib/time-tracking/work-day';
+import { minEditableWorkDate } from '@/lib/time-tracking/entry-editable';
 import { formatMinutes } from '@/lib/utils/time';
 import {
   getBadWeatherSeasonFromConfig,
@@ -251,6 +252,8 @@ export default async function ZeitenPage() {
             action={saveTimeEntryAction}
             sites={sites}
             submitLabel="Speichern"
+            minDate={minEditableWorkDate(today)}
+            maxDate={today}
             compact
             badWeatherSeasonStart={badWeatherSeasonStart}
             badWeatherSeasonEnd={badWeatherSeasonEnd}

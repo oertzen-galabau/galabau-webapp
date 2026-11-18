@@ -57,7 +57,6 @@ export type SchedulePlanData = {
   equipment: {
     id: string;
     name: string;
-    kind: string;
     license_plate: string | null;
     inventory_number: string | null;
   }[];
@@ -146,7 +145,7 @@ export async function loadSchedulePlanData(
       .order('name'),
     supabase
       .from('tenant_equipment')
-      .select('id, name, kind, license_plate, inventory_number')
+      .select('id, name, license_plate, inventory_number')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .neq('status', 'retired')

@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MAX_REPORT_PHOTOS, MIN_REPORT_PHOTOS } from '@/lib/types/database';
+import { compressReportPhoto } from '@/lib/documentation/compress-report-photo';
 
 type ExistingPhoto = {
   id: string;
@@ -28,6 +29,7 @@ export function ReportPhotoManager({ existingPhotos = [] }: Props) {
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [newFiles, setNewFiles] = useState<Array<{ id: number; file: File; preview: string }>>([]);
   const nextId = useRef(1);
+  const [processing, setProcessing] = useState(false);
 
   const activeExisting = existingPhotos.filter((photo) => !removedIds.has(photo.id));
   const totalCount = activeExisting.length + newFiles.length;
@@ -41,11 +43,13 @@ export function ReportPhotoManager({ existingPhotos = [] }: Props) {
     submitInputRef.current.files = dt.files;
   }
 
-  function addFiles(fileList: FileList | null) {
+  async function addFiles(fileList: FileList | null) {
     if (!fileList?.length) return;
     const incoming = Array.from(fileList).filter((file) => file.type.startsWith('image/'));
     const remaining = MAX_REPORT_PHOTOS - totalCount;
-    const accepted = incoming.slice(0, remaining);
+    setProcessing(true);
+    const accepted = await Promise.all(incoming.slice(0, remaining).map(compressReportPhoto));
+    setProcessing(false);
 
     setNewFiles((current) => {
       const next = [
@@ -140,9 +144,11 @@ export function ReportPhotoManager({ existingPhotos = [] }: Props) {
             </div>
           </div>
           <span className="input-form-file-selected">
-            {totalCount === 0
-              ? 'Keine Fotos ausgewählt'
-              : `${totalCount} Foto${totalCount === 1 ? '' : 's'} ausgewählt`}
+            {processing
+              ? 'Fotos werden optimiert…'
+              : totalCount === 0
+                ? 'Keine Fotos ausgewählt'
+                : `${totalCount} Foto${totalCount === 1 ? '' : 's'} ausgewählt`}
           </span>
         </div>
       )}
@@ -155,7 +161,7 @@ export function ReportPhotoManager({ existingPhotos = [] }: Props) {
         multiple
         className="input-form-file-native-hidden report-photo-file-input"
         onChange={(event) => {
-          addFiles(event.target.files);
+          void addFiles(event.target.files);
           event.target.value = '';
         }}
       />
