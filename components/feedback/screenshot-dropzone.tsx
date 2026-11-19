@@ -126,7 +126,9 @@ export const ScreenshotDropzone = forwardRef<ScreenshotDropzoneHandle, Props>(fu
 
   return (
     <div className="feedback-screenshot-field">
-      <span className="feedback-screenshot-label">Screenshots (optional)</span>
+      <span className="feedback-screenshot-label">
+        {required ? 'Screenshots (Pflicht)' : 'Screenshots (optional)'}
+      </span>
       <div
         ref={zoneRef}
         className={[
