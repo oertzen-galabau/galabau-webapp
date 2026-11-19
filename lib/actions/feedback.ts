@@ -168,6 +168,7 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
   cutoff.setUTCDate(cutoff.getUTCDate() - FEEDBACK_BOARD_DONE_RECENT_DAYS);
   const cutoffIso = cutoff.toISOString();
 
+  const tenantId = ctx.tenantId;
   const [
     { data: mineRows, error: mineError },
     { data: openRows, error: openError },
@@ -176,16 +177,19 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
     admin
       .from('feedback_reports')
       .select('id, kind, title, status, public_reply, created_at, updated_at')
+      .eq('tenant_id', tenantId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false }),
     admin
       .from('feedback_reports')
       .select('id, user_id, kind, title, status, public_reply, updated_at')
+      .eq('tenant_id', tenantId)
       .in('status', ['open', 'in_progress'])
       .order('updated_at', { ascending: false }),
     admin
       .from('feedback_reports')
       .select('id, user_id, kind, title, status, public_reply, updated_at')
+      .eq('tenant_id', tenantId)
       .eq('status', 'done')
       .gte('updated_at', cutoffIso)
       .order('updated_at', { ascending: false }),

@@ -1,6 +1,6 @@
 import type { FeedbackReportKind, FeedbackReportStatus } from '@/lib/types/database';
 
-/** „Erledigt“ erscheint auf dem öffentlichen Board nur, wenn kürzlich abgeschlossen (Supabase-Vergleich mit timestamptz). */
+/** „Erledigt“ erscheint auf dem Mandanten-Board nur, wenn kürzlich abgeschlossen (Supabase-Vergleich mit timestamptz). */
 export const FEEDBACK_BOARD_DONE_RECENT_DAYS = 14;
 
 export type FeedbackBoardMineRow = {

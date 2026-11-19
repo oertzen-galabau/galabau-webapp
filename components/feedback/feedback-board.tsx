@@ -50,7 +50,7 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
           <div className="feedback-board-head-text">
             <h1 className="feedback-board-title">Offene Tasks</h1>
             <p className="muted feedback-board-lead">
-              Hier siehst du den Bearbeitungsstand plattformweit (anonym) sowie deine eigenen Meldungen.
+              Hier siehst du den Bearbeitungsstand deines Betriebs sowie deine eigenen Meldungen.
               Zuletzt erledigte Tasks erscheinen nur etwa {FEEDBACK_BOARD_DONE_RECENT_DAYS} Tage.
             </p>
           </div>
@@ -114,7 +114,7 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
         <section className="panel feedback-board-section">
           <h2 className="feedback-board-section-title">Woran gearbeitet wird</h2>
           <p className="muted feedback-board-section-hint">
-            Titel, Status und Antworten aller Mandanten – ohne Firma oder Personenbezug.
+            Titel, Status und Antworten aus deinem Betrieb – ohne Personenbezug.
           </p>
           {initialData.public.length === 0 ? (
             <p className="muted">Aktuell keine Einträge in diesem Überblick.</p>
