@@ -7180,6 +7180,25 @@ button.schedule-day-timeline-event {
   font-size: var(--text-caption);
   color: var(--text-muted);
 }
+.feedback-board-reply {
+  width: 100%;
+  margin: 2px 0 0;
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+.feedback-detail-public-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.feedback-detail-public-reply textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
 .feedback-board-row-badges {
   display: flex;
   flex-wrap: wrap;

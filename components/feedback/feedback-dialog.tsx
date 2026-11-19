@@ -5,6 +5,10 @@ import { useCallback, useRef, useState, useTransition } from 'react';
 import { submitFeedbackReport } from '@/lib/actions/feedback';
 import { AppDialog, NoticeDialog } from '@/components/ui/app-dialogs';
 import { ScreenshotDropzone, type ScreenshotDropzoneHandle } from '@/components/feedback/screenshot-dropzone';
+import {
+  FEEDBACK_BUG_DESCRIPTION_MIN_LENGTH,
+  bugSubmitError,
+} from '@/lib/feedback/submit-rules';
 import type { FeedbackReportKind } from '@/lib/types/database';
 
 type Props = {
@@ -42,10 +46,19 @@ export function FeedbackDialog({ open, onClose }: Props) {
     e.preventDefault();
     setError(null);
 
+    const trimmedDescription = description.trim();
+    if (kind === 'bug') {
+      const bugError = bugSubmitError(trimmedDescription, screenshots.length);
+      if (bugError) {
+        setError(bugError);
+        return;
+      }
+    }
+
     const formData = new FormData();
     formData.set('kind', kind);
     formData.set('title', title.trim());
-    formData.set('description', description.trim());
+    formData.set('description', trimmedDescription);
     formData.set('page_url', typeof window !== 'undefined' ? window.location.href : pathname);
     formData.set('user_agent', typeof navigator !== 'undefined' ? navigator.userAgent : '');
     for (const file of screenshots) {
@@ -141,10 +154,15 @@ export function FeedbackDialog({ open, onClose }: Props) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
+              minLength={kind === 'bug' ? FEEDBACK_BUG_DESCRIPTION_MIN_LENGTH : 1}
               maxLength={8000}
               rows={5}
               disabled={pending}
-              placeholder="Was ist passiert? Was haben Sie erwartet?"
+              placeholder={
+                kind === 'bug'
+                  ? `Was ist passiert? Was haben Sie erwartet? (min. ${FEEDBACK_BUG_DESCRIPTION_MIN_LENGTH} Zeichen)`
+                  : 'Was ist passiert? Was haben Sie erwartet?'
+              }
             />
           </label>
 
@@ -153,6 +171,7 @@ export function FeedbackDialog({ open, onClose }: Props) {
             files={screenshots}
             onChange={setScreenshots}
             disabled={pending}
+            required={kind === 'bug'}
           />
 
           {error ? <p className="dialog-error">{error}</p> : null}

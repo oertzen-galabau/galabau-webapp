@@ -8,6 +8,7 @@ export type FeedbackBoardMineRow = {
   kind: FeedbackReportKind;
   title: string;
   status: FeedbackReportStatus;
+  public_reply: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -17,6 +18,7 @@ export type FeedbackBoardPublicRow = {
   kind: FeedbackReportKind;
   title: string;
   status: FeedbackReportStatus;
+  public_reply: string | null;
   updated_at: string;
   /** True, wenn diese Meldung vom aktuellen Nutzer stammt (für Badge „Von mir“). */
   is_mine: boolean;

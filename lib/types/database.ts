@@ -750,6 +750,7 @@ export type FeedbackReport = {
   status: FeedbackReportStatus;
   priority: FeedbackReportPriority;
   internal_note: string | null;
+  public_reply: string | null;
   created_at: string;
   updated_at: string;
 };

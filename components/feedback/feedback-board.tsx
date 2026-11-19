@@ -93,6 +93,9 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
                         minute: '2-digit',
                       })}
                     </span>
+                    {row.public_reply ? (
+                      <p className="feedback-board-reply">{row.public_reply}</p>
+                    ) : null}
                   </div>
                   <div className="feedback-board-row-badges">
                     <span className="feedback-board-chip feedback-board-chip--kind">
@@ -111,7 +114,7 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
         <section className="panel feedback-board-section">
           <h2 className="feedback-board-section-title">Woran gearbeitet wird</h2>
           <p className="muted feedback-board-section-hint">
-            Titel und Status aller Mandanten – ohne Firma oder Personenbezug.
+            Titel, Status und Antworten aller Mandanten – ohne Firma oder Personenbezug.
           </p>
           {initialData.public.length === 0 ? (
             <p className="muted">Aktuell keine Einträge in diesem Überblick.</p>
@@ -132,6 +135,9 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
                     <span className="feedback-board-row-title">{row.title}</span>
                     {row.is_mine ? (
                       <span className="feedback-board-mine-badge">Von mir</span>
+                    ) : null}
+                    {row.public_reply ? (
+                      <p className="feedback-board-reply">{row.public_reply}</p>
                     ) : null}
                   </div>
                   <div className="feedback-board-row-badges">

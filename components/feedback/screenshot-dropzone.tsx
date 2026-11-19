@@ -32,6 +32,8 @@ type Props = {
   files: File[];
   onChange: (files: File[]) => void;
   disabled?: boolean;
+  /** Pflichtfeld-Hinweis (z. B. bei Bug-Meldungen) */
+  required?: boolean;
 };
 
 export type ScreenshotDropzoneHandle = {
@@ -40,7 +42,7 @@ export type ScreenshotDropzoneHandle = {
 };
 
 export const ScreenshotDropzone = forwardRef<ScreenshotDropzoneHandle, Props>(function ScreenshotDropzone(
-  { files, onChange, disabled = false },
+  { files, onChange, disabled = false, required = false },
   ref,
 ) {
   const inputId = useId();
@@ -164,6 +166,7 @@ export const ScreenshotDropzone = forwardRef<ScreenshotDropzoneHandle, Props>(fu
           </label>
         </p>
         <p className="muted feedback-screenshot-hint">
+          {required ? 'Pflicht · ' : ''}
           JPEG, PNG, WebP · max. 5 MB · bis zu {FEEDBACK_SCREENSHOT_MAX_COUNT} Bilder
         </p>
         <input

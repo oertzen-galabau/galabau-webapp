@@ -76,6 +76,7 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
     formData.set('status', status);
     formData.set('priority', row.priority);
     formData.set('internal_note', row.internal_note ?? '');
+    formData.set('public_reply', row.public_reply ?? '');
 
     setMovePending(true);
     try {
@@ -208,14 +209,17 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
                 const formData = new FormData(e.currentTarget);
                 startTransition(async () => {
                   await updateFeedbackReportAdmin(formData);
+                  const publicReply = String(formData.get('public_reply') ?? '').trim() || null;
                   patchRow(detail.id, {
                     status: formData.get('status') as FeedbackReportStatus,
                     priority: formData.get('priority') as FeedbackReportPriority,
+                    public_reply: publicReply,
                   });
                   setDetail({
                     ...detail,
                     status: formData.get('status') as FeedbackReportStatus,
                     priority: formData.get('priority') as FeedbackReportPriority,
+                    public_reply: publicReply,
                   });
                 });
               }}
@@ -242,6 +246,16 @@ export function FeedbackAdminPanel({ initialRows }: Props) {
                   />
                 </label>
               </div>
+              <label className="feedback-detail-public-reply">
+                Öffentliche Antwort
+                <textarea
+                  name="public_reply"
+                  rows={3}
+                  maxLength={4000}
+                  defaultValue={detail.public_reply ?? ''}
+                  placeholder="Wird auf dem Task-Board und in der Erledigt-Mail angezeigt."
+                />
+              </label>
               <div className="dialog-actions">
                 <button type="button" className="text-button" onClick={() => setDeleteId(detail.id)}>
                   Löschen

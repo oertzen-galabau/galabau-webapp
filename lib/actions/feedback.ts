@@ -2,12 +2,17 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { sendFeedbackReportNotification } from '@/lib/email/feedback-notification';
+import {
+  sendFeedbackDoneToOwnerNotification,
+  sendFeedbackReportNotification,
+  shouldNotifyFeedbackOwnerOnDone,
+} from '@/lib/email/feedback-notification';
 import { FEEDBACK_BOARD_DONE_RECENT_DAYS } from '@/lib/feedback/board';
 import { appendInternalNote } from '@/lib/feedback/internal-note';
 import { getActionContext, requireSuperadmin } from '@/lib/auth/session';
 import { displayName } from '@/lib/auth/roles';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { tenantAppUrl } from '@/lib/tenant/config';
 import {
   deletePrivateFile,
   FEEDBACK_SCREENSHOT_MAX_COUNT,
@@ -26,6 +31,7 @@ import type {
   Tenant,
 } from '@/lib/types/database';
 import type { FeedbackBoardData } from '@/lib/feedback/board';
+import { bugSubmitError } from '@/lib/feedback/submit-rules';
 import { triggerCursorAgentForFeedbackReport } from '@/lib/feedback/trigger-cursor-agent';
 
 const submitSchema = z.object({
@@ -57,6 +63,10 @@ export async function submitFeedbackReport(formData: FormData): Promise<SubmitFe
   const files = formData.getAll('screenshots').filter(
     (entry): entry is File => entry instanceof File && entry.size > 0,
   );
+  if (parsed.data.kind === 'bug') {
+    const bugError = bugSubmitError(parsed.data.description, files.length);
+    if (bugError) return { ok: false, error: bugError };
+  }
   if (files.length > FEEDBACK_SCREENSHOT_MAX_COUNT) {
     return { ok: false, error: `Maximal ${FEEDBACK_SCREENSHOT_MAX_COUNT} Screenshots` };
   }
@@ -165,17 +175,17 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
   ] = await Promise.all([
     admin
       .from('feedback_reports')
-      .select('id, kind, title, status, created_at, updated_at')
+      .select('id, kind, title, status, public_reply, created_at, updated_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false }),
     admin
       .from('feedback_reports')
-      .select('id, user_id, kind, title, status, updated_at')
+      .select('id, user_id, kind, title, status, public_reply, updated_at')
       .in('status', ['open', 'in_progress'])
       .order('updated_at', { ascending: false }),
     admin
       .from('feedback_reports')
-      .select('id, user_id, kind, title, status, updated_at')
+      .select('id, user_id, kind, title, status, public_reply, updated_at')
       .eq('status', 'done')
       .gte('updated_at', cutoffIso)
       .order('updated_at', { ascending: false }),
@@ -196,13 +206,22 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
     kind: row.kind as FeedbackReportKind,
     title: row.title,
     status: row.status as FeedbackReportStatus,
+    public_reply: (row.public_reply as string | null) ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));
 
   const publicById = new Map<
     string,
-    { id: string; user_id: string; kind: string; title: string; status: string; updated_at: string }
+    {
+      id: string;
+      user_id: string;
+      kind: string;
+      title: string;
+      status: string;
+      public_reply: string | null;
+      updated_at: string;
+    }
   >();
   for (const row of [...(openRows ?? []), ...(recentDoneRows ?? [])]) {
     publicById.set(row.id, row);
@@ -216,6 +235,7 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
     kind: row.kind as FeedbackReportKind,
     title: row.title,
     status: row.status as FeedbackReportStatus,
+    public_reply: row.public_reply ?? null,
     updated_at: row.updated_at,
     is_mine: row.user_id === userId,
   }));
@@ -374,6 +394,7 @@ const updateSchema = z.object({
   status: z.enum(['open', 'in_progress', 'done']),
   priority: z.enum(['low', 'normal', 'high']),
   internal_note: z.string().max(8000).optional(),
+  public_reply: z.string().max(4000).optional(),
 });
 
 export async function updateFeedbackReportAdmin(formData: FormData) {
@@ -383,21 +404,53 @@ export async function updateFeedbackReportAdmin(formData: FormData) {
     status: formData.get('status'),
     priority: formData.get('priority'),
     internal_note: formData.get('internal_note') ?? '',
+    public_reply: formData.get('public_reply') ?? '',
   });
   if (!parsed.success) throw new Error('Ungültige Eingabe');
 
   const admin = createAdminClient();
+  const { data: existing, error: loadError } = await admin
+    .from('feedback_reports')
+    .select('id, status, kind, title, user_id, tenant_id')
+    .eq('id', parsed.data.id)
+    .maybeSingle();
+
+  if (loadError || !existing) {
+    throw new Error(loadError?.message ?? 'Meldung nicht gefunden');
+  }
+
+  const nextStatus = parsed.data.status as FeedbackReportStatus;
+  const publicReply = parsed.data.public_reply?.trim() || null;
   const { error } = await admin
     .from('feedback_reports')
     .update({
-      status: parsed.data.status as FeedbackReportStatus,
+      status: nextStatus,
       priority: parsed.data.priority as FeedbackReportPriority,
       internal_note: parsed.data.internal_note?.trim() || null,
+      public_reply: publicReply,
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.id);
 
   if (error) throw new Error(error.message);
+
+  if (shouldNotifyFeedbackOwnerOnDone(existing.status as FeedbackReportStatus, nextStatus)) {
+    const [{ data: profile }, { data: tenant }] = await Promise.all([
+      admin.from('profiles').select('email, first_name').eq('id', existing.user_id).maybeSingle(),
+      admin.from('tenants').select('slug').eq('id', existing.tenant_id).maybeSingle(),
+    ]);
+    if (profile?.email && tenant?.slug) {
+      void sendFeedbackDoneToOwnerNotification({
+        to: profile.email,
+        firstName: profile.first_name ?? '',
+        kind: existing.kind as FeedbackReportKind,
+        title: existing.title,
+        boardUrl: `${tenantAppUrl(tenant.slug)}/app/feedback`,
+        publicReply,
+      });
+    }
+  }
+
   revalidatePath('/superadmin');
   revalidatePath('/app/feedback');
 }

@@ -13,7 +13,12 @@ import { AppSelect } from '@/components/ui/app-select';
 import { TimeRejectDialog } from '@/components/payroll/time-reject-dialog';
 import { ApproveIconAction, RejectIconAction, TableIconActions } from '@/components/ui/icon-action-button';
 import { formatMinutes } from '@/lib/utils/time';
-import { BLOCK_TYPE_LABELS, blockDurationMinutes, isTimelineMode } from '@/lib/time-tracking/timeline';
+import {
+  BLOCK_TYPE_LABELS,
+  blockDurationMinutes,
+  isTimelineMode,
+  validateTimeline,
+} from '@/lib/time-tracking/timeline';
 
 const UNIT_OPTIONS = [
   { value: 'hours', label: 'Std.' },
@@ -93,6 +98,12 @@ export function TimeApprovalRow({
     (segment) => segment.start_time && segment.end_time,
   );
   const hasTimeline = isTimelineMode(entry.segments ?? []);
+  const timelineTotals =
+    hasTimeline && entry.start_time && entry.end_time
+      ? validateTimeline(timelineBlocks, entry.start_time, entry.end_time, {
+          requireFullCoverage: false,
+        })
+      : null;
 
   const planReasonTitle = [
     entry.early_start_reason ? `Früher Start: ${entry.early_start_reason}` : null,
@@ -189,6 +200,12 @@ export function TimeApprovalRow({
                     </li>
                   ))}
                 </ul>
+                {timelineTotals ? (
+                  <p className="muted" style={{ marginTop: 4, marginBottom: 0 }}>
+                    Arbeitszeit {formatMinutes(timelineTotals.workMinutes)} · Pause{' '}
+                    {formatMinutes(timelineTotals.breakMinutes)}
+                  </p>
+                ) : null}
               </div>
             )}
 
