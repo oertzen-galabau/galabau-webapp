@@ -17,6 +17,7 @@ export type FeedbackBoardPublicRow = {
   id: string;
   kind: FeedbackReportKind;
   title: string;
+  description: string;
   status: FeedbackReportStatus;
   public_reply: string | null;
   updated_at: string;

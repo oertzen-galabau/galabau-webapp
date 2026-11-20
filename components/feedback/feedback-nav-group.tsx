@@ -16,17 +16,19 @@ export function FeedbackNavGroup({ onNavigate, feedbackButtonClassName = '' }: P
   const pathname = usePathname();
   const boardActive = pathname === '/app/feedback';
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const closeFeedback = useCallback(() => setFeedbackOpen(false), []);
+
+  // Drawer unmountet diese Gruppe — Menü erst nach Dialog-Schließen schließen, sonst verschwindet der Dialog.
+  const closeFeedback = useCallback(() => {
+    setFeedbackOpen(false);
+    onNavigate?.();
+  }, [onNavigate]);
 
   return (
     <>
       <div className="feedback-nav-section">
         <FeedbackNavEntry
           className={feedbackButtonClassName}
-          onOpen={() => {
-            setFeedbackOpen(true);
-            onNavigate?.();
-          }}
+          onOpen={() => setFeedbackOpen(true)}
         />
         <AppNavLink
           href="/app/feedback"

@@ -6806,6 +6806,15 @@ button.schedule-day-timeline-event {
   margin-top: 4px;
   line-height: 1.35;
 }
+.schedule-entry-readonly-members,
+.schedule-entry-readonly-equipment {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 6px;
+  font-size: var(--text-ui);
+  line-height: 1.4;
+}
 
 /* === Press feedback (tap / click) === */
 :root {
@@ -7179,6 +7188,13 @@ button.schedule-day-timeline-event {
   width: 100%;
   font-size: var(--text-caption);
   color: var(--text-muted);
+}
+.feedback-board-description {
+  width: 100%;
+  margin: 2px 0 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 .feedback-board-reply {
   width: 100%;

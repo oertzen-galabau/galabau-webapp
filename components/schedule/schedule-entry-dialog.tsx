@@ -44,6 +44,8 @@ type Props = {
   defaultSiteId?: string;
   defaultDay?: string;
   weekDays?: string[];
+  /** Nur ansehen (Mitarbeiter ohne schedule.manage) */
+  readOnly?: boolean;
 };
 
 export function ScheduleEntryDialog({
@@ -60,6 +62,7 @@ export function ScheduleEntryDialog({
   defaultSiteId,
   defaultDay,
   weekDays,
+  readOnly = false,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function ScheduleEntryDialog({
   const excludeEntryId = entry?.id ?? null;
 
   function handleSubmit(formData: FormData) {
+    if (readOnly) return;
     setError(null);
     const planDate = String(formData.get('start_date') ?? '').trim();
     if (!entry && !planDate) {
@@ -120,7 +124,7 @@ export function ScheduleEntryDialog({
   }
 
   function handleDelete() {
-    if (!entry) return;
+    if (readOnly || !entry) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -134,11 +138,13 @@ export function ScheduleEntryDialog({
     });
   }
 
+  const fieldsDisabled = pending || readOnly;
+
   return (
     <AppDialog
       open={open}
       onClose={onClose}
-      title={entry ? 'Einsatz bearbeiten' : 'Neuer Einsatz'}
+      title={readOnly ? 'Einsatz' : entry ? 'Einsatz bearbeiten' : 'Neuer Einsatz'}
       panelClassName="dialog-panel--wide dialog-panel--fixed"
     >
       <form
@@ -177,7 +183,7 @@ export function ScheduleEntryDialog({
         <div className="input-form-core">
           <label className="input-form-span-full">
             Baustelle
-            <select name="site_id" required disabled={pending} defaultValue={entry?.site_id ?? defaultSiteId ?? ''}>
+            <select name="site_id" required disabled={fieldsDisabled} defaultValue={entry?.site_id ?? defaultSiteId ?? ''}>
               <option value="" disabled>Bitte wählen</option>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -187,16 +193,16 @@ export function ScheduleEntryDialog({
           <ScheduleEntryDayPicker
             initialDays={initialPlanDays}
             selectedDays={planDates}
-            onSelectedDaysChange={entry ? undefined : setPlanDates}
-            readOnly={Boolean(entry)}
-            disabled={pending}
+            onSelectedDaysChange={entry || readOnly ? undefined : setPlanDates}
+            readOnly={Boolean(entry) || readOnly}
+            disabled={fieldsDisabled}
           />
           <label>
             Von (Uhrzeit)
             <input
               type="time"
               name="start_time"
-              disabled={pending}
+              disabled={fieldsDisabled}
               defaultValue={entry?.start_time ?? '07:00'}
             />
           </label>
@@ -205,7 +211,7 @@ export function ScheduleEntryDialog({
             <input
               type="time"
               name="end_time"
-              disabled={pending}
+              disabled={fieldsDisabled}
               defaultValue={entry?.end_time ?? '16:00'}
             />
           </label>
@@ -213,19 +219,40 @@ export function ScheduleEntryDialog({
 
         <div className="schedule-entry-form-section">
           <p className="input-form-section-title">Mitarbeiter</p>
-          <p className="muted schedule-entry-foreman-hint">
-            Der gewählte Vorarbeiter ist für den Tagesbericht an diesem Tag verantwortlich.
-          </p>
-          <ScheduleMemberPicker
-            key={formKey}
-            employees={employees}
-            workAreas={workAreas}
-            planDates={planDates.length ? planDates : initialPlanDays}
-            leaveDays={leaveDays}
-            initialSelectedIds={initialMemberIds}
-            initialForemanId={entry?.foreman_user_id ?? null}
-            disabled={pending}
-          />
+          {readOnly ? (
+            entry?.members.length ? (
+              <ul className="schedule-entry-readonly-members">
+                {entry.members.map((m) => {
+                  const name = `${m.first_name} ${m.last_name}`.trim();
+                  const isForeman = entry.foreman_user_id === m.user_id;
+                  return (
+                    <li key={m.user_id}>
+                      {name}
+                      {isForeman ? ' (Vorarbeiter)' : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="muted">Keine Mitarbeiter zugewiesen.</p>
+            )
+          ) : (
+            <>
+              <p className="muted schedule-entry-foreman-hint">
+                Der gewählte Vorarbeiter ist für den Tagesbericht an diesem Tag verantwortlich.
+              </p>
+              <ScheduleMemberPicker
+                key={formKey}
+                employees={employees}
+                workAreas={workAreas}
+                planDates={planDates.length ? planDates : initialPlanDays}
+                leaveDays={leaveDays}
+                initialSelectedIds={initialMemberIds}
+                initialForemanId={entry?.foreman_user_id ?? null}
+                disabled={fieldsDisabled}
+              />
+            </>
+          )}
         </div>
 
         </div>
@@ -233,7 +260,17 @@ export function ScheduleEntryDialog({
         <div hidden={activeTab !== 'equipment'} className="schedule-entry-tab-panel">
         <div className="schedule-entry-form-section">
           <p className="input-form-section-title">Fahrzeuge & Geräte</p>
-          {equipment.length === 0 ? (
+          {readOnly ? (
+            entry?.equipment.length ? (
+              <ul className="schedule-entry-readonly-equipment">
+                {entry.equipment.map((item) => (
+                  <li key={item.equipment_id}>{equipmentScheduleLabel(item)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Keine Fahrzeuge/Geräte für diesen Einsatz.</p>
+            )
+          ) : equipment.length === 0 ? (
             <p className="muted">
               Keine Fahrzeuge/Geräte in der Stammliste.{' '}
               <Link href={partnerSettingsListPath('fahrzeuge')}>Stammdaten pflegen</Link>
@@ -257,7 +294,7 @@ export function ScheduleEntryDialog({
                       type="checkbox"
                       name="equipment_id[]"
                       value={item.id}
-                      disabled={pending || blocked}
+                      disabled={fieldsDisabled || blocked}
                       defaultChecked={equipmentSet.has(item.id)}
                     />
                     <span>
@@ -283,8 +320,14 @@ export function ScheduleEntryDialog({
           <p className="input-form-section-title">Externe / Subunternehmer</p>
           {subcontractors.length === 0 ? (
             <p className="muted">
-              Keine Subunternehmer in der Stammliste.{' '}
-              <Link href={partnerSettingsListPath('subunternehmer')}>Geschäftspartner pflegen</Link>
+              {readOnly ? (
+                'Keine Subunternehmer hinterlegt.'
+              ) : (
+                <>
+                  Keine Subunternehmer in der Stammliste.{' '}
+                  <Link href={partnerSettingsListPath('subunternehmer')}>Geschäftspartner pflegen</Link>
+                </>
+              )}
             </p>
           ) : (
             <div className="input-form-checkboxes">
@@ -294,7 +337,7 @@ export function ScheduleEntryDialog({
                     type="checkbox"
                     name="external_partner_id[]"
                     value={p.id}
-                    disabled={pending}
+                    disabled={fieldsDisabled}
                     defaultChecked={partnerInitialSet.has(p.id)}
                   />
                   {partnerOptionLabel(p)}
@@ -306,7 +349,7 @@ export function ScheduleEntryDialog({
             Zusatz (Anzahl, weitere Namen)
             <input
               name="external_workers_extra"
-              disabled={pending}
+              disabled={fieldsDisabled}
               defaultValue={externalInitial.extra}
               placeholder="z. B. Firma +2 oder Freitext"
             />
@@ -316,29 +359,37 @@ export function ScheduleEntryDialog({
         <div className="input-form-core">
           <label className="input-form-span-full">
             Notiz / Arbeitsauftrag
-            <textarea name="notes" rows={3} disabled={pending} defaultValue={entry?.notes ?? ''} />
+            <textarea name="notes" rows={3} disabled={fieldsDisabled} defaultValue={entry?.notes ?? ''} />
           </label>
         </div>
         </div>
         </div>
 
         <div className="dialog-actions schedule-entry-dialog-actions">
-          {entry ? (
-            <button
-              type="button"
-              className="text-button schedule-entry-dialog-delete"
-              disabled={pending}
-              onClick={handleDelete}
-            >
-              Ungeplant
+          {readOnly ? (
+            <button type="button" className="primary-button primary-button--compact" onClick={onClose}>
+              Schließen
             </button>
-          ) : null}
-          <button type="button" className="text-button schedule-entry-dialog-cancel" onClick={onClose} disabled={pending}>
-            Abbrechen
-          </button>
-          <button type="submit" className="primary-button primary-button--compact schedule-entry-dialog-save" disabled={pending}>
-            {pending ? 'Speichern…' : 'Speichern'}
-          </button>
+          ) : (
+            <>
+              {entry ? (
+                <button
+                  type="button"
+                  className="text-button schedule-entry-dialog-delete"
+                  disabled={pending}
+                  onClick={handleDelete}
+                >
+                  Ungeplant
+                </button>
+              ) : null}
+              <button type="button" className="text-button schedule-entry-dialog-cancel" onClick={onClose} disabled={pending}>
+                Abbrechen
+              </button>
+              <button type="submit" className="primary-button primary-button--compact schedule-entry-dialog-save" disabled={pending}>
+                {pending ? 'Speichern…' : 'Speichern'}
+              </button>
+            </>
+          )}
         </div>
       </form>
     </AppDialog>

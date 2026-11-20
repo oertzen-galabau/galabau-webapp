@@ -416,7 +416,6 @@ export function SchedulePlanningClient({
   }
 
   function openEdit(entry: SchedulePlanData['entries'][number]) {
-    if (!canManage) return;
     setDialogEntry(entry);
     setDialogDefaults({});
     setDialogOpen(true);
@@ -1042,10 +1041,13 @@ export function SchedulePlanningClient({
         />
       ) : null}
 
-      {canManage ? (
+      {(canManage || dialogEntry) ? (
         <ScheduleEntryDialog
           open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
+          onClose={() => {
+            setDialogOpen(false);
+            setDialogEntry(null);
+          }}
           entry={dialogEntry}
           sites={sites}
           employees={employees}
@@ -1057,6 +1059,7 @@ export function SchedulePlanningClient({
           defaultSiteId={dialogDefaults.siteId}
           defaultDay={dialogDefaults.day ?? selectedDay}
           weekDays={plan.weekDays}
+          readOnly={!canManage}
         />
       ) : null}
     </div>

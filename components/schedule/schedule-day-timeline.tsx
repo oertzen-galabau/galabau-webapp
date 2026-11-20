@@ -161,7 +161,7 @@ export function ScheduleDayTimeline({
                   layout.columnCount > 1 && layout.columnCount <= maxVisibleColumns
                     ? 'schedule-day-timeline-event--narrow'
                     : '',
-                  canManage ? 'schedule-day-timeline-event--clickable' : '',
+                  'schedule-day-timeline-event--clickable',
                 ]
                   .filter(Boolean)
                   .join(' ');
@@ -279,9 +279,20 @@ export function ScheduleDayTimeline({
                 }
 
                 return (
-                  <article key={entry.id} className={cardClass} style={style}>
-                    {body}
-                  </article>
+                  <div
+                    key={entry.id}
+                    className="schedule-day-timeline-event-slot"
+                    style={style}
+                  >
+                    <button
+                      type="button"
+                      className={cardClass}
+                      onClick={() => onEdit(entry)}
+                      aria-label={`Einsatz ${entry.site.name} anzeigen`}
+                    >
+                      {body}
+                    </button>
+                  </div>
                 );
               })
             )}

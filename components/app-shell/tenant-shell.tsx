@@ -58,12 +58,12 @@ const navItems: NavItem[] = [
 const BOTTOM_NAV_PRIORITY = [
   '/app',
   '/app/zeiten',
+  '/app/einsatzplanung',
   '/app/nachrichten',
   '/app/urlaub',
   '/app/bestellungen',
   '/app/dokumentation',
   '/app/baustellen',
-  '/app/einsatzplanung',
   '/app/dokumente',
   '/app/team',
   '/app/einstellungen',

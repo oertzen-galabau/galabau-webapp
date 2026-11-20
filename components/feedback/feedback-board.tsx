@@ -114,7 +114,7 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
         <section className="panel feedback-board-section">
           <h2 className="feedback-board-section-title">Woran gearbeitet wird</h2>
           <p className="muted feedback-board-section-hint">
-            Titel, Status und Antworten aus deinem Betrieb – ohne Personenbezug.
+            Titel, Beschreibung, Status und Antworten aus deinem Betrieb – ohne Personenbezug.
           </p>
           {initialData.public.length === 0 ? (
             <p className="muted">Aktuell keine Einträge in diesem Überblick.</p>
@@ -136,6 +136,7 @@ export function FeedbackBoard({ initialData, highlightId, thanks = false }: Prop
                     {row.is_mine ? (
                       <span className="feedback-board-mine-badge">Von mir</span>
                     ) : null}
+                    <p className="feedback-board-description">{row.description}</p>
                     {row.public_reply ? (
                       <p className="feedback-board-reply">{row.public_reply}</p>
                     ) : null}

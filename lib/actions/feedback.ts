@@ -182,13 +182,13 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
       .order('created_at', { ascending: false }),
     admin
       .from('feedback_reports')
-      .select('id, user_id, kind, title, status, public_reply, updated_at')
+      .select('id, user_id, kind, title, description, status, public_reply, updated_at')
       .eq('tenant_id', tenantId)
       .in('status', ['open', 'in_progress'])
       .order('updated_at', { ascending: false }),
     admin
       .from('feedback_reports')
-      .select('id, user_id, kind, title, status, public_reply, updated_at')
+      .select('id, user_id, kind, title, description, status, public_reply, updated_at')
       .eq('tenant_id', tenantId)
       .eq('status', 'done')
       .gte('updated_at', cutoffIso)
@@ -222,6 +222,7 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
       user_id: string;
       kind: string;
       title: string;
+      description: string;
       status: string;
       public_reply: string | null;
       updated_at: string;
@@ -238,6 +239,7 @@ export async function listFeedbackBoardForTenant(): Promise<FeedbackBoardData> {
     id: row.id,
     kind: row.kind as FeedbackReportKind,
     title: row.title,
+    description: row.description,
     status: row.status as FeedbackReportStatus,
     public_reply: row.public_reply ?? null,
     updated_at: row.updated_at,

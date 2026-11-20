@@ -1,4 +1,5 @@
 import type { BookingPreviewLine, PayrollBooking } from '@/lib/types/database';
+import { formatMinutes } from '@/lib/utils/time';
 
 type Props = {
   lines: BookingPreviewLine[] | PayrollBooking[];
@@ -7,7 +8,9 @@ type Props = {
 };
 
 function formatQuantity(qty: number, unit: string) {
-  return unit === 'eur' ? `${qty.toFixed(2)} €` : `${qty.toFixed(2)} Std.`;
+  if (unit === 'eur') return `${qty.toFixed(2)} €`;
+  const clock = formatMinutes(Math.round(qty * 60));
+  return `${qty.toFixed(2)} Std. (${clock})`;
 }
 
 export function BookingPreviewList({ lines, codeLabels, warnings = [] }: Props) {
