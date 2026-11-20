@@ -264,9 +264,9 @@ export default async function ZeitenPage() {
       <section className="panel" style={{ marginTop: 16 }}>
         <h2>Tages- und Monatsübersicht</h2>
         <p className="muted">
-          Eingereichte Zeiten (Status „In Prüfung“ oder „Genehmigt“) können nicht mehr geändert oder gelöscht
-          werden. Abgelehnte Einträge korrigieren Sie unter „Zu korrigieren“. Offene Tageseinträge ohne Feierabend
-          können innerhalb der letzten drei Tage gelöscht werden.
+          Zeiten mit Status „In Prüfung“ können Sie noch ändern; genehmigte Einträge nicht mehr. Eingereichte
+          abgeschlossene Tage können nicht gelöscht werden. Abgelehnte Einträge korrigieren Sie unter „Zu
+          korrigieren“. Offene Tageseinträge ohne Feierabend können innerhalb der letzten drei Tage gelöscht werden.
         </p>
         <div className="data-table-wrap time-overview-table-wrap">
           <table className="data-table time-overview-table">

@@ -29,21 +29,19 @@ export function isWithinEditableDateRange(workDate: string, today?: string): boo
   return workDate <= t && workDate >= minEditableWorkDate(t);
 }
 
-/** Abgeschlossen und nicht abgelehnt — nach Einreichung keine Bearbeitung/Löschung durch Mitarbeitende. */
+/** Freigegeben — keine Bearbeitung/Löschung durch Mitarbeitende. */
 export function isOwnSubmittedTimeEntryLocked(entry: EntryLike): boolean {
-  if (!entry.end_time) return false;
-  return entry.approval_status !== 'rejected';
+  return entry.approval_status === 'approved';
 }
 
 export function isTimeEntryEditable(entry: EntryLike): boolean {
   if (entry.approval_status === 'approved') return false;
   if (!entry.end_time) return false;
-  if (isOwnSubmittedTimeEntryLocked(entry)) return false;
-  return true;
+  return entry.approval_status === 'pending' || entry.approval_status === 'rejected';
 }
 
 export function isTimeEntryDeletable(entry: EntryLike, today?: string): boolean {
   if (entry.approval_status === 'approved') return false;
-  if (isOwnSubmittedTimeEntryLocked(entry)) return false;
+  if (entry.end_time && entry.approval_status !== 'rejected') return false;
   return isWithinEditableDateRange(entry.work_date, today);
 }

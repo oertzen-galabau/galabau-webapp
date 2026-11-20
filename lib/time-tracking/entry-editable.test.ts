@@ -60,14 +60,14 @@ describe('isTimeEntryEditable', () => {
     );
   });
 
-  it('blocks submitted pending entries with end_time', () => {
+  it('allows submitted pending entries with end_time', () => {
     assert.equal(
       isTimeEntryEditable({
         approval_status: 'pending',
         work_date: '2026-06-01',
         end_time: '16:00:00',
       }),
-      false,
+      true,
     );
   });
 

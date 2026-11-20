@@ -15,7 +15,8 @@ import {
 import {
   DUPLICATE_DAY_ERROR,
   EDITABLE_DAYS_BACK,
-  isOwnSubmittedTimeEntryLocked,
+  isTimeEntryDeletable,
+  isTimeEntryEditable,
   isWithinEditableDateRange,
   timeEntryWriteError,
 } from '@/lib/time-tracking/entry-editable';
@@ -251,17 +252,27 @@ function assertOwnTimeEntryModifiable(
   options: { requireCompleted?: boolean; forDelete?: boolean } = {},
 ) {
   if (entry.approval_status === 'approved') {
-    throw new Error('Freigegebene Zeiteinträge können nicht mehr geändert werden.');
-  }
-  if (isOwnSubmittedTimeEntryLocked(entry)) {
     throw new Error(
       options.forDelete
-        ? 'Eingereichte Zeiten können nicht mehr gelöscht werden.'
-        : 'Eingereichte Zeiten können nicht mehr geändert werden.',
+        ? 'Freigegebene Zeiteinträge können nicht mehr gelöscht werden.'
+        : 'Freigegebene Zeiteinträge können nicht mehr geändert werden.',
     );
+  }
+  if (options.forDelete) {
+    if (!isTimeEntryDeletable(entry)) {
+      throw new Error(
+        entry.end_time && entry.approval_status !== 'rejected'
+          ? 'Eingereichte Zeiten können nicht mehr gelöscht werden.'
+          : 'Dieser Zeiteintrag kann nicht mehr gelöscht werden.',
+      );
+    }
+    return;
   }
   if (options.requireCompleted && !entry.end_time) {
     throw new Error('Laufende Zeiteinträge können hier nicht bearbeitet werden.');
+  }
+  if (!isTimeEntryEditable(entry)) {
+    throw new Error('Dieser Zeiteintrag kann nicht mehr geändert werden.');
   }
 }
 
